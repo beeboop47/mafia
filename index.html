@@ -516,7 +516,7 @@ function renderPlayers(){
 }
 function renderRandomRolePool(){
   const el=$('randomRolePool'); el.innerHTML='';
-  state.roles.forEach(role=>{
+  state.roles.filter(role=>role.id!=='citizen').forEach(role=>{
     const count=role.randomCount ?? 0;
     const box=document.createElement('div'); box.className='role-card';
     box.innerHTML=`
@@ -577,17 +577,19 @@ function assignRoles(){
   if(state.mode==='manual'){
     state.players.forEach(p=>{ if(!p.roleId) p.roleId=state.roles[0]?.id||null; });
   } else {
+    // Citizens are the default fallback and are never part of the random pool.
     let pool=[];
     state.roles.forEach(role=>{
+      if(role.id==='citizen') return;
       for(let i=0;i<Math.max(0,Math.floor(role.randomCount||0));i++) pool.push(role.id);
     });
-    if(!pool.includes('mafia') && state.roles.some(r=>r.id==='mafia')) pool.push('mafia');
-    if(!pool.some(id=>state.roles.find(r=>r.id===id)?.orientation==='good')){
-      const good=state.roles.find(r=>r.orientation==='good'); if(good) pool.push(good.id);
-    }
     pool=shuffle(pool.slice());
-    const assigned=shuffle(Array.from({length:state.players.length},(_,i)=>pool[i%pool.length]));
-    state.players.forEach((p,i)=>p.roleId=assigned[i]);
+    const assigned=pool.slice(0,state.players.length);
+    const shuffledAssigned=shuffle(assigned);
+    const citizenExists=state.roles.some(r=>r.id==='citizen');
+    state.players.forEach((p,i)=>{
+      p.roleId=shuffledAssigned[i] || (citizenExists ? 'citizen' : null);
+    });
   }
   state.players.forEach(p=>{p.alive=true;p.used={};p.escaped=false;p.eliminatedByVote=false;});
 }
@@ -988,10 +990,6 @@ $('saveRoleBtn').addEventListener('click',()=>{
 });
 $('startBtn').addEventListener('click',()=>{
   if(state.players.length<2){ alert('Need at least 2 players.'); return; }
-  if(state.mode==='random'){
-    const configured=state.roles.reduce((sum,role)=>sum+Math.max(0,Math.floor(role.randomCount||0)),0);
-    if(configured<state.players.length){ alert('Random mode needs at least as many configured role copies as players.'); return; }
-  }
   assignRoles(); state.logs=[]; $('gameLog').innerHTML=''; state.round=1; addLog('Game started. Roles are being handed out privately.'); beginHandoff();
 });
 $('revealRoleBtn').addEventListener('click',()=>{state.handoffRevealed=true;updateHandoff();});
@@ -1015,7 +1013,9 @@ $('resolveNightBtn').addEventListener('click',()=>{
 $('endGameEarlyBtn').addEventListener('click',endGameEarly);
 $('backSetupBtn').addEventListener('click',()=>{state.phase='setup';hide('gameScreen');show('setupScreen');renderSetup();});
 
-state.roles.forEach((role,index)=>{ role.randomCount=role.randomCount ?? (index===0 ? 1 : role.orientation==='evil' ? 1 : 0); });
+state.roles.forEach((role,index)=>{
+  role.randomCount=role.id==='citizen' ? 0 : (role.randomCount ?? (role.orientation==='evil' ? 1 : 0));
+});
 renderSetup();
 </script>
 </body>
