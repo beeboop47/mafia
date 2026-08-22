@@ -401,7 +401,7 @@ const state = {
   handoffRevealed: false,
   round: 1,
   day: { secondBallot:false, votes:{}, tiedCandidates:[] },
-  night: { queue:[], index:0, choices:{}, resolving:false },
+  night: { queue:[], index:0, choices:{}, resolving:false, seerReveal:null },
   logs: [],
   editingRoleId: null,
 };
@@ -445,6 +445,9 @@ function rolePill(role){
 }
 function addLog(text){
   state.logs.unshift({text,time:new Date().toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'})});
+}
+
+function renderGameLog(){
   $('gameLog').innerHTML=state.logs.map(x => `<div class="log-item"><span class="muted">${x.time}</span> ${escapeHtml(x.text)}</div>`).join('');
 }
 function setPhase(label,title){
@@ -694,7 +697,7 @@ function buildNightQueue(){
 }
 function startNight(){
   state.phase='night';
-  state.night={queue:buildNightQueue(),index:0,busy:false};
+  state.night={queue:buildNightQueue(),index:0,busy:false,seerReveal:null};
   hide('dayCard','handoffCard'); show('nightCard');
   setPhase('Night','Night actions');
   if(!state.night.queue.length){ finishNight(); return; }
@@ -736,8 +739,20 @@ function setChoiceAndContinue(actor, choice){
   }
   if(role.nightAction==='seer'){
     const target=playerOf(choice);
-    if(target) showNightResult(`<strong>${escapeHtml(target.name)}</strong> is a <strong>${escapeHtml(roleOf(target)?.title||'Unknown')}</strong>.`);
-    completeNightTurn();
+    if(!target || !target.alive){
+      showNightResult('That target is no longer available.');
+      completeNightTurn();
+      return;
+    }
+    state.night.seerReveal={targetId:target.id};
+    showNightResult(`<strong>${escapeHtml(target.name)}</strong> is a <strong>${escapeHtml(roleOf(target)?.title||'Unknown')}</strong>.`);
+    $('nightPrompt').textContent='The exact role has been revealed. Acknowledge it to finish your turn and pass the device.';
+    $('nightActionArea').innerHTML='';
+    $('nightActionArea').appendChild(actionButton('Acknowledge & continue','seerAcknowledge',()=>{
+      if(!state.night.busy) return;
+      state.night.seerReveal=null;
+      completeNightTurn();
+    }));
     return;
   }
   if(role.nightAction==='mafiaKill' || role.nightAction==='killOnce'){
@@ -906,7 +921,7 @@ function resolveImmediateAttack(attacker,target,outcomes){
     showNightResult(`<strong>${escapeHtml(attackerName)}</strong> records the completion here. This remains part of the attacker's turn.`);
     $('nightActionArea').appendChild(actionButton('Done — resolve the attack',target.id,()=>{
       if(!state.night.busy) return;
-      outcomes.push(`${target.name} performed the Monkey reaction against ${attackerName}.`);
+      outcomes.push(`${target.name} performed the Monkey reaction before dying.`);
       killTarget(target,outcomes,next);
     }));
     return;
@@ -930,6 +945,7 @@ function finishNight(){
   $('nightPrompt').textContent='Night is resolving…';
   $('nightActionArea').innerHTML='';
   const result=checkWin();
+  renderGameLog();
   if(result.done){ endGame(result); return; }
   state.round++; $('roundPill').textContent=`Round ${state.round}`;
   setTimeout(startDay,0);
@@ -961,6 +977,7 @@ function endGame(result){
     return `<div class="result ${player.alive?'':'eliminated'}"><strong>${escapeHtml(player.name)}</strong><div class="muted tiny" style="margin-top:6px">${player.alive?'Alive':'Eliminated'}</div><div style="margin-top:6px">${escapeHtml(role?.title||'Unknown')} ${rolePill(role)}</div></div>`;
   }).join('');
   addLog(result.reason);
+  renderGameLog();
 }
 function endGameEarly(){
   if(state.phase==='gameover') return;
@@ -990,7 +1007,7 @@ $('saveRoleBtn').addEventListener('click',()=>{
 });
 $('startBtn').addEventListener('click',()=>{
   if(state.players.length<2){ alert('Need at least 2 players.'); return; }
-  assignRoles(); state.logs=[]; $('gameLog').innerHTML=''; state.round=1; addLog('Game started. Roles are being handed out privately.'); beginHandoff();
+  assignRoles(); state.logs=[]; $('gameLog').innerHTML=''; state.round=1; addLog('Game started. Roles are being handed out privately.'); renderGameLog(); beginHandoff();
 });
 $('revealRoleBtn').addEventListener('click',()=>{state.handoffRevealed=true;updateHandoff();});
 $('handoffNextBtn').addEventListener('click',()=>{
