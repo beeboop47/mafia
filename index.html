@@ -297,6 +297,7 @@
       <div id="dayVoteArea" class="vote-grid"></div>
       <div id="dayResult" class="summary-grid" style="margin-top:12px"></div>
       <div class="row" style="justify-content:flex-end;margin-top:12px">
+        <button id="skipDayBtn" class="ghost" type="button">Skip voting & begin night</button>
         <button id="nextNightBtn" type="button" disabled>Begin night</button>
       </div>
     </div>
@@ -580,19 +581,36 @@ function assignRoles(){
   if(state.mode==='manual'){
     state.players.forEach(p=>{ if(!p.roleId) p.roleId=state.roles[0]?.id||null; });
   } else {
-    // Citizens are the default fallback and are never part of the random pool.
-    let pool=[];
+    // Random mode: selected role counts are used as desired minimums. Mafia is
+    // special: if 1, 2, 3, ... Mafia copies are selected, that many Mafia
+    // players are guaranteed whenever there are enough players.
+    const playerCount=state.players.length;
+    const mafiaRole=state.roles.find(r=>r.id==='mafia');
+    const requestedMafia=Math.max(0,Math.floor(mafiaRole?.randomCount||0));
+    const guaranteedMafia=Math.min(requestedMafia,playerCount);
+    const assigned=[];
+    for(let i=0;i<guaranteedMafia;i++) assigned.push('mafia');
+
+    // Fill the remaining slots from the other selected roles, then fall back
+    // to Citizen. This prevents selected Mafia from being crowded out.
+    let otherPool=[];
     state.roles.forEach(role=>{
-      if(role.id==='citizen') return;
-      for(let i=0;i<Math.max(0,Math.floor(role.randomCount||0));i++) pool.push(role.id);
+      if(role.id==='citizen' || role.id==='mafia') return;
+      for(let i=0;i<Math.max(0,Math.floor(role.randomCount||0));i++) otherPool.push(role.id);
     });
-    pool=shuffle(pool.slice());
-    const assigned=pool.slice(0,state.players.length);
+    otherPool=shuffle(otherPool);
+    while(assigned.length<playerCount && otherPool.length){
+      assigned.push(otherPool.shift());
+    }
+    while(assigned.length<playerCount){
+      const citizenExists=state.roles.some(r=>r.id==='citizen');
+      if(citizenExists) assigned.push('citizen');
+      else if(state.roles.length) assigned.push(state.roles[0].id);
+      else assigned.push(null);
+    }
+
     const shuffledAssigned=shuffle(assigned);
-    const citizenExists=state.roles.some(r=>r.id==='citizen');
-    state.players.forEach((p,i)=>{
-      p.roleId=shuffledAssigned[i] || (citizenExists ? 'citizen' : null);
-    });
+    state.players.forEach((p,i)=>{ p.roleId=shuffledAssigned[i] || null; });
   }
   state.players.forEach(p=>{p.alive=true;p.used={};p.escaped=false;p.eliminatedByVote=false;});
 }
@@ -652,7 +670,20 @@ function updateDayResolveButton(){
   const ready=living.length>1 && living.every(voter=>isChosen(state.day.votes[voter.id]) && validDayTarget(voter,state.day.votes[voter.id]));
   $('nextNightBtn').disabled=!ready;
   $('nextNightBtn').textContent=state.day.secondBallot?'Resolve tie':'Resolve vote';
+  $('skipDayBtn').disabled=false;
 }
+function skipDay(){
+  if(state.phase!=='day') return;
+  state.day={secondBallot:false,votes:{},tiedCandidates:[]};
+  $('dayResult').innerHTML='<div class="result">Voting was skipped. Nobody was eliminated today.</div>';
+  addLog('Day voting was skipped; nobody was eliminated.');
+  const result=checkWin();
+  if(result.done){ endGame(result); return; }
+  $('nextNightBtn').disabled=false;
+  $('nextNightBtn').textContent='Begin night';
+  $('skipDayBtn').disabled=true;
+}
+
 function resolveDay(){
   const living=playersAlive();
   const counts=new Map();
@@ -674,6 +705,7 @@ function resolveDay(){
     state.day.secondBallot=false;
     $('dayResult').innerHTML='<div class="result">The second vote was tied. Nobody is eliminated today.</div>';
     $('nextNightBtn').disabled=false; $('nextNightBtn').textContent='Begin night';
+    $('skipDayBtn').disabled=true;
     addLog('Day ended in a tie; nobody was eliminated.'); return;
   }
 
@@ -685,6 +717,7 @@ function resolveDay(){
   state.day.secondBallot=false;
   const result=checkWin(); if(result.done){ endGame(result); return; }
   $('nextNightBtn').disabled=false; $('nextNightBtn').textContent='Begin night';
+  $('skipDayBtn').disabled=true;
 }
 
 // ---- Night ---------------------------------------------------------------
@@ -1036,6 +1069,7 @@ $('handoffNextBtn').addEventListener('click',()=>{
   if(state.handoffIndex===state.players.length-1){ startDay(); return; }
   state.handoffIndex++; state.handoffRevealed=false; updateHandoff();
 });
+$('skipDayBtn').addEventListener('click',skipDay);
 $('nextNightBtn').addEventListener('click',()=>{
   if($('nextNightBtn').disabled) return;
   if(state.phase==='day'){
