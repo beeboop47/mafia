@@ -844,22 +844,27 @@ function renderNightKnownRoles(actor){
 
   const role=roleOf(actor);
   const team=coordinatedKillMembers(actor);
-  if(!isCoordinatedKillRole(role) || team.length<2) return;
+  if(!role || team.length<2) return;
 
-  const teammateNames=team.map(player=>`
-    <div class="known-role">
-      <strong>${escapeHtml(player.name)}</strong>
-      <div class="tiny muted" style="margin-top:4px">
-        ${escapeHtml(roleOf(player)?.title||'Unknown')} · Evil teammate
-      </div>
-    </div>
-  `).join('');
+  const teammateNames=team.map(player=>{
+    const playerRole=roleOf(player);
+    const label=role.orientation==='evil' && playerRole?.orientation==='evil'
+      ? 'Evil teammate'
+      : 'Same role';
+    return `
+      <div class="known-role">
+        <strong>${escapeHtml(player.name)}</strong>
+        <div class="tiny muted" style="margin-top:4px">
+          ${escapeHtml(playerRole?.title||'Unknown')} · ${label}
+        </div>
+      </div>`;
+  }).join('');
 
   $('nightKnownRoles').innerHTML += `
     <div class="known-roles">
       <strong>Coordinated killing team</strong>
       <div class="muted tiny" style="margin-top:4px">
-        These living players are in your coordinated killing group and share one kill.
+        These living players coordinate on one shared kill.
       </div>
       <div class="known-role-list">${teammateNames}</div>
     </div>`;
