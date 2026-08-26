@@ -312,7 +312,6 @@
       <div id="nightResult" class="summary-grid" style="margin-top:12px"></div>
       <div class="row" style="justify-content:flex-end;margin-top:12px">
         <button id="resolveNightBtn" type="button" disabled>Resolve night</button>
-        <button id="nextNightActorBtn" class="ghost hidden" type="button">Pass to next player</button>
       </div>
     </div>
 
@@ -402,7 +401,7 @@ const state = {
   handoffRevealed: false,
   round: 1,
   day: { secondBallot:false, votes:{}, tiedCandidates:[] },
-  night: { queue:[], index:0, choices:{}, resolving:false, seerReveal:null },
+  night: { queue:[], index:0, choices:{}, resolving:false, seerReveal:null, handoffReady:false },
   logs: [],
   editingRoleId: null,
 };
@@ -698,7 +697,7 @@ function buildNightQueue(){
 }
 function startNight(){
   state.phase='night';
-  state.night={queue:buildNightQueue(),index:0,busy:false,seerReveal:null};
+  state.night={queue:buildNightQueue(),index:0,busy:false,seerReveal:null,handoffReady:false};
   hide('dayCard','handoffCard'); show('nightCard');
   setPhase('Night','Night actions');
   if(!state.night.queue.length){ finishNight(); return; }
@@ -709,6 +708,7 @@ function setNightBusy(busy){ state.night.busy=busy; }
 function advanceNightActor(){
   if(state.phase!=='night') return;
   state.night.index++;
+  state.night.handoffReady=false;
   if(state.night.index>=state.night.queue.length){ finishNight(); return; }
   updateNight();
 }
@@ -716,19 +716,8 @@ function completeNightTurn(){
   setNightBusy(false);
   const result=checkWin();
   if(result.done){ endGame(result); return; }
-
-  // Pause after the current player's turn. The next player's role/ability
-  // is not revealed until the device holder explicitly taps the pass button.
-  if(state.night.index>=state.night.queue.length-1){
-    finishNight();
-    return;
-  }
-
-  $('nightActionArea').innerHTML='';
-  $('nextNightActorBtn').classList.remove('hidden');
-  $('nextNightActorBtn').disabled=false;
-  $('nextNightActorBtn').textContent='Pass to next player';
-  $('nightPrompt').textContent='Your turn is complete. Hide the result and pass the device before revealing the next player.';
+  state.night.handoffReady=true;
+  updateNightHandoffGate();
 }
 function renderNightKnownRoles(actor){
   $('nightKnownRoles').innerHTML='';
@@ -822,17 +811,32 @@ function renderStandardAction(actor,role,living){
       area.appendChild(actionButton('Acknowledge & continue','skip',()=>setChoiceAndContinue(actor,'skip')));
   }
 }
+function updateNightHandoffGate(){
+  const night=state.night;
+  const nextActor=night.queue[night.index+1];
+  $('nightActionArea').innerHTML='';
+  $('nightResult').innerHTML='';
+  $('nightPrompt').innerHTML = nextActor
+    ? `<strong>Night action complete.</strong> Pass the device to the next player, then press the button below to reveal their night ability.`
+    : `<strong>Night actions complete.</strong> Press the button below to finish the night.`;
+  const buttonLabel = nextActor ? `Pass to ${escapeHtml(nextActor.name)} & reveal` : 'Finish night';
+  $('nightActionArea').appendChild(actionButton(buttonLabel,'nightHandoff',()=>{
+    if(state.phase!=='night' || state.night.busy || !state.night.handoffReady) return;
+    state.night.handoffReady=false;
+    advanceNightActor();
+  }));
+  $('resolveNightBtn').classList.add('hidden');
+  $('resolveNightBtn').disabled=true;
+}
+
 function updateNight(){
   const night=state.night;
   if(night.index>=night.queue.length){ finishNight(); return; }
   const actor=night.queue[night.index], role=roleOf(actor);
+  night.handoffReady=false;
   $('nightTitle').textContent=`Night — ${actor.name}`;
   $('nightProgress').textContent=`${night.index+1} / ${night.queue.length}`;
-  $('nightActionArea').innerHTML='';
-  $('nightResult').innerHTML='';
-  $('nextNightActorBtn').classList.add('hidden');
-  $('nextNightActorBtn').disabled=true;
-  renderNightKnownRoles(actor);
+  $('nightActionArea').innerHTML=''; $('nightResult').innerHTML=''; renderNightKnownRoles(actor);
 
   if(!actor.alive){
     $('resolveNightBtn').classList.remove('hidden');
@@ -1042,17 +1046,6 @@ $('nextNightBtn').addEventListener('click',()=>{
 $('resolveNightBtn').addEventListener('click',()=>{
   if(state.phase!=='night' || state.night.busy) return;
   if(!state.night.queue[state.night.index]) return;
-  advanceNightActor();
-});
-
-$('nextNightActorBtn').addEventListener('click',()=>{
-  if(state.phase!=='night' || state.night.busy) return;
-  if(state.night.index>=state.night.queue.length-1){
-    finishNight();
-    return;
-  }
-  $('nextNightActorBtn').classList.add('hidden');
-  $('nextNightActorBtn').disabled=true;
   advanceNightActor();
 });
 $('endGameEarlyBtn').addEventListener('click',endGameEarly);
