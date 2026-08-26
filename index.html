@@ -469,9 +469,13 @@ function visibilityText(value){
 function visibleTo(viewer,target){
   const role=roleOf(target);
   if(!role || !viewer || viewer.id===target.id) return false;
+
+  // Evil players know every other Evil player by default.
+  const viewerRole=roleOf(viewer);
+  if(viewerRole?.orientation==='evil' && role.orientation==='evil') return true;
+
   if(role.visibility==='everyone') return true;
   if(role.visibility==='nobody') return false;
-  const viewerRole=roleOf(viewer);
   if(!viewerRole) return false;
   return role.visibility==='sameOrientation'
     ? viewerRole.orientation===role.orientation
@@ -581,23 +585,39 @@ function assignRoles(){
   if(state.mode==='manual'){
     state.players.forEach(p=>{ if(!p.roleId) p.roleId=state.roles[0]?.id||null; });
   } else {
-    // Random mode: selected role counts are used as desired minimums. Mafia is
-    // special: if 1, 2, 3, ... Mafia copies are selected, that many Mafia
-    // players are guaranteed whenever there are enough players.
+    // Random mode: selected role counts are used as minimums. Every selected
+    // evil role is guaranteed first, not just the default Mafia role. This
+    // also covers custom evil roles.
     const playerCount=state.players.length;
-    const mafiaRole=state.roles.find(r=>r.id==='mafia');
-    const requestedMafia=Math.max(0,Math.floor(mafiaRole?.randomCount||0));
-    const guaranteedMafia=Math.min(requestedMafia,playerCount);
     const assigned=[];
-    for(let i=0;i<guaranteedMafia;i++) assigned.push('mafia');
 
-    // Fill the remaining slots from the other selected roles, then fall back
-    // to Citizen. This prevents selected Mafia from being crowded out.
+    state.roles.filter(role=>role.id!=='citizen' && role.orientation==='evil').forEach(role=>{
+      const requested=Math.max(0,Math.floor(role.randomCount||0));
+      const guaranteed=Math.min(requested,playerCount-assigned.length);
+      for(let i=0;i<guaranteed;i++) assigned.push(role.id);
+    });
+
+    // Fill remaining slots from the other selected roles, including any
+    // remaining copies of evil roles beyond their guaranteed minimum.
     let otherPool=[];
     state.roles.forEach(role=>{
-      if(role.id==='citizen' || role.id==='mafia') return;
-      for(let i=0;i<Math.max(0,Math.floor(role.randomCount||0));i++) otherPool.push(role.id);
+      if(role.id==='citizen') return;
+      const count=Math.max(0,Math.floor(role.randomCount||0));
+      for(let i=0;i<count;i++) otherPool.push(role.id);
     });
+
+    // Remove the copies already guaranteed above so they aren't duplicated
+    // merely because they were also present in the normal role pool.
+    const guaranteedCounts={};
+    assigned.forEach(id=>guaranteedCounts[id]=(guaranteedCounts[id]||0)+1;
+    });
+    Object.entries(guaranteedCounts).forEach(([id,count])=>{
+      for(let i=0;i<count;i++){
+        const index=otherPool.indexOf(id);
+        if(index>=0) otherPool.splice(index,1);
+      }
+    });
+
     otherPool=shuffle(otherPool);
     while(assigned.length<playerCount && otherPool.length){
       assigned.push(otherPool.shift());
@@ -721,11 +741,78 @@ function resolveDay(){
 }
 
 // ---- Night ---------------------------------------------------------------
+function isKillingRole(role){
+  return role?.nightAction==='mafiaKill' || role?.nightAction==='killOnce';
+}
+
+function evilTeamHasKillingAbility(){
+  return playersAlive().some(player=>roleOf(player)?.orientation==='evil' && isKillingRole(roleOf(player)));
+}
+
+function sameCoordinationGroup(a,b){
+  const roleA=roleOf(a), roleB=roleOf(b);
+  if(!roleA || !roleB) return false;
+
+  // All living Evil players form one team whenever at least one Evil player
+  // has a killing ability. Their role names do not matter.
+  if(roleA.orientation==='evil' && roleB.orientation==='evil'){
+    return evilTeamHasKillingAbility();
+  }
+
+  // Good/neutral killing roles coordinate only with the same role name.
+  if(isKillingRole(roleA) && isKillingRole(roleB)){
+    return roleA.title===roleB.title;
+  }
+
+  return false;
+}
+
+function coordinatedKillMembers(actor){
+  const role=roleOf(actor);
+  if(!role) return [actor];
+
+  if(role.orientation==='evil' && evilTeamHasKillingAbility()){
+    return playersAlive().filter(player=>roleOf(player)?.orientation==='evil');
+  }
+
+  if(isKillingRole(role)){
+    return playersAlive().filter(player=>sameCoordinationGroup(actor,player));
+  }
+
+  return [actor];
+}
+
 function buildNightQueue(){
-  // Every living player gets a private night turn. Players without an active
-  // ability simply acknowledge their role and continue. This keeps the pass-
-  // and-play order intact, including for ordinary Citizens.
-  const queue=playersAlive().slice();
+  // One shared turn per coordination group:
+  // - all Evil players collapse into one team turn if any Evil player can kill
+  // - Good/neutral killing roles coordinate only with the same role name
+  // - otherwise roles retain their normal individual turns
+  const queue=[];
+  const processed=[];
+  const evilKillingTeam = evilTeamHasKillingAbility();
+
+  playersAlive().forEach(player=>{
+    const role=roleOf(player);
+
+    if(role?.orientation==='evil' && evilKillingTeam){
+      if(processed.some(representative=>roleOf(representative)?.orientation==='evil')) return;
+
+      // Use a living Evil player with the actual killing ability as the
+      // representative so the shared team turn shows the kill action.
+      const killerRepresentative=playersAlive().find(p=>roleOf(p)?.orientation==='evil' && isKillingRole(roleOf(p)));
+      queue.push(killerRepresentative || player);
+      processed.push(player);
+      return;
+    }
+
+    if(isKillingRole(role)){
+      if(processed.some(representative=>sameCoordinationGroup(representative,player))) return;
+      processed.push(player);
+    }
+
+    queue.push(player);
+  });
+
   return $('nightOrder').value==='random' ? shuffle(queue) : queue;
 }
 function startNight(){
@@ -755,6 +842,28 @@ function completeNightTurn(){
 function renderNightKnownRoles(actor){
   $('nightKnownRoles').innerHTML='';
   renderKnownRoles(actor,'nightKnownRoles');
+
+  const role=roleOf(actor);
+  const team=coordinatedKillMembers(actor);
+  if(!isCoordinatedKillRole(role) || team.length<2) return;
+
+  const teammateNames=team.map(player=>`
+    <div class="known-role">
+      <strong>${escapeHtml(player.name)}</strong>
+      <div class="tiny muted" style="margin-top:4px">
+        ${escapeHtml(roleOf(player)?.title||'Unknown')} · Evil teammate
+      </div>
+    </div>
+  `).join('');
+
+  $('nightKnownRoles').innerHTML += `
+    <div class="known-roles">
+      <strong>Coordinated killing team</strong>
+      <div class="muted tiny" style="margin-top:4px">
+        These living players are in your coordinated killing group and share one kill.
+      </div>
+      <div class="known-role-list">${teammateNames}</div>
+    </div>`;
 }
 function setChoiceAndContinue(actor, choice){
   if(state.night.busy) return;
@@ -790,14 +899,20 @@ function setChoiceAndContinue(actor, choice){
     }));
     return;
   }
-  if(role.nightAction==='mafiaKill' || role.nightAction==='killOnce'){
+  if(isKillingRole(role)){
     const target=playerOf(choice);
     if(!target || !target.alive){
       showNightResult('That target is no longer available.');
       completeNightTurn();
       return;
     }
-    if(role.nightAction==='killOnce') actor.used.killOnce=true;
+
+    // Identical killing roles coordinate on one shared target.
+    const team=coordinatedKillMembers(actor);
+    if(role.nightAction==='killOnce'){
+      team.forEach(member=>member.used.killOnce=true);
+    }
+
     resolveImmediateAttack(actor,target,[]);
     return;
   }
@@ -815,19 +930,31 @@ function renderStandardAction(actor,role,living){
   const area=$('nightActionArea');
   const choose=(target)=>area.appendChild(actionButton(target.name,target.id,()=>setChoiceAndContinue(actor,target.id)));
   switch(role.nightAction){
-    case 'mafiaKill':
-      $('nightPrompt').innerHTML='<strong>You are Mafia.</strong> Choose a living target. If they have a reactive night ability, you will be told immediately and handle the encounter during your turn.';
-      living.forEach(choose); break;
-    case 'killOnce':
-      if(actor.used.killOnce){
-        $('nightPrompt').textContent='You already used your once-per-game kill.';
+    case 'mafiaKill': {
+      const team=coordinatedKillMembers(actor);
+      $('nightPrompt').innerHTML=team.length>1
+        ? `<strong>Evil team:</strong> ${team.map(p=>escapeHtml(p.name)).join(', ')} all coordinate on <strong>one shared kill</strong>. Choose the single target together.`
+        : `<strong>${escapeHtml(role.title)}</strong> — choose a living target. If they have a reactive night ability, you will be told immediately and handle the encounter during your turn.`;
+      living.forEach(choose);
+      break;
+    }
+    case 'killOnce': {
+      const team=coordinatedKillMembers(actor);
+      const alreadyUsed=team.every(member=>member.used.killOnce);
+      if(alreadyUsed){
+        $('nightPrompt').textContent=team.length>1
+          ? 'Your group has already used its shared once-per-game kill.'
+          : 'You already used your once-per-game kill.';
         area.appendChild(actionButton('Skip tonight','skip',()=>setChoiceAndContinue(actor,'skip')));
       } else {
-        $('nightPrompt').textContent='Choose one living player to attempt to kill. If they have a reactive night ability, you will be told immediately and handle the encounter during your turn.';
+        $('nightPrompt').textContent=team.length>1
+          ? `${team.map(p=>escapeHtml(p.name)).join(', ')} share one once-per-game kill. Choose one living target together. If the target has a reactive night ability, you will be told immediately and handle the encounter during this turn.`
+          : 'Choose one living player to attempt to kill. If they have a reactive night ability, you will be told immediately and handle the encounter during your turn.';
         living.forEach(choose);
-        area.appendChild(actionButton('Do not use my shot','skip',()=>setChoiceAndContinue(actor,'skip')));
+        area.appendChild(actionButton(team.length>1?'Do not use the group kill':'Do not use my shot','skip',()=>setChoiceAndContinue(actor,'skip')));
       }
       break;
+    }
     case 'inspectOrientation':
       $('nightPrompt').textContent='Choose one living player to inspect. Their orientation will be revealed to you.';
       living.forEach(choose); break;
@@ -865,7 +992,26 @@ function updateNightHandoffGate(){
 function updateNight(){
   const night=state.night;
   if(night.index>=night.queue.length){ finishNight(); return; }
-  const actor=night.queue[night.index], role=roleOf(actor);
+  let actor=night.queue[night.index], role=roleOf(actor);
+
+  // If the representative of a coordinated killing group died earlier in the
+  // night, let another living player with the same killing ability carry it out.
+  if(actor && !actor.alive && role){
+    if(role.orientation==='evil' && evilTeamHasKillingAbility()){
+      const replacement=playersAlive().find(p=>roleOf(p)?.orientation==='evil' && isKillingRole(roleOf(p)));
+      if(replacement){
+        actor=replacement;
+        role=roleOf(actor);
+      }
+    } else if(isKillingRole(role)){
+      const replacement=playersAlive().find(p=>sameCoordinationGroup(actor,p));
+      if(replacement){
+        actor=replacement;
+        role=roleOf(actor);
+      }
+    }
+  }
+
   night.handoffReady=false;
   $('nightTitle').textContent=`Night — ${actor.name}`;
   $('nightProgress').textContent=`${night.index+1} / ${night.queue.length}`;
