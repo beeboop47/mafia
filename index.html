@@ -609,8 +609,7 @@ function assignRoles(){
     // Remove the copies already guaranteed above so they aren't duplicated
     // merely because they were also present in the normal role pool.
     const guaranteedCounts={};
-    assigned.forEach(id=>guaranteedCounts[id]=(guaranteedCounts[id]||0)+1;
-    });
+    assigned.forEach(id=>guaranteedCounts[id]=(guaranteedCounts[id]||0)+1);
     Object.entries(guaranteedCounts).forEach(([id,count])=>{
       for(let i=0;i<count;i++){
         const index=otherPool.indexOf(id);
