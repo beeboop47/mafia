@@ -1,0 +1,1240 @@
+\
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>Mafia — Pass & Play</title>
+<style>
+  :root{
+    --bg:#090a0f;--panel:#11131a;--panel2:#171a22;--ink:#f4f1ea;--muted:#a7a9b5;
+    --accent:#d84b4b;--good:#5fbf86;--neutral:#c8a653;--evil:#d84b4b;--line:#2a2f3a;
+  }
+  *{box-sizing:border-box;font-family:Inter,system-ui,Arial,sans-serif}
+  body{margin:0;min-height:100vh;background:
+    radial-gradient(circle at 15% 10%,rgba(216,75,75,.12),transparent 30%),
+    radial-gradient(circle at 85% 0%,rgba(95,191,134,.07),transparent 25%),
+    linear-gradient(180deg,#07080c,#0c0e14 45%,#0a0b10);color:var(--ink);padding:20px}
+  .wrap{max-width:1080px;margin:0 auto}
+  h1,h2,h3{margin:0}
+  h1{font-size:32px;letter-spacing:.02em}
+  h2{font-size:21px}
+  h3{font-size:16px}
+  .sub{color:var(--muted);margin-top:6px}
+  .card{background:rgba(17,19,26,.93);border:1px solid var(--line);padding:16px;border-radius:14px;margin-top:14px;box-shadow:0 18px 50px rgba(0,0,0,.18)}
+  .grid2{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+  .grid3{display:grid;grid-template-columns:repeat(3,1fr);gap:10px}
+  @media (max-width:760px){.grid2,.grid3{grid-template-columns:1fr}}
+  label{font-size:12px;color:var(--muted);display:block;margin-bottom:6px}
+  input,select,textarea,button{font:inherit}
+  input[type=text],input[type=number],select,textarea{
+    width:100%;padding:10px 11px;border-radius:9px;border:1px solid var(--line);
+    background:#0c0e14;color:inherit;outline:none
+  }
+  textarea{min-height:90px;resize:vertical}
+  button{background:var(--accent);border:none;padding:10px 13px;border-radius:9px;color:#fff;font-weight:800;cursor:pointer}
+  button.ghost{background:transparent;border:1px solid var(--line);color:var(--ink)}
+  button.danger{background:#6f1f28}
+  button.good{background:#245a3a}
+  button:disabled{opacity:.45;cursor:not-allowed}
+  .row{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+  .row > *{min-width:0}
+  .spacer{flex:1}
+  .tiny{font-size:12px}
+  .muted{color:var(--muted)}
+  .pill{display:inline-flex;align-items:center;gap:6px;padding:4px 8px;border-radius:999px;font-size:11px;font-weight:800;background:#1c202a}
+  .pill.good{color:#dff6e8;background:#173724}.pill.neutral{color:#fff2bd;background:#3a2e10}.pill.evil{color:#ffdcdc;background:#42191e}
+  .notice{padding:12px;border-radius:10px;background:#151924;border:1px solid #292f3d;margin-top:10px}
+  .hidden{display:none !important}
+  .players{display:flex;flex-direction:column;gap:8px;margin-top:10px}
+  .player-row{display:grid;grid-template-columns:1fr 190px 36px;gap:8px;align-items:center}
+  .role-card{padding:12px;border:1px solid var(--line);border-radius:11px;background:#10131a}
+  .role-head{display:flex;gap:8px;align-items:center}
+  .role-desc{margin-top:8px;line-height:1.45;color:#d8dae2}
+  .role-actions{display:flex;gap:8px;margin-top:10px}
+  .role-list{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+  @media(max-width:760px){.role-list{grid-template-columns:1fr}}
+  .role-editor-grid{display:grid;grid-template-columns:1fr 180px;gap:10px}
+  @media(max-width:760px){.role-editor-grid{grid-template-columns:1fr}}
+  .stack{display:flex;flex-direction:column;gap:10px}
+  .section-title{display:flex;align-items:center;gap:10px;margin-bottom:10px}
+  .divider{height:1px;background:var(--line);margin:14px 0}
+  .phase{font-size:12px;letter-spacing:.08em;text-transform:uppercase;color:var(--muted)}
+  .big{font-size:27px;font-weight:900}
+  .center{display:flex;align-items:center;justify-content:center;text-align:center}
+  .role-reveal{min-height:260px;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:26px}
+  .role-reveal .secret{font-size:34px;font-weight:900;margin:10px 0}
+  .role-reveal .desc{max-width:720px;line-height:1.55;color:#d9dce5}
+  .vote-grid,.action-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px;margin-top:12px}
+  .vote-btn,.action-btn{padding:14px;border-radius:10px;border:1px solid var(--line);background:#121620;color:var(--ink);cursor:pointer;font-weight:800}
+  .vote-btn:hover,.action-btn:hover{border-color:#555d6e}
+  .eliminated{opacity:.45;text-decoration:line-through}
+  .target-card{padding:10px;border:1px solid var(--line);border-radius:9px;background:#0e1118}
+  .log{max-height:280px;overflow:auto;display:flex;flex-direction:column;gap:6px}
+  .log-item{padding:8px 10px;border-radius:8px;background:#0c0f15;border:1px solid #20242e;font-size:13px}
+  .summary-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:10px}
+  .result{padding:14px;border-radius:11px;border:1px solid var(--line);background:#11141b}
+  .known-roles{margin-top:12px;padding:12px;border-radius:10px;background:#121620;border:1px solid var(--line)}
+  .known-role-list{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:8px;margin-top:8px}
+  .known-role{padding:9px 10px;border-radius:9px;background:#0e1118;border:1px solid #242a35}
+  .countdown{font-size:28px;font-weight:900;text-align:center;margin:10px 0}
+  .danger-text{color:#ff9d9d}
+  .good-text{color:#a8edc2}
+  .neutral-text{color:#ffe59a}
+
+  /* Phone / iPhone-sized layout polish */
+  html{-webkit-text-size-adjust:100%;}
+  @media(max-width:760px){
+    body{padding:12px;overflow-x:hidden;}
+    .wrap{width:100%;max-width:none;}
+    h1{font-size:26px;line-height:1.15;}
+    h2{font-size:19px;}
+    h3{font-size:15px;}
+    .sub{font-size:13px;line-height:1.4;}
+    .card{padding:12px;border-radius:12px;margin-top:10px;box-shadow:0 10px 30px rgba(0,0,0,.16);}
+    .section-title{align-items:flex-start;flex-wrap:wrap;}
+    .section-title .spacer{display:none;}
+    .row{width:100%;}
+    .row > button{flex:1 1 150px;}
+    button,input,select,textarea{font-size:16px;}
+    button{min-height:44px;padding:10px 12px;}
+    input[type=text],input[type=number],select,textarea{min-height:44px;}
+
+    /* Setup player rows: name + remove on row one, role selector underneath. */
+    .player-row{grid-template-columns:minmax(0,1fr) 44px;gap:8px;}
+    .player-row select{grid-column:1 / -1;}
+    .player-row button{width:44px;min-width:44px;padding:8px;}
+
+    .role-list{grid-template-columns:1fr;}
+    .role-card{padding:10px;}
+    .role-head{flex-wrap:wrap;}
+    .role-actions{flex-wrap:wrap;}
+    .role-actions input{min-width:0;flex:1 1 120px;}
+
+    .role-reveal{min-height:220px;padding:18px 8px;text-align:center;}
+    .role-reveal .secret{font-size:28px;line-height:1.15;overflow-wrap:anywhere;}
+    .role-reveal .desc{font-size:14px;line-height:1.5;}
+
+    .big{font-size:23px;}
+    .phase{font-size:11px;}
+    .notice{padding:10px;font-size:13px;line-height:1.45;}
+    .vote-grid,.action-grid{grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;}
+    .vote-btn,.action-btn{min-height:48px;padding:11px 8px;font-size:14px;}
+    .target-card{padding:10px;}
+    .known-role-list{grid-template-columns:1fr;}
+    .known-role{padding:10px;}
+    .summary-grid{grid-template-columns:1fr;}
+    .result{padding:12px;}
+    .log{max-height:220px;}
+
+    /* Header controls stay usable without creating a horizontal scroll. */
+    #gameScreen > .card:first-child .row{align-items:stretch;}
+    #gameScreen > .card:first-child .row > div:first-child{flex:1 1 100%;}
+    #endGameEarlyBtn{flex:1 1 100%;order:3;}
+    #roundPill{align-self:center;}
+
+    /* Give the main action a comfortable thumb target. */
+    #startBtn,#nextNightBtn,#resolveNightBtn,#revealRoleBtn,#handoffNextBtn,#backSetupBtn{width:100%;}
+  }
+
+  @media(max-width:430px){
+    body{padding:10px;}
+    .card{padding:10px;}
+    .vote-grid,.action-grid{grid-template-columns:1fr;}
+    .section-title{gap:8px;}
+    .section-title button{width:100%;}
+    .role-editor-grid{gap:8px;}
+    .known-roles{padding:10px;}
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <h1>Mafia — Pass & Play</h1>
+    <div class="sub">Private role handoff → day voting → night abilities → repeat until a win condition is met.</div>
+  </header>
+
+  <section id="setupScreen" class="card">
+    <div class="section-title">
+      <div>
+        <div class="phase">Game setup</div>
+        <h2>Players & round rules</h2>
+      </div>
+    </div>
+
+    <div class="grid2">
+      <div>
+        <label>Role assignment mode</label>
+        <select id="roundMode">
+          <option value="random">Random</option>
+          <option value="manual">Manual</option>
+        </select>
+      </div>
+      <div>
+        <label>Night order</label>
+        <select id="nightOrder">
+          <option value="role">By role list order</option>
+          <option value="random">Random each night</option>
+        </select>
+      </div>
+    </div>
+
+    <div class="divider"></div>
+
+    <div class="section-title">
+      <h3>Players</h3><span class="pill">Pass the device</span>
+      <div class="spacer"></div>
+      <button id="addPlayerBtn" type="button">Add player</button>
+    </div>
+    <div id="players" class="players"></div>
+
+    <div class="divider"></div>
+
+    <div class="section-title"><h3>Random-mode role pool</h3></div>
+    <div class="muted tiny">Select which roles can appear randomly and how many copies each role may have. Manual mode ignores these counts.</div>
+    <div id="randomRolePool" class="role-list" style="margin-top:10px"></div>
+
+    <div class="divider"></div>
+
+    <div class="section-title">
+      <h3>Role library</h3><div class="spacer"></div>
+      <button id="newRoleBtn" class="ghost" type="button">Create role</button>
+    </div>
+    <div id="roleLibrary" class="role-list"></div>
+
+    <div id="roleEditor" class="card hidden" style="margin:12px 0 0 0">
+      <div class="section-title"><h3 id="editorTitle">New role</h3></div>
+      <div class="role-editor-grid">
+        <div>
+          <label>Title</label>
+          <input id="roleTitle" type="text" placeholder="e.g. Bodyguard">
+        </div>
+        <div>
+          <label>Orientation</label>
+          <select id="roleOrientation">
+            <option value="good">Good</option><option value="neutral">Neutral</option><option value="evil">Evil</option>
+          </select>
+        </div>
+      </div>
+      <div style="margin-top:10px">
+        <label>Description shown to the player who gets the role</label>
+        <textarea id="roleDescription" placeholder="Write the complete player-facing role instructions."></textarea>
+      </div>
+      <div style="margin-top:10px">
+        <label>Night ability</label>
+        <select id="roleNightAction">
+          <option value="none">None</option>
+          <option value="mafiaKill">Mafia kill / team kill</option>
+          <option value="killOnce">One-time kill</option>
+          <option value="inspectOrientation">Inspect orientation</option>
+          <option value="seer">Reveal a random exact role</option>
+          <option value="scapegoat">Scapegoat redirect</option>
+          <option value="traitor">Traitor conversion</option>
+          <option value="escape">Escape challenge</option>
+          <option value="monkey">Monkey reaction</option>
+          <option value="rps">Rock, Paper, Scissors</option>
+        </select>
+      </div>
+      <div style="margin-top:10px">
+        <label>Who else sees this role?</label>
+        <select id="roleVisibility">
+          <option value="nobody">Nobody</option>
+          <option value="everyone">Everyone</option>
+          <option value="sameOrientation">Players with the same orientation</option>
+          <option value="good">Good players</option>
+          <option value="neutral">Neutral players</option>
+          <option value="evil">Evil players</option>
+        </select>
+      </div>
+      <div class="row" style="margin-top:10px;justify-content:flex-end">
+        <button id="cancelRoleBtn" class="ghost" type="button">Cancel</button>
+        <button id="saveRoleBtn" type="button">Save role</button>
+      </div>
+    </div>
+
+    <div class="divider"></div>
+
+    <div class="notice">
+      <strong>Win logic:</strong> Evil wins when the number of living evil players is at least the number of living non-evil players. Good wins when no evil players remain. Neutral roles use their own description as their win condition and are checked when their condition can be evaluated.
+    </div>
+
+    <div class="row" style="justify-content:flex-end;margin-top:14px">
+      <button id="startBtn" type="button">Start game</button>
+    </div>
+  </section>
+
+  <section id="gameScreen" class="hidden">
+    <div class="card">
+      <div class="row">
+        <div><div class="phase" id="phaseLabel">Role handoff</div><div class="big" id="phaseTitle">Roles</div></div>
+        <div class="spacer"></div>
+        <button id="endGameEarlyBtn" class="ghost" type="button">End game & reveal roles</button>
+        <div class="pill" id="roundPill">Round 1</div>
+      </div>
+    </div>
+
+    <div id="handoffCard" class="card">
+      <div class="role-reveal">
+        <div class="muted">Pass the device to</div>
+        <div class="big" id="handoffPlayer">Player 1</div>
+        <div id="handoffSecret" class="secret">Ready?</div>
+        <div id="handoffDescription" class="desc muted">Tap reveal to privately see your role.</div>
+        <div id="handoffKnownRoles"></div>
+        <div class="row" style="margin-top:18px">
+          <button id="revealRoleBtn" type="button">Reveal my role</button>
+          <button id="handoffNextBtn" class="ghost" type="button" disabled>Hide & pass</button>
+        </div>
+      </div>
+    </div>
+
+    <div id="dayCard" class="card hidden">
+      <div class="section-title">
+        <div><div class="phase">Day</div><h2>Discuss & vote</h2></div>
+        <div class="spacer"></div><div class="pill" id="dayLiving"></div>
+      </div>
+      <div class="notice">Everyone who is alive votes for one living player. You may not vote for yourself. The player with the most votes is eliminated. A tied vote is resolved by a second ballot between the tied players; if it is still tied, nobody is eliminated.</div>
+      <div id="dayVoteArea" class="vote-grid"></div>
+      <div id="dayResult" class="summary-grid" style="margin-top:12px"></div>
+      <div class="row" style="justify-content:flex-end;margin-top:12px">
+        <button id="skipDayBtn" class="ghost" type="button">Skip voting & begin night</button>
+        <button id="nextNightBtn" type="button" disabled>Begin night</button>
+      </div>
+    </div>
+
+    <div id="nightCard" class="card hidden">
+      <div class="section-title">
+        <div><div class="phase">Night</div><h2 id="nightTitle">Night actions</h2></div>
+        <div class="spacer"></div><div class="pill" id="nightProgress"></div>
+      </div>
+      <div id="nightKnownRoles"></div>
+      <div id="nightPrompt" class="notice"></div>
+      <div id="nightActionArea" class="action-grid"></div>
+      <div id="nightResult" class="summary-grid" style="margin-top:12px"></div>
+      <div class="row" style="justify-content:flex-end;margin-top:12px">
+        <button id="resolveNightBtn" type="button" disabled>Resolve night</button>
+      </div>
+    </div>
+
+    <div id="winCard" class="card hidden">
+      <div class="section-title"><div><div class="phase">Game over</div><h2 id="winnerTitle">Winner</h2></div></div>
+      <div id="winnerText" class="notice"></div>
+      <div id="finalRoles" class="summary-grid" style="margin-top:12px"></div>
+      <div class="row" style="justify-content:flex-end;margin-top:14px">
+        <button id="backSetupBtn" type="button">Back to setup</button>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="section-title"><h3>Game log</h3></div>
+      <div id="gameLog" class="log"></div>
+    </div>
+  </section>
+</div>
+
+<script>
+const DEFAULT_ROLES = [
+
+  {
+    id:'citizen',title:'Citizen',orientation:'good',
+    description:'You are a Citizen. Figure out which of you are the Mafia and help the good side eliminate every evil player.',
+    visibility:'nobody', nightAction:'none'
+  },
+  {
+    id:'scapegoat',title:'Scapegoat',orientation:'good',
+    description:'If the Mafia successfully target you, you may transfer that attempted kill to a living player on either side of you once per game.',
+    visibility:'nobody', nightAction:'scapegoat'
+  },
+  {
+    id:'peacemaker',title:'Peacemaker',orientation:'good',
+    description:'Once per game, you may attempt to kill a player during the night. Try to use your shot against the Mafia.',
+    visibility:'nobody', nightAction:'killOnce'
+  },
+  {
+    id:'detective',title:'Detective',orientation:'good',
+    description:'Each night, choose one living player and learn whether their orientation is good, neutral, or evil. The answer is truthful.',
+    visibility:'nobody', nightAction:'inspectOrientation'
+  },
+  {
+    id:'escapist',title:'Escapist',orientation:'good',
+    description:'If the Mafia target you, you get a chance to escape by literally running away from the Mafia. You have 15 seconds to survive the kill.',
+    visibility:'nobody', nightAction:'escape'
+  },
+  {
+    id:'monkey',title:'Monkey',orientation:'good',
+    description:'If you are targeted by a night kill, you may loudly mimic a monkey directly in front of your perpetrator before the result is resolved.',
+    visibility:'nobody', nightAction:'monkey'
+  },
+  {
+    id:'joker',title:'Joker',orientation:'good',
+    description:'When you are targeted by a night kill, you and the perpetrator play a best-of-3 Rock, Paper, Scissors. The game decides who survives the encounter.',
+    visibility:'nobody', nightAction:'rps'
+  },
+  {
+    id:'seer',title:'Seer',orientation:'good',
+    description:'Each night, see the exact role of one random living player other than yourself.',
+    visibility:'nobody', nightAction:'seer'
+  },
+  {
+    id:'traitor',title:'Traitor',orientation:'good',
+    description:'If the Mafia target you, you join the Mafia instead of dying. Your orientation becomes evil from that point onward.',
+    visibility:'evil', nightAction:'traitor'
+  },
+  {
+    id:'jester',title:'Jester',orientation:'neutral',
+    description:'Try to get voted out by the Citizens during the day. You win immediately when the town votes you out.',
+    visibility:'nobody', nightAction:'none'
+  },
+  {
+    id:'mafia',title:'Mafia',orientation:'evil',
+    description:'Work alone or with teammates to kill all the Citizens at night.',
+    visibility:'evil', nightAction:'mafiaKill'
+  }
+];
+
+// ---- State ---------------------------------------------------------------
+const state = {
+  roles: structuredClone(DEFAULT_ROLES),
+  players: Array.from({length:4}, (_, id) => createPlayer(id, `Player ${id+1}`)),
+  mode: 'random',
+  phase: 'setup',
+  handoffIndex: 0,
+  handoffRevealed: false,
+  round: 1,
+  day: { secondBallot:false, votes:{}, tiedCandidates:[] },
+  night: { queue:[], index:0, choices:{}, resolving:false, seerReveal:null, handoffReady:false },
+  logs: [],
+  editingRoleId: null,
+};
+
+const NIGHT_ACTIONS = Object.freeze({
+  none: { label:'None' },
+  mafiaKill: { label:'Mafia kill / team kill' },
+  killOnce: { label:'One-time kill' },
+  inspectOrientation: { label:'Inspect orientation' },
+  seer: { label:'Reveal a random exact role' },
+  scapegoat: { label:'Scapegoat redirect' },
+  traitor: { label:'Traitor conversion' },
+  escape: { label:'Escape challenge' },
+  monkey: { label:'Monkey reaction' },
+  rps: { label:'Rock, Paper, Scissors' },
+});
+
+const $ = id => document.getElementById(id);
+const isChosen = value => value !== undefined && value !== null;
+const escapeHtml = value => String(value ?? '')
+  .replaceAll('&','&amp;').replaceAll('<','&lt;').replaceAll('>','&gt;')
+  .replaceAll('"','&quot;').replaceAll("'",'&#39;');
+
+function createPlayer(id, name){
+  return {id,name,roleId:null,alive:true,used:{},escaped:false,eliminatedByVote:false};
+}
+function playersAlive(){ return state.players.filter(p => p.alive); }
+function roleOf(player){ return player ? state.roles.find(r => r.id === player.roleId) : null; }
+function playerOf(id){ return state.players.find(p => p.id === Number(id)); }
+function labelOrientation(value){ return value ? value[0].toUpperCase() + value.slice(1) : ''; }
+function shuffle(list){
+  for(let i=list.length-1;i>0;i--){
+    const j=Math.floor(Math.random()*(i+1));
+    [list[i],list[j]]=[list[j],list[i]];
+  }
+  return list;
+}
+function randomChoice(list){ return list.length ? list[Math.floor(Math.random()*list.length)] : null; }
+function rolePill(role){
+  return `<span class="pill ${role?.orientation||'neutral'}">${escapeHtml(labelOrientation(role?.orientation||''))}</span>`;
+}
+function addLog(text){
+  state.logs.unshift({text,time:new Date().toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'})});
+}
+
+function renderGameLog(){
+  $('gameLog').innerHTML=state.logs.map(x => `<div class="log-item"><span class="muted">${x.time}</span> ${escapeHtml(x.text)}</div>`).join('');
+}
+function setPhase(label,title){
+  $('phaseLabel').textContent=label;
+  $('phaseTitle').textContent=title;
+  $('roundPill').textContent=`Round ${state.round}`;
+}
+function hide(...ids){ ids.forEach(id => $(id)?.classList.add('hidden')); }
+function show(...ids){ ids.forEach(id => $(id)?.classList.remove('hidden')); }
+
+// ---- Setup / roles --------------------------------------------------------
+function visibilityText(value){
+  return ({
+    nobody:'Nobody', everyone:'Everyone', sameOrientation:'Same orientation',
+    good:'Good players', neutral:'Neutral players', evil:'Evil players'
+  })[value] || value;
+}
+function visibleTo(viewer,target){
+  const role=roleOf(target);
+  if(!role || !viewer || viewer.id===target.id) return false;
+
+  // Evil players know every other Evil player by default.
+  const viewerRole=roleOf(viewer);
+  if(viewerRole?.orientation==='evil' && role.orientation==='evil') return true;
+
+  if(role.visibility==='everyone') return true;
+  if(role.visibility==='nobody') return false;
+  if(!viewerRole) return false;
+  return role.visibility==='sameOrientation'
+    ? viewerRole.orientation===role.orientation
+    : viewerRole.orientation===role.visibility;
+}
+function renderKnownRoles(viewer, containerId){
+  const el=$(containerId); if(!el) return;
+  const known=state.players.filter(target => visibleTo(viewer,target));
+  if(!known.length){ el.innerHTML=''; return; }
+  el.innerHTML=`
+    <div class="known-roles">
+      <strong>Roles you know</strong>
+      <div class="muted tiny" style="margin-top:4px">These roles are visible to you because of their visibility setting.</div>
+      <div class="known-role-list">${known.map(target => {
+        const role=roleOf(target);
+        return `<div class="known-role"><strong>${escapeHtml(target.name)}</strong><div class="tiny muted" style="margin-top:4px">${escapeHtml(role?.title||'Unknown')} ${rolePill(role)}</div></div>`;
+      }).join('')}</div>
+    </div>`;
+}
+function renderPlayers(){
+  const el=$('players'); el.innerHTML='';
+  state.players.forEach((player,index)=>{
+    const row=document.createElement('div'); row.className='player-row';
+    const name=document.createElement('input'); name.type='text'; name.value=player.name; name.setAttribute('aria-label','Player name');
+    name.addEventListener('input',e => player.name=e.target.value);
+    row.appendChild(name);
+
+    const select=document.createElement('select');
+    select.style.display=state.mode==='manual'?'block':'none';
+    state.roles.forEach(role => { const option=new Option(role.title,role.id); select.appendChild(option); });
+    select.value=player.roleId || state.roles[0]?.id || '';
+    select.addEventListener('change',e => player.roleId=e.target.value);
+    row.appendChild(select);
+
+    const remove=document.createElement('button');
+    remove.className='ghost'; remove.textContent='×'; remove.title='Remove';
+    remove.addEventListener('click',()=>{
+      if(state.players.length<=2){ alert('Need at least 2 players.'); return; }
+      state.players.splice(index,1);
+      state.players.forEach((p,i)=>p.id=i);
+      renderSetup();
+    });
+    row.appendChild(remove);
+    el.appendChild(row);
+  });
+}
+function renderRandomRolePool(){
+  const el=$('randomRolePool'); el.innerHTML='';
+  state.roles.filter(role=>role.id!=='citizen').forEach(role=>{
+    const count=role.randomCount ?? 0;
+    const box=document.createElement('div'); box.className='role-card';
+    box.innerHTML=`
+      <div class="role-head"><input type="checkbox" ${count>0?'checked':''}>
+        <strong>${escapeHtml(role.title)}</strong>${rolePill(role)}</div>
+      <div class="role-actions"><input type="number" min="0" max="20" step="1" value="${count}" aria-label="${escapeHtml(role.title)} copies in random mode"></div>`;
+    const cb=box.querySelector('input[type=checkbox]');
+    const num=box.querySelector('input[type=number]');
+    cb.addEventListener('change',()=>{ role.randomCount=cb.checked ? Math.max(1,Number(num.value)||1) : 0; });
+    num.addEventListener('input',()=>{ role.randomCount=Math.max(0,Math.floor(Number(num.value)||0)); cb.checked=role.randomCount>0; });
+    el.appendChild(box);
+  });
+}
+function renderRoleLibrary(){
+  const el=$('roleLibrary'); el.innerHTML='';
+  state.roles.forEach(role=>{
+    const card=document.createElement('div'); card.className='role-card';
+    card.innerHTML=`
+      <div class="role-head"><strong>${escapeHtml(role.title)}</strong>${rolePill(role)}<span class="spacer"></span>
+        <button class="ghost" data-edit type="button">Edit</button>
+        <button class="danger" data-delete type="button">Remove</button></div>
+      <div class="role-desc">${escapeHtml(role.description)}</div>
+      <div class="muted tiny" style="margin-top:8px">Night ability: ${escapeHtml(NIGHT_ACTIONS[role.nightAction]?.label || role.nightAction || 'None')} · Seen by: ${escapeHtml(visibilityText(role.visibility))}</div>`;
+    card.querySelector('[data-edit]').addEventListener('click',()=>openRoleEditor(role.id));
+    card.querySelector('[data-delete]').addEventListener('click',()=>removeRole(role.id));
+    el.appendChild(card);
+  });
+}
+function renderSetup(){
+  $('roundMode').value=state.mode;
+  renderPlayers(); renderRandomRolePool(); renderRoleLibrary();
+}
+function openRoleEditor(id=null){
+  state.editingRoleId=id;
+  const role=id ? state.roles.find(r=>r.id===id) : null;
+  $('editorTitle').textContent=role?`Edit: ${role.title}`:'New role';
+  $('roleTitle').value=role?.title||'';
+  $('roleOrientation').value=role?.orientation||'good';
+  $('roleDescription').value=role?.description||'';
+  $('roleNightAction').value=role?.nightAction||'none';
+  $('roleVisibility').value=role?.visibility||'nobody';
+  $('roleEditor').classList.remove('hidden'); $('roleTitle').focus();
+}
+function closeRoleEditor(){ state.editingRoleId=null; $('roleEditor').classList.add('hidden'); }
+function removeRole(id){
+  const role=state.roles.find(r=>r.id===id); if(!role) return;
+  const affected=state.players.filter(p=>p.roleId===id).map(p=>p.name||`Player ${p.id+1}`);
+  let message=`Remove the role "${role.title}"?`;
+  if(affected.length) message+=`\n\nIt is currently assigned to: ${affected.join(', ')}.\nThose players will have their role assignment cleared.`;
+  if((role.randomCount||0)>0) message+='\n\nIt is enabled in Random mode and will be removed from the random role pool.';
+  if(!confirm(message)) return;
+  state.roles=state.roles.filter(r=>r.id!==id);
+  state.players.forEach(p=>{ if(p.roleId===id) p.roleId=null; });
+  if(!state.roles.length) state.roles=structuredClone(DEFAULT_ROLES);
+  renderSetup();
+}
+function assignRoles(){
+  if(state.mode==='manual'){
+    state.players.forEach(p=>{ if(!p.roleId) p.roleId=state.roles[0]?.id||null; });
+  } else {
+    // Random mode: selected role counts are used as minimums. Every selected
+    // evil role is guaranteed first, not just the default Mafia role. This
+    // also covers custom evil roles.
+    const playerCount=state.players.length;
+    const assigned=[];
+
+    state.roles.filter(role=>role.id!=='citizen' && role.orientation==='evil').forEach(role=>{
+      const requested=Math.max(0,Math.floor(role.randomCount||0));
+      const guaranteed=Math.min(requested,playerCount-assigned.length);
+      for(let i=0;i<guaranteed;i++) assigned.push(role.id);
+    });
+
+    // Fill remaining slots from the other selected roles, including any
+    // remaining copies of evil roles beyond their guaranteed minimum.
+    let otherPool=[];
+    state.roles.forEach(role=>{
+      if(role.id==='citizen') return;
+      const count=Math.max(0,Math.floor(role.randomCount||0));
+      for(let i=0;i<count;i++) otherPool.push(role.id);
+    });
+
+    // Remove the copies already guaranteed above so they aren't duplicated
+    // merely because they were also present in the normal role pool.
+    const guaranteedCounts={};
+    assigned.forEach(id=>guaranteedCounts[id]=(guaranteedCounts[id]||0)+1;
+    });
+    Object.entries(guaranteedCounts).forEach(([id,count])=>{
+      for(let i=0;i<count;i++){
+        const index=otherPool.indexOf(id);
+        if(index>=0) otherPool.splice(index,1);
+      }
+    });
+
+    otherPool=shuffle(otherPool);
+    while(assigned.length<playerCount && otherPool.length){
+      assigned.push(otherPool.shift());
+    }
+    while(assigned.length<playerCount){
+      const citizenExists=state.roles.some(r=>r.id==='citizen');
+      if(citizenExists) assigned.push('citizen');
+      else if(state.roles.length) assigned.push(state.roles[0].id);
+      else assigned.push(null);
+    }
+
+    const shuffledAssigned=shuffle(assigned);
+    state.players.forEach((p,i)=>{ p.roleId=shuffledAssigned[i] || null; });
+  }
+  state.players.forEach(p=>{p.alive=true;p.used={};p.escaped=false;p.eliminatedByVote=false;});
+}
+
+// ---- Handoff / day --------------------------------------------------------
+function beginHandoff(){
+  state.phase='handoff'; state.handoffIndex=0; state.handoffRevealed=false;
+  hide('setupScreen','dayCard','nightCard','winCard'); show('gameScreen','handoffCard');
+  updateHandoff();
+}
+function updateHandoff(){
+  const player=state.players[state.handoffIndex], role=roleOf(player);
+  setPhase('Role handoff','Private roles');
+  $('handoffPlayer').textContent=player?.name||`Player ${state.handoffIndex+1}`;
+  $('handoffSecret').textContent=state.handoffRevealed ? role?.title||'Unknown' : 'Ready?';
+  $('handoffDescription').innerHTML=state.handoffRevealed
+    ? `${rolePill(role)}<div style="margin-top:10px">${escapeHtml(role?.description||'')}</div><div class="tiny muted" style="margin-top:10px">Night ability: ${escapeHtml(NIGHT_ACTIONS[role?.nightAction]?.label||'None')}</div>`
+    : 'Tap reveal to privately see your role.';
+  if(state.handoffRevealed) renderKnownRoles(player,'handoffKnownRoles'); else $('handoffKnownRoles').innerHTML='';
+  $('revealRoleBtn').disabled=state.handoffRevealed;
+  $('handoffNextBtn').disabled=!state.handoffRevealed;
+  $('handoffNextBtn').textContent=state.handoffIndex===state.players.length-1?'Start day':'Hide & pass';
+}
+function startDay(){
+  state.phase='day'; state.day={secondBallot:false,votes:{},tiedCandidates:[]};
+  hide('handoffCard','nightCard'); show('dayCard');
+  setPhase('Day','Vote someone out'); renderDay();
+}
+function validDayTarget(voter,targetId){
+  const target=playerOf(targetId);
+  const allowed=state.day.secondBallot ? state.day.tiedCandidates : playersAlive().map(p=>p.id);
+  return !!target && target.alive && target.id!==voter.id && allowed.includes(target.id);
+}
+function renderDay(){
+  $('dayLiving').textContent=`${playersAlive().length} living`;
+  const area=$('dayVoteArea'); area.innerHTML='';
+  const living=playersAlive();
+  const candidates=state.day.secondBallot ? state.day.tiedCandidates : living.map(p=>p.id);
+  living.forEach(voter=>{
+    const box=document.createElement('div'); box.className='target-card';
+    box.innerHTML=`<strong>${escapeHtml(voter.name)}</strong><div class="muted tiny" style="margin-top:5px">Vote:</div>`;
+    const select=document.createElement('select'); select.style.marginTop='6px';
+    select.appendChild(new Option('Choose player',''));
+    candidates.filter(id=>id!==voter.id).map(playerOf).filter(Boolean).forEach(target=>select.appendChild(new Option(target.name,target.id)));
+    select.value=isChosen(state.day.votes[voter.id]) ? state.day.votes[voter.id] : '';
+    select.addEventListener('change',e=>{
+      const targetId=Number(e.target.value);
+      state.day.votes[voter.id]=Number.isInteger(targetId)&&validDayTarget(voter,targetId)?targetId:null;
+      updateDayResolveButton();
+    });
+    box.appendChild(select); area.appendChild(box);
+  });
+  $('dayResult').innerHTML=''; updateDayResolveButton();
+}
+function updateDayResolveButton(){
+  const living=playersAlive();
+  const ready=living.length>1 && living.every(voter=>isChosen(state.day.votes[voter.id]) && validDayTarget(voter,state.day.votes[voter.id]));
+  $('nextNightBtn').disabled=!ready;
+  $('nextNightBtn').textContent=state.day.secondBallot?'Resolve tie':'Resolve vote';
+  $('skipDayBtn').disabled=false;
+}
+function skipDay(){
+  if(state.phase!=='day') return;
+  state.day={secondBallot:false,votes:{},tiedCandidates:[]};
+  $('dayResult').innerHTML='<div class="result">Voting was skipped. Nobody was eliminated today.</div>';
+  addLog('Day voting was skipped; nobody was eliminated.');
+  const result=checkWin();
+  if(result.done){ endGame(result); return; }
+  $('nextNightBtn').disabled=false;
+  $('nextNightBtn').textContent='Begin night';
+  $('skipDayBtn').disabled=true;
+}
+
+function resolveDay(){
+  const living=playersAlive();
+  const counts=new Map();
+  living.forEach(voter=>{
+    const target=state.day.votes[voter.id]; if(!validDayTarget(voter,target)) return;
+    counts.set(target,(counts.get(target)||0)+1);
+  });
+  const top=Math.max(-1,...counts.values());
+  const winners=[...counts.entries()].filter(([,count])=>count===top).map(([id])=>id);
+  if(!winners.length){ $('dayResult').innerHTML='<div class="result">No valid vote was submitted.</div>'; return; }
+
+  if(winners.length>1 && !state.day.secondBallot){
+    state.day.secondBallot=true; state.day.tiedCandidates=winners; state.day.votes={};
+    $('dayResult').innerHTML=`<div class="result">Tie between ${winners.map(id=>escapeHtml(playerOf(id)?.name||id)).join(', ')}. A second ballot will happen.</div>`;
+    renderDay();
+    return;
+  }
+  if(winners.length>1){
+    state.day.secondBallot=false;
+    $('dayResult').innerHTML='<div class="result">The second vote was tied. Nobody is eliminated today.</div>';
+    $('nextNightBtn').disabled=false; $('nextNightBtn').textContent='Begin night';
+    $('skipDayBtn').disabled=true;
+    addLog('Day ended in a tie; nobody was eliminated.'); return;
+  }
+
+  const out=playerOf(winners[0]);
+  out.alive=false; out.eliminatedByVote=true;
+  const role=roleOf(out);
+  $('dayResult').innerHTML=`<div class="result"><strong>${escapeHtml(out.name)}</strong> was voted out. ${escapeHtml(role?.title||'Unknown')} (${escapeHtml(labelOrientation(role?.orientation))}).</div>`;
+  addLog(`${out.name} was voted out during the day (${role?.title||'Unknown'}).`);
+  state.day.secondBallot=false;
+  const result=checkWin(); if(result.done){ endGame(result); return; }
+  $('nextNightBtn').disabled=false; $('nextNightBtn').textContent='Begin night';
+  $('skipDayBtn').disabled=true;
+}
+
+// ---- Night ---------------------------------------------------------------
+function isKillingRole(role){
+  return role?.nightAction==='mafiaKill' || role?.nightAction==='killOnce';
+}
+
+function evilTeamHasKillingAbility(){
+  return playersAlive().some(player=>roleOf(player)?.orientation==='evil' && isKillingRole(roleOf(player)));
+}
+
+function sameCoordinationGroup(a,b){
+  const roleA=roleOf(a), roleB=roleOf(b);
+  if(!roleA || !roleB) return false;
+
+  // All living Evil players form one team whenever at least one Evil player
+  // has a killing ability. Their role names do not matter.
+  if(roleA.orientation==='evil' && roleB.orientation==='evil'){
+    return evilTeamHasKillingAbility();
+  }
+
+  // Good/neutral killing roles coordinate only with the same role name.
+  if(isKillingRole(roleA) && isKillingRole(roleB)){
+    return roleA.title===roleB.title;
+  }
+
+  return false;
+}
+
+function coordinatedKillMembers(actor){
+  const role=roleOf(actor);
+  if(!role) return [actor];
+
+  if(role.orientation==='evil' && evilTeamHasKillingAbility()){
+    return playersAlive().filter(player=>roleOf(player)?.orientation==='evil');
+  }
+
+  if(isKillingRole(role)){
+    return playersAlive().filter(player=>sameCoordinationGroup(actor,player));
+  }
+
+  return [actor];
+}
+
+function buildNightQueue(){
+  // One shared turn per coordination group:
+  // - all Evil players collapse into one team turn if any Evil player can kill
+  // - Good/neutral killing roles coordinate only with the same role name
+  // - otherwise roles retain their normal individual turns
+  const queue=[];
+  const processed=[];
+  const evilKillingTeam = evilTeamHasKillingAbility();
+
+  playersAlive().forEach(player=>{
+    const role=roleOf(player);
+
+    if(role?.orientation==='evil' && evilKillingTeam){
+      if(processed.some(representative=>roleOf(representative)?.orientation==='evil')) return;
+
+      // Use a living Evil player with the actual killing ability as the
+      // representative so the shared team turn shows the kill action.
+      const killerRepresentative=playersAlive().find(p=>roleOf(p)?.orientation==='evil' && isKillingRole(roleOf(p)));
+      queue.push(killerRepresentative || player);
+      processed.push(player);
+      return;
+    }
+
+    if(isKillingRole(role)){
+      if(processed.some(representative=>sameCoordinationGroup(representative,player))) return;
+      processed.push(player);
+    }
+
+    queue.push(player);
+  });
+
+  return $('nightOrder').value==='random' ? shuffle(queue) : queue;
+}
+function startNight(){
+  state.phase='night';
+  state.night={queue:buildNightQueue(),index:0,busy:false,seerReveal:null,handoffReady:false};
+  hide('dayCard','handoffCard'); show('nightCard');
+  setPhase('Night','Night actions');
+  if(!state.night.queue.length){ finishNight(); return; }
+  updateNight();
+}
+function showNightResult(text){ $('nightResult').innerHTML=`<div class="result">${text}</div>`; }
+function setNightBusy(busy){ state.night.busy=busy; }
+function advanceNightActor(){
+  if(state.phase!=='night') return;
+  state.night.index++;
+  state.night.handoffReady=false;
+  if(state.night.index>=state.night.queue.length){ finishNight(); return; }
+  updateNight();
+}
+function completeNightTurn(){
+  setNightBusy(false);
+  const result=checkWin();
+  if(result.done){ endGame(result); return; }
+  state.night.handoffReady=true;
+  updateNightHandoffGate();
+}
+function renderNightKnownRoles(actor){
+  $('nightKnownRoles').innerHTML='';
+  renderKnownRoles(actor,'nightKnownRoles');
+
+  const role=roleOf(actor);
+  const team=coordinatedKillMembers(actor);
+  if(!isCoordinatedKillRole(role) || team.length<2) return;
+
+  const teammateNames=team.map(player=>`
+    <div class="known-role">
+      <strong>${escapeHtml(player.name)}</strong>
+      <div class="tiny muted" style="margin-top:4px">
+        ${escapeHtml(roleOf(player)?.title||'Unknown')} · Evil teammate
+      </div>
+    </div>
+  `).join('');
+
+  $('nightKnownRoles').innerHTML += `
+    <div class="known-roles">
+      <strong>Coordinated killing team</strong>
+      <div class="muted tiny" style="margin-top:4px">
+        These living players are in your coordinated killing group and share one kill.
+      </div>
+      <div class="known-role-list">${teammateNames}</div>
+    </div>`;
+}
+function setChoiceAndContinue(actor, choice){
+  if(state.night.busy) return;
+  setNightBusy(true);
+  if(choice==='skip'){
+    showNightResult('No active choice tonight.');
+    completeNightTurn();
+    return;
+  }
+  const role=roleOf(actor);
+  if(!role){ completeNightTurn(); return; }
+  if(role.nightAction==='inspectOrientation'){
+    const target=playerOf(choice);
+    if(target) showNightResult(`<strong>${escapeHtml(target.name)}</strong> is <strong>${escapeHtml(labelOrientation(roleOf(target)?.orientation||'unknown'))}</strong>.`);
+    completeNightTurn();
+    return;
+  }
+  if(role.nightAction==='seer'){
+    const target=playerOf(choice);
+    if(!target || !target.alive){
+      showNightResult('That target is no longer available.');
+      completeNightTurn();
+      return;
+    }
+    state.night.seerReveal={targetId:target.id};
+    showNightResult(`<strong>${escapeHtml(target.name)}</strong> is a <strong>${escapeHtml(roleOf(target)?.title||'Unknown')}</strong>.`);
+    $('nightPrompt').textContent='The exact role has been revealed. Acknowledge it to finish your turn and pass the device.';
+    $('nightActionArea').innerHTML='';
+    $('nightActionArea').appendChild(actionButton('Acknowledge & continue','seerAcknowledge',()=>{
+      if(!state.night.busy) return;
+      state.night.seerReveal=null;
+      completeNightTurn();
+    }));
+    return;
+  }
+  if(isKillingRole(role)){
+    const target=playerOf(choice);
+    if(!target || !target.alive){
+      showNightResult('That target is no longer available.');
+      completeNightTurn();
+      return;
+    }
+
+    // Identical killing roles coordinate on one shared target.
+    const team=coordinatedKillMembers(actor);
+    if(role.nightAction==='killOnce'){
+      team.forEach(member=>member.used.killOnce=true);
+    }
+
+    resolveImmediateAttack(actor,target,[]);
+    return;
+  }
+  completeNightTurn();
+}
+function actionButton(label,value,onClick){
+  const button=document.createElement('button');
+  button.type='button';
+  button.className='action-btn';
+  button.textContent=label;
+  button.addEventListener('click',onClick);
+  return button;
+}
+function renderStandardAction(actor,role,living){
+  const area=$('nightActionArea');
+  const choose=(target)=>area.appendChild(actionButton(target.name,target.id,()=>setChoiceAndContinue(actor,target.id)));
+  switch(role.nightAction){
+    case 'mafiaKill': {
+      const team=coordinatedKillMembers(actor);
+      $('nightPrompt').innerHTML=team.length>1
+        ? `<strong>Evil team:</strong> ${team.map(p=>escapeHtml(p.name)).join(', ')} all coordinate on <strong>one shared kill</strong>. Choose the single target together.`
+        : `<strong>${escapeHtml(role.title)}</strong> — choose a living target. If they have a reactive night ability, you will be told immediately and handle the encounter during your turn.`;
+      living.forEach(choose);
+      break;
+    }
+    case 'killOnce': {
+      const team=coordinatedKillMembers(actor);
+      const alreadyUsed=team.every(member=>member.used.killOnce);
+      if(alreadyUsed){
+        $('nightPrompt').textContent=team.length>1
+          ? 'Your group has already used its shared once-per-game kill.'
+          : 'You already used your once-per-game kill.';
+        area.appendChild(actionButton('Skip tonight','skip',()=>setChoiceAndContinue(actor,'skip')));
+      } else {
+        $('nightPrompt').textContent=team.length>1
+          ? `${team.map(p=>escapeHtml(p.name)).join(', ')} share one once-per-game kill. Choose one living target together. If the target has a reactive night ability, you will be told immediately and handle the encounter during this turn.`
+          : 'Choose one living player to attempt to kill. If they have a reactive night ability, you will be told immediately and handle the encounter during your turn.';
+        living.forEach(choose);
+        area.appendChild(actionButton(team.length>1?'Do not use the group kill':'Do not use my shot','skip',()=>setChoiceAndContinue(actor,'skip')));
+      }
+      break;
+    }
+    case 'inspectOrientation':
+      $('nightPrompt').textContent='Choose one living player to inspect. Their orientation will be revealed to you.';
+      living.forEach(choose); break;
+    case 'seer': {
+      const possible=living.filter(t=>t.roleId!==actor.roleId), target=randomChoice(possible);
+      $('nightPrompt').textContent=target ? `A random living player has been selected: ${target.name}. Confirm to reveal their exact role.` : 'No valid target exists.';
+      area.appendChild(actionButton(target?`Reveal ${target.name}`:'Skip tonight',target?.id??'skip',()=>setChoiceAndContinue(actor,target?.id??'skip')));
+      break;
+    }
+    default:
+      $('nightPrompt').textContent=role.nightAction && NIGHT_ACTIONS[role.nightAction]
+        ? `Your role has no active choice tonight. ${NIGHT_ACTIONS[role.nightAction].label} is handled if you are targeted.`
+        : 'You have no night ability. Acknowledge your turn, then pass the device.';
+      area.appendChild(actionButton('Acknowledge & continue','skip',()=>setChoiceAndContinue(actor,'skip')));
+  }
+}
+function updateNightHandoffGate(){
+  const night=state.night;
+  const nextActor=night.queue[night.index+1];
+  $('nightActionArea').innerHTML='';
+  $('nightResult').innerHTML='';
+  $('nightPrompt').innerHTML = nextActor
+    ? `<strong>Night action complete.</strong> Pass the device to the next player, then press the button below to reveal their night ability.`
+    : `<strong>Night actions complete.</strong> Press the button below to finish the night.`;
+  const buttonLabel = nextActor ? `Pass to ${escapeHtml(nextActor.name)} & reveal` : 'Finish night';
+  $('nightActionArea').appendChild(actionButton(buttonLabel,'nightHandoff',()=>{
+    if(state.phase!=='night' || state.night.busy || !state.night.handoffReady) return;
+    state.night.handoffReady=false;
+    advanceNightActor();
+  }));
+  $('resolveNightBtn').classList.add('hidden');
+  $('resolveNightBtn').disabled=true;
+}
+
+function updateNight(){
+  const night=state.night;
+  if(night.index>=night.queue.length){ finishNight(); return; }
+  let actor=night.queue[night.index], role=roleOf(actor);
+
+  // If the representative of a coordinated killing group died earlier in the
+  // night, let another living player with the same killing ability carry it out.
+  if(actor && !actor.alive && role){
+    if(role.orientation==='evil' && evilTeamHasKillingAbility()){
+      const replacement=playersAlive().find(p=>roleOf(p)?.orientation==='evil' && isKillingRole(roleOf(p)));
+      if(replacement){
+        actor=replacement;
+        role=roleOf(actor);
+      }
+    } else if(isKillingRole(role)){
+      const replacement=playersAlive().find(p=>sameCoordinationGroup(actor,p));
+      if(replacement){
+        actor=replacement;
+        role=roleOf(actor);
+      }
+    }
+  }
+
+  night.handoffReady=false;
+  $('nightTitle').textContent=`Night — ${actor.name}`;
+  $('nightProgress').textContent=`${night.index+1} / ${night.queue.length}`;
+  $('nightActionArea').innerHTML=''; $('nightResult').innerHTML=''; renderNightKnownRoles(actor);
+
+  if(!actor.alive){
+    $('resolveNightBtn').classList.remove('hidden');
+    $('nightPrompt').innerHTML=`<strong>You were eliminated before your night turn.</strong> Your role remains <strong>${escapeHtml(role?.title||'Unknown')}</strong>, but you cannot use your night ability tonight.`;
+    showNightResult(`${escapeHtml(actor.name)} was killed before their scheduled turn. Their ability is skipped.`);
+    $('resolveNightBtn').disabled=false; $('resolveNightBtn').textContent='Acknowledge & continue';
+    return;
+  }
+
+  $('resolveNightBtn').classList.add('hidden');
+  $('resolveNightBtn').disabled=true; $('resolveNightBtn').textContent='Confirm action';
+  const living=playersAlive().filter(p=>p.id!==actor.id);
+  renderStandardAction(actor,role||{nightAction:'none'},living);
+}
+
+function adjacentLiving(target){
+  const living=playersAlive();
+  const i=living.findIndex(p=>p.id===target.id);
+  if(i<0 || living.length<2) return [];
+  const left=living[(i-1+living.length)%living.length];
+  const right=living[(i+1)%living.length];
+  return [left,right].filter((p,idx,arr)=>p && p.id!==target.id && arr.findIndex(x=>x.id===p.id)===idx);
+}
+
+// Resolve a single attack immediately on the attacker's turn. Reactive roles
+// are handled here and the device stays with the current attack until the
+// attacker/target records the real-life outcome. Only after the encounter is
+// complete does the night move to the next queued player.
+function resolveImmediateAttack(attacker,target,outcomes){
+  if(state.phase!=='night'){ return; }
+  if(!target || !target.alive){ completeNightTurn(); return; }
+
+  const role=roleOf(target), action=role?.nightAction, next=()=>finishImmediateAttack(attacker,outcomes);
+  const attackerName=attacker?.name||'Mafia';
+
+  if(action==='traitor'){
+    target.roleId='mafia';
+    outcomes.push(`${target.name} was attacked but became Mafia instead of dying.`);
+    next(); return;
+  }
+
+  if(action==='scapegoat' && !target.used.scapegoat){
+    const adjacent=adjacentLiving(target);
+    if(adjacent.length){
+      $('nightPrompt').innerHTML=`<strong>${escapeHtml(target.name)}</strong> was targeted by <strong>${escapeHtml(attackerName)}</strong>. They are the <strong>${escapeHtml(role.title)}</strong>. Choose a living adjacent player to receive the attack instead.`;
+      $('nightActionArea').innerHTML='';
+      showNightResult(`This is still <strong>${escapeHtml(attackerName)}'s turn</strong>. Give the device to ${escapeHtml(target.name)} briefly so the Scapegoat can choose the redirect, then take it back and continue the attack.`);
+      adjacent.forEach(victim=>{
+        $('nightActionArea').appendChild(actionButton(`Redirect to ${victim.name}`,victim.id,()=>{
+          if(!state.night.busy) return;
+          target.used.scapegoat=true;
+          outcomes.push(`${target.name} redirected an attempted kill to ${victim.name}.`);
+          resolveImmediateAttack(attacker,victim,outcomes);
+        }));
+      });
+      $('nightActionArea').appendChild(actionButton('Do not redirect','skip',()=>{
+        if(!state.night.busy) return;
+        target.used.scapegoat=true;
+        outcomes.push(`${target.name} chose not to redirect the attack.`);
+        killTarget(target,outcomes,next);
+      }));
+      return;
+    }
+  }
+
+  if(action==='escape'){
+    $('nightPrompt').innerHTML=`<strong>${escapeHtml(target.name)}</strong> was targeted by <strong>${escapeHtml(attackerName)}</strong>. They are the <strong>${escapeHtml(role.title)}</strong>. This is handled in real life: play out the escape challenge now, then record the result.`;
+    $('nightActionArea').innerHTML='';
+    showNightResult(`<strong>${escapeHtml(attackerName)}</strong> records the result of the real-life challenge here. This remains part of the attacker's turn.`);
+    $('nightActionArea').appendChild(actionButton(`${target.name} escaped`,target.id,()=>{
+      if(!state.night.busy) return;
+      target.escaped=true;
+      outcomes.push(`${target.name} escaped the Mafia attack.`);
+      next();
+    }));
+    $('nightActionArea').appendChild(actionButton(`${target.name} was caught`,target.id,()=>{
+      if(!state.night.busy) return;
+      target.escaped=false;
+      killTarget(target,outcomes,next,`${target.name} failed to escape and was killed.`);
+    }));
+    return;
+  }
+
+  if(action==='rps'){
+    $('nightPrompt').innerHTML=`<strong>${escapeHtml(target.name)}</strong> was targeted by <strong>${escapeHtml(attackerName)}</strong>. They are the <strong>${escapeHtml(role.title)}</strong>. Play best-of-3 Rock, Paper, Scissors in real life now, then record who won.`;
+    $('nightActionArea').innerHTML='';
+    showNightResult(`<strong>${escapeHtml(attackerName)}</strong> records who won here. This remains part of the attacker's turn.`);
+    $('nightActionArea').appendChild(actionButton(`Joker won the encounter`,target.id,()=>{
+      if(!state.night.busy) return;
+      outcomes.push(`${target.name} won Rock, Paper, Scissors against ${attackerName} and survived.`);
+      next();
+    }));
+    $('nightActionArea').appendChild(actionButton(`Joker lost the encounter`,target.id,()=>{
+      if(!state.night.busy) return;
+      killTarget(target,outcomes,next,`${target.name} lost Rock, Paper, Scissors against ${attackerName} and died.`);
+    }));
+    return;
+  }
+
+  if(action==='monkey'){
+    $('nightPrompt').innerHTML=`<strong>${escapeHtml(target.name)}</strong> was targeted by <strong>${escapeHtml(attackerName)}</strong>. They are the <strong>${escapeHtml(role.title)}</strong>. Go to the attacker and loudly mimic a monkey in their face, then return the device.`;
+    $('nightActionArea').innerHTML='';
+    showNightResult(`<strong>${escapeHtml(attackerName)}</strong> records the completion here. This remains part of the attacker's turn.`);
+    $('nightActionArea').appendChild(actionButton('Done — resolve the attack',target.id,()=>{
+      if(!state.night.busy) return;
+      outcomes.push(`${target.name} performed the Monkey reaction before dying.`);
+      killTarget(target,outcomes,next);
+    }));
+    return;
+  }
+
+  killTarget(target,outcomes,next);
+}
+function killTarget(target,outcomes,next,customText){
+  if(target.alive){
+    target.alive=false;
+    outcomes.push(customText||`${target.name} was killed during the night.`);
+  }
+  next();
+}
+function finishImmediateAttack(attacker,outcomes){
+  if(outcomes.length){ outcomes.forEach(addLog); $('nightResult').innerHTML=outcomes.map(x=>`<div class="result">${escapeHtml(x)}</div>`).join(''); }
+  completeNightTurn();
+}
+function finishNight(){
+  if(state.phase!=='night') return;
+  $('nightPrompt').textContent='Night is resolving…';
+  $('nightActionArea').innerHTML='';
+  const result=checkWin();
+  renderGameLog();
+  if(result.done){ endGame(result); return; }
+  state.round++; $('roundPill').textContent=`Round ${state.round}`;
+  setTimeout(startDay,0);
+}
+function resolveNight(){
+  // Kept as a compatibility entry point for any existing UI references.
+  finishNight();
+}
+
+// ---- Win / game end ------------------------------------------------------
+function checkWin(){
+  const living=playersAlive();
+  const evil=living.filter(p=>roleOf(p)?.orientation==='evil').length;
+  const nonEvil=living.filter(p=>roleOf(p)?.orientation!=='evil').length;
+  const jester=state.players.find(p=>!p.alive && p.eliminatedByVote && p.roleId==='jester');
+  if(jester) return {done:true,winner:'Jester',reason:`${jester.name} was voted out, completing the Jester's win condition.`};
+  if(evil===0) return {done:true,winner:'Good',reason:'All evil players have been eliminated.'};
+  if(evil>=nonEvil) return {done:true,winner:'Evil',reason:'Evil now equals or outnumbers the living non-evil players.'};
+  return {done:false};
+}
+function endGame(result){
+  state.phase='gameover';
+  hide('dayCard','nightCard','handoffCard'); show('winCard');
+  setPhase('Game over',result.winner);
+  $('winnerTitle').textContent=`${result.winner} wins`;
+  $('winnerText').textContent=result.reason;
+  $('finalRoles').innerHTML=state.players.map(player=>{
+    const role=roleOf(player);
+    return `<div class="result ${player.alive?'':'eliminated'}"><strong>${escapeHtml(player.name)}</strong><div class="muted tiny" style="margin-top:6px">${player.alive?'Alive':'Eliminated'}</div><div style="margin-top:6px">${escapeHtml(role?.title||'Unknown')} ${rolePill(role)}</div></div>`;
+  }).join('');
+  addLog(result.reason);
+  renderGameLog();
+}
+function endGameEarly(){
+  if(state.phase==='gameover') return;
+  if(!confirm('End the game now and reveal everyone’s roles? This cannot be undone.')) return;
+  endGame({done:true,winner:'Game ended early',reason:"The game was ended early. Everyone's roles are revealed below."});
+}
+
+// ---- Events --------------------------------------------------------------
+$('addPlayerBtn').addEventListener('click',()=>{
+  const id=state.players.length;
+  state.players.push(createPlayer(id,`Player ${id+1}`)); renderSetup();
+});
+$('roundMode').addEventListener('change',e=>{state.mode=e.target.value;renderSetup();});
+$('newRoleBtn').addEventListener('click',()=>openRoleEditor());
+$('cancelRoleBtn').addEventListener('click',closeRoleEditor);
+$('saveRoleBtn').addEventListener('click',()=>{
+  const title=$('roleTitle').value.trim(), description=$('roleDescription').value.trim();
+  if(!title||!description){ alert('Give the role a title and player-facing description.'); return; }
+  const orientation=$('roleOrientation').value, visibility=$('roleVisibility').value, nightAction=$('roleNightAction').value;
+  if(state.editingRoleId){
+    const role=state.roles.find(r=>r.id===state.editingRoleId);
+    Object.assign(role,{title,orientation,description,visibility,nightAction});
+  } else {
+    state.roles.push({id:`custom_${Date.now()}`,title,orientation,description,visibility,nightAction,randomCount:0});
+  }
+  closeRoleEditor(); renderSetup();
+});
+$('startBtn').addEventListener('click',()=>{
+  if(state.players.length<2){ alert('Need at least 2 players.'); return; }
+  assignRoles(); state.logs=[]; $('gameLog').innerHTML=''; state.round=1; addLog('Game started. Roles are being handed out privately.'); renderGameLog(); beginHandoff();
+});
+$('revealRoleBtn').addEventListener('click',()=>{state.handoffRevealed=true;updateHandoff();});
+$('handoffNextBtn').addEventListener('click',()=>{
+  if(!state.handoffRevealed) return;
+  if(state.handoffIndex===state.players.length-1){ startDay(); return; }
+  state.handoffIndex++; state.handoffRevealed=false; updateHandoff();
+});
+$('skipDayBtn').addEventListener('click',skipDay);
+$('nextNightBtn').addEventListener('click',()=>{
+  if($('nextNightBtn').disabled) return;
+  if(state.phase==='day'){
+    if(state.day.secondBallot || $('nextNightBtn').textContent==='Resolve vote' || $('nextNightBtn').textContent==='Resolve tie') resolveDay();
+    else startNight();
+  }
+});
+$('resolveNightBtn').addEventListener('click',()=>{
+  if(state.phase!=='night' || state.night.busy) return;
+  if(!state.night.queue[state.night.index]) return;
+  advanceNightActor();
+});
+$('endGameEarlyBtn').addEventListener('click',endGameEarly);
+$('backSetupBtn').addEventListener('click',()=>{state.phase='setup';hide('gameScreen');show('setupScreen');renderSetup();});
+
+state.roles.forEach((role,index)=>{
+  role.randomCount=role.id==='citizen' ? 0 : (role.randomCount ?? (role.orientation==='evil' ? 1 : 0));
+});
+renderSetup();
+</script>
+</body>
+</html>
