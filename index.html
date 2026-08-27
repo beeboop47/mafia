@@ -891,8 +891,12 @@ function setChoiceAndContinue(actor, choice){
     showNightResult(
       `<strong>Investigation result</strong><br><strong>${escapeHtml(target.name)}</strong> is <strong>${escapeHtml(orientation)}</strong>.`
     );
-    $('nightPrompt').textContent='Investigation complete. Read the result, then pass the device and press the button below when you are ready for the next player.';
-    completeNightTurn();
+    $('nightPrompt').textContent='Investigation complete. Read the result, then acknowledge it before the private night handoff screen.';
+    $('nightActionArea').innerHTML='';
+    $('nightActionArea').appendChild(actionButton('Acknowledge & continue','detectiveAcknowledge',()=>{
+      if(!state.night.busy) return;
+      completeNightTurn();
+    }));
     return;
   }
   if(role.nightAction==='seer'){
@@ -988,12 +992,12 @@ function renderStandardAction(actor,role,living){
 function updateNightHandoffGate(){
   const night=state.night;
   const nextActor=night.queue[night.index+1];
-  // Preserve the current player's result so inspection results remain visible
-  // while they pass the device to the next player.
+  // The generic handoff screen must never retain the previous player's private information.
   $('nightActionArea').innerHTML='';
+  $('nightResult').innerHTML='';
   $('nightPrompt').innerHTML = nextActor
-    ? `<strong>Night action complete.</strong> Pass the device to the next player, then press the button below to reveal their night ability.`
-    : `<strong>Night actions complete.</strong> Press the button below to finish the night.`;
+    ? `<strong>Night action complete.</strong> No information from the previous player is shown here. Pass the device to the next player, then press the button below to reveal their night ability.`
+    : `<strong>Night actions complete.</strong> No private action information is shown here. Press the button below to finish the night.`;
   const buttonLabel = nextActor ? `Pass to ${escapeHtml(nextActor.name)} & reveal` : 'Finish night';
   $('nightActionArea').appendChild(actionButton(buttonLabel,'nightHandoff',()=>{
     if(state.phase!=='night' || state.night.busy || !state.night.handoffReady) return;
