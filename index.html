@@ -988,8 +988,9 @@ function renderStandardAction(actor,role,living){
 function updateNightHandoffGate(){
   const night=state.night;
   const nextActor=night.queue[night.index+1];
+  // Preserve the current player's result so inspection results remain visible
+  // while they pass the device to the next player.
   $('nightActionArea').innerHTML='';
-  $('nightResult').innerHTML='';
   $('nightPrompt').innerHTML = nextActor
     ? `<strong>Night action complete.</strong> Pass the device to the next player, then press the button below to reveal their night ability.`
     : `<strong>Night actions complete.</strong> Press the button below to finish the night.`;
