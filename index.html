@@ -752,13 +752,10 @@ function sameCoordinationGroup(a,b){
   const roleA=roleOf(a), roleB=roleOf(b);
   if(!roleA || !roleB) return false;
 
-  // All living Evil players form one team whenever at least one Evil player
-  // has a killing ability. Their role names do not matter.
   if(roleA.orientation==='evil' && roleB.orientation==='evil'){
     return evilTeamHasKillingAbility();
   }
 
-  // Good/neutral killing roles coordinate only with the same role name.
   if(isKillingRole(roleA) && isKillingRole(roleB)){
     return roleA.title===roleB.title;
   }
@@ -781,31 +778,26 @@ function coordinatedKillMembers(actor){
   return [actor];
 }
 
-function buildNightQueue(){
-  // One shared turn per coordination group:
-  // - all Evil players collapse into one team turn if any Evil player can kill
-  // - Good/neutral killing roles coordinate only with the same role name
-  // - otherwise roles retain their normal individual turns
+function buildNightActionQueue(){
   const queue=[];
   const processed=[];
-  const evilKillingTeam = evilTeamHasKillingAbility();
+  const activeActions=new Set(['mafiaKill','killOnce','inspectOrientation','seer']);
+  const evilKillingTeam=evilTeamHasKillingAbility();
 
   playersAlive().forEach(player=>{
     const role=roleOf(player);
+    if(!role || !activeActions.has(role.nightAction)) return;
 
-    if(role?.orientation==='evil' && evilKillingTeam){
-      if(processed.some(representative=>roleOf(representative)?.orientation==='evil')) return;
-
-      // Use a living Evil player with the actual killing ability as the
-      // representative so the shared team turn shows the kill action.
-      const killerRepresentative=playersAlive().find(p=>roleOf(p)?.orientation==='evil' && isKillingRole(roleOf(p)));
-      queue.push(killerRepresentative || player);
+    if(role.orientation==='evil' && evilKillingTeam){
+      if(processed.some(rep=>roleOf(rep)?.orientation==='evil')) return;
+      const representative=playersAlive().find(p=>roleOf(p)?.orientation==='evil' && isKillingRole(roleOf(p)));
+      queue.push(representative || player);
       processed.push(player);
       return;
     }
 
     if(isKillingRole(role)){
-      if(processed.some(representative=>sameCoordinationGroup(representative,player))) return;
+      if(processed.some(rep=>sameCoordinationGroup(rep,player))) return;
       processed.push(player);
     }
 
@@ -814,30 +806,59 @@ function buildNightQueue(){
 
   return $('nightOrder').value==='random' ? shuffle(queue) : queue;
 }
+
+function buildNightReactionQueue(){
+  // Everyone gets a reaction-round pass. Reactive roles can respond if targeted;
+  // everyone else either acknowledges that nothing happens or is told they were killed.
+  return playersAlive().slice();
+}
+
 function startNight(){
   state.phase='night';
-  state.night={queue:buildNightQueue(),index:0,busy:false,seerReveal:null,handoffReady:false,reactiveEncounter:null};
+  const actionQueue=buildNightActionQueue();
+  state.night={
+    round:1,
+    queue:actionQueue,
+    index:0,
+    busy:false,
+    seerReveal:null,
+    handoffReady:false,
+    pendingAttacks:[],
+    reactionQueue:[],
+    reactionCompleted:[]
+  };
   hide('dayCard','handoffCard'); show('nightCard');
-  setPhase('Night','Night actions');
-  if(!state.night.queue.length){ finishNight(); return; }
+  setPhase('Night','Night actions — Round 1');
+  if(!state.night.queue.length){ beginReactionRound(); return; }
   updateNight();
 }
+
 function showNightResult(text){ $('nightResult').innerHTML=`<div class="result">${text}</div>`; }
 function setNightBusy(busy){ state.night.busy=busy; }
+
 function advanceNightActor(){
   if(state.phase!=='night') return;
   state.night.index++;
   state.night.handoffReady=false;
-  if(state.night.index>=state.night.queue.length){ finishNight(); return; }
+  if(state.night.index>=state.night.queue.length){
+    if(state.night.round===1){ beginReactionRound(); return; }
+    finishNight();
+    return;
+  }
   updateNight();
 }
+
 function completeNightTurn(){
+  if(state.night.round===2 && Number.isInteger(state.night.currentActorId) && !state.night.reactionCompleted.includes(state.night.currentActorId)){
+    state.night.reactionCompleted.push(state.night.currentActorId);
+  }
   setNightBusy(false);
   const result=checkWin();
   if(result.done){ endGame(result); return; }
   state.night.handoffReady=true;
   updateNightHandoffGate();
 }
+
 function renderNightKnownRoles(actor){
   $('nightKnownRoles').innerHTML='';
   renderKnownRoles(actor,'nightKnownRoles');
@@ -863,22 +884,24 @@ function renderNightKnownRoles(actor){
   $('nightKnownRoles').innerHTML += `
     <div class="known-roles">
       <strong>Coordinated killing team</strong>
-      <div class="muted tiny" style="margin-top:4px">
-        These living players coordinate on one shared kill.
-      </div>
+      <div class="muted tiny" style="margin-top:4px">These living players coordinate on one shared kill.</div>
       <div class="known-role-list">${teammateNames}</div>
     </div>`;
 }
-function setChoiceAndContinue(actor, choice){
+
+function setChoiceAndContinue(actor,choice){
   if(state.night.busy) return;
   setNightBusy(true);
+
   if(choice==='skip'){
     showNightResult('No active choice tonight.');
     completeNightTurn();
     return;
   }
+
   const role=roleOf(actor);
   if(!role){ completeNightTurn(); return; }
+
   if(role.nightAction==='inspectOrientation'){
     const target=playerOf(choice);
     if(!target || !target.alive){
@@ -886,19 +909,17 @@ function setChoiceAndContinue(actor, choice){
       completeNightTurn();
       return;
     }
-
     const orientation=labelOrientation(roleOf(target)?.orientation||'unknown');
-    showNightResult(
-      `<strong>Investigation result</strong><br><strong>${escapeHtml(target.name)}</strong> is <strong>${escapeHtml(orientation)}</strong>.`
-    );
-    $('nightPrompt').textContent='Investigation complete. Read the result, then acknowledge it before the private night handoff screen.';
+    showNightResult(`<strong>Investigation result</strong><br><strong>${escapeHtml(target.name)}</strong> is <strong>${escapeHtml(orientation)}</strong>.`);
+    $('nightPrompt').textContent='Investigation complete. Acknowledge the result before continuing.';
     $('nightActionArea').innerHTML='';
-    $('nightActionArea').appendChild(actionButton('Acknowledge & continue','detectiveAcknowledge',()=>{
+    $('nightActionArea').appendChild(actionButton('Acknowledge & continue','inspectAcknowledge',()=>{
       if(!state.night.busy) return;
       completeNightTurn();
     }));
     return;
   }
+
   if(role.nightAction==='seer'){
     const target=playerOf(choice);
     if(!target || !target.alive){
@@ -908,7 +929,7 @@ function setChoiceAndContinue(actor, choice){
     }
     state.night.seerReveal={targetId:target.id};
     showNightResult(`<strong>${escapeHtml(target.name)}</strong> is a <strong>${escapeHtml(roleOf(target)?.title||'Unknown')}</strong>.`);
-    $('nightPrompt').textContent='The exact role has been revealed. Acknowledge it to finish your turn and pass the device.';
+    $('nightPrompt').textContent='The exact role has been revealed. Acknowledge the result before continuing.';
     $('nightActionArea').innerHTML='';
     $('nightActionArea').appendChild(actionButton('Acknowledge & continue','seerAcknowledge',()=>{
       if(!state.night.busy) return;
@@ -917,6 +938,7 @@ function setChoiceAndContinue(actor, choice){
     }));
     return;
   }
+
   if(isKillingRole(role)){
     const target=playerOf(choice);
     if(!target || !target.alive){
@@ -925,17 +947,28 @@ function setChoiceAndContinue(actor, choice){
       return;
     }
 
-    // Identical killing roles coordinate on one shared target.
     const team=coordinatedKillMembers(actor);
-    if(role.nightAction==='killOnce'){
-      team.forEach(member=>member.used.killOnce=true);
-    }
+    if(role.nightAction==='killOnce') team.forEach(member=>member.used.killOnce=true);
 
-    resolveImmediateAttack(actor,target,[]);
+    state.night.pendingAttacks.push({
+      attackerId:actor.id,
+      targetId:target.id,
+      sourceAction:role.nightAction
+    });
+
+    showNightResult(`<strong>Target recorded.</strong> The attack will be resolved during the reaction round.`);
+    $('nightPrompt').textContent='Action recorded. Acknowledge to finish this turn.';
+    $('nightActionArea').innerHTML='';
+    $('nightActionArea').appendChild(actionButton('Acknowledge & continue','attackAcknowledge',()=>{
+      if(!state.night.busy) return;
+      completeNightTurn();
+    }));
     return;
   }
+
   completeNightTurn();
 }
+
 function actionButton(label,value,onClick){
   const button=document.createElement('button');
   button.type='button';
@@ -944,15 +977,17 @@ function actionButton(label,value,onClick){
   button.addEventListener('click',onClick);
   return button;
 }
+
 function renderStandardAction(actor,role,living){
   const area=$('nightActionArea');
-  const choose=(target)=>area.appendChild(actionButton(target.name,target.id,()=>setChoiceAndContinue(actor,target.id)));
+  const choose=target=>area.appendChild(actionButton(target.name,target.id,()=>setChoiceAndContinue(actor,target.id)));
+
   switch(role.nightAction){
     case 'mafiaKill': {
       const team=coordinatedKillMembers(actor);
       $('nightPrompt').innerHTML=team.length>1
-        ? `<strong>Evil team:</strong> ${team.map(p=>escapeHtml(p.name)).join(', ')} all coordinate on <strong>one shared kill</strong>. Choose the single target together. If the target has a reactive night ability, the device will be passed to them for a private reveal before the attack is resolved.`
-        : `<strong>${escapeHtml(role.title)}</strong> — choose a living target. If the target has a reactive night ability, the device will be passed to them for a private reveal before the attack is resolved.`;
+        ? `<strong>Evil team:</strong> ${team.map(p=>escapeHtml(p.name)).join(', ')} coordinate on one shared kill. Choose one target. The attack is resolved in the reaction round.`
+        : `<strong>${escapeHtml(role.title)}</strong> — choose a living target. The attack is resolved in the reaction round.`;
       living.forEach(choose);
       break;
     }
@@ -966,88 +1001,292 @@ function renderStandardAction(actor,role,living){
         area.appendChild(actionButton('Skip tonight','skip',()=>setChoiceAndContinue(actor,'skip')));
       } else {
         $('nightPrompt').textContent=team.length>1
-          ? `${team.map(p=>escapeHtml(p.name)).join(', ')} share one once-per-game kill. Choose one living target together. If the target has a reactive night ability, the device will be passed to them for a private reveal before the attack is resolved.`
-          : 'Choose one living player to attempt to kill. If they have a reactive night ability, the device will be passed to them for a private reveal before the attack is resolved.';
+          ? `${team.map(p=>escapeHtml(p.name)).join(', ')} share one once-per-game kill. Choose one living target. The attack is resolved in the reaction round.`
+          : 'Choose one living player to attempt to kill. The attack is resolved in the reaction round.';
         living.forEach(choose);
         area.appendChild(actionButton(team.length>1?'Do not use the group kill':'Do not use my shot','skip',()=>setChoiceAndContinue(actor,'skip')));
       }
       break;
     }
     case 'inspectOrientation':
-      $('nightPrompt').textContent='Choose one living player to inspect. Their orientation will be revealed to you.';
-      living.forEach(choose); break;
+      $('nightPrompt').textContent='Choose one living player to inspect. Their orientation will be revealed privately.';
+      living.forEach(choose);
+      break;
     case 'seer': {
-      const possible=living.filter(t=>t.roleId!==actor.roleId), target=randomChoice(possible);
-      $('nightPrompt').textContent=target ? `A random living player has been selected: ${target.name}. Confirm to reveal their exact role.` : 'No valid target exists.';
+      const possible=living.filter(t=>t.id!==actor.id), target=randomChoice(possible);
+      $('nightPrompt').textContent=target
+        ? `A random living player has been selected: ${target.name}. Confirm to reveal their exact role.`
+        : 'No valid target exists.';
       area.appendChild(actionButton(target?`Reveal ${target.name}`:'Skip tonight',target?.id??'skip',()=>setChoiceAndContinue(actor,target?.id??'skip')));
       break;
     }
     default:
-      $('nightPrompt').textContent=role.nightAction && NIGHT_ACTIONS[role.nightAction]
-        ? `Your role has no active choice tonight. ${NIGHT_ACTIONS[role.nightAction].label} is handled if you are targeted.`
-        : 'You have no night ability. Acknowledge your turn, then pass the device.';
+      $('nightPrompt').textContent='No active action in this round. Acknowledge your turn, then pass the device.';
       area.appendChild(actionButton('Acknowledge & continue','skip',()=>setChoiceAndContinue(actor,'skip')));
   }
 }
+
 function updateNightHandoffGate(){
   const night=state.night;
-  const nextActor=night.queue[night.index+1];
-  // The generic handoff screen must never retain the previous player's private information.
+  const queue=night.round===1 ? night.queue : night.reactionQueue;
+  const nextActor=queue[night.index+1];
   $('nightActionArea').innerHTML='';
   $('nightResult').innerHTML='';
-  $('nightPrompt').innerHTML = nextActor
-    ? `<strong>Night action complete.</strong> No information from the previous player is shown here. Pass the device to the next player, then press the button below to reveal their night ability.`
-    : `<strong>Night actions complete.</strong> No private action information is shown here. Press the button below to finish the night.`;
-  const buttonLabel = nextActor ? `Pass to ${escapeHtml(nextActor.name)} & reveal` : 'Finish night';
-  $('nightActionArea').appendChild(actionButton(buttonLabel,'nightHandoff',()=>{
-    if(state.phase!=='night' || state.night.busy || !state.night.handoffReady) return;
-    state.night.handoffReady=false;
-    advanceNightActor();
-  }));
+
+  if(nextActor){
+    $('nightPrompt').innerHTML=`<strong>Turn complete.</strong> Pass the device to ${escapeHtml(nextActor.name)}.`;
+    $('nightActionArea').appendChild(actionButton(`Pass to ${escapeHtml(nextActor.name)} & continue`,'nightHandoff',()=>{
+      if(state.phase!=='night' || state.night.busy || !state.night.handoffReady) return;
+      state.night.handoffReady=false;
+      advanceNightActor();
+    }));
+  } else if(night.round===1){
+    $('nightPrompt').innerHTML='<strong>Round 1 complete.</strong> Begin the reaction round.';
+    $('nightActionArea').appendChild(actionButton('Begin reaction round','beginReactionRound',()=>{
+      if(state.phase!=='night' || state.night.busy || !state.night.handoffReady) return;
+      state.night.handoffReady=false;
+      beginReactionRound();
+    }));
+  } else {
+    $('nightPrompt').innerHTML='<strong>Reaction round complete.</strong> Finish the night.';
+    $('nightActionArea').appendChild(actionButton('Finish night','finishNight',()=>{
+      if(state.phase!=='night' || state.night.busy || !state.night.handoffReady) return;
+      state.night.handoffReady=false;
+      finishNight();
+    }));
+  }
+
   $('resolveNightBtn').classList.add('hidden');
   $('resolveNightBtn').disabled=true;
 }
 
 function updateNight(){
   const night=state.night;
-  if(night.index>=night.queue.length){ finishNight(); return; }
-  let actor=night.queue[night.index], role=roleOf(actor);
-
-  // If the representative of a coordinated killing group died earlier in the
-  // night, let another living player with the same killing ability carry it out.
-  if(actor && !actor.alive && role){
-    if(role.orientation==='evil' && evilTeamHasKillingAbility()){
-      const replacement=playersAlive().find(p=>roleOf(p)?.orientation==='evil' && isKillingRole(roleOf(p)));
-      if(replacement){
-        actor=replacement;
-        role=roleOf(actor);
-      }
-    } else if(isKillingRole(role)){
-      const replacement=playersAlive().find(p=>sameCoordinationGroup(actor,p));
-      if(replacement){
-        actor=replacement;
-        role=roleOf(actor);
-      }
-    }
-  }
-
-  night.handoffReady=false;
-  $('nightTitle').textContent=`Night — ${actor.name}`;
-  $('nightProgress').textContent=`${night.index+1} / ${night.queue.length}`;
-  $('nightActionArea').innerHTML=''; $('nightResult').innerHTML=''; renderNightKnownRoles(actor);
-
-  if(!actor.alive){
-    $('resolveNightBtn').classList.remove('hidden');
-    $('nightPrompt').innerHTML=`<strong>You were eliminated before your night turn.</strong> Your role remains <strong>${escapeHtml(role?.title||'Unknown')}</strong>, but you cannot use your night ability tonight.`;
-    showNightResult(`${escapeHtml(actor.name)} was killed before their scheduled turn. Their ability is skipped.`);
-    $('resolveNightBtn').disabled=false; $('resolveNightBtn').textContent='Acknowledge & continue';
+  const queue=night.round===1 ? night.queue : night.reactionQueue;
+  if(night.index>=queue.length){
+    if(night.round===1){ beginReactionRound(); return; }
+    finishNight();
     return;
   }
 
+  const actor=queue[night.index];
+  night.currentActorId=actor.id;
+  night.handoffReady=false;
+  $('nightTitle').textContent=`Night — ${actor.name}`;
+  $('nightProgress').textContent=`${night.index+1} / ${queue.length}`;
+  $('nightActionArea').innerHTML='';
+  $('nightResult').innerHTML='';
+  $('nightKnownRoles').innerHTML='';
+
+  if(night.round===1){
+    setPhase('Night','Night actions — Round 1');
+    renderNightKnownRoles(actor);
+    if(!actor.alive){
+      $('resolveNightBtn').classList.remove('hidden');
+      $('nightPrompt').innerHTML='<strong>You were eliminated before your night action.</strong> Your night action is skipped.';
+      $('resolveNightBtn').disabled=false;
+      $('resolveNightBtn').textContent='Acknowledge & continue';
+      return;
+    }
+    $('resolveNightBtn').classList.add('hidden');
+    $('resolveNightBtn').disabled=true;
+    const living=playersAlive().filter(p=>p.id!==actor.id);
+    renderStandardAction(actor,roleOf(actor)||{nightAction:'none'},living);
+    return;
+  }
+
+  renderReactionTurn(actor);
+}
+
+function beginReactionRound(){
+  if(state.phase!=='night') return;
+  state.night.round=2;
+  state.night.reactionQueue=buildNightReactionQueue();
+  state.night.index=0;
+  state.night.busy=false;
+  state.night.handoffReady=false;
+  state.night.reactionCompleted=[];
+  setPhase('Night','Night reactions — Round 2');
+  if(!state.night.reactionQueue.length){ finishNight(); return; }
+  updateNight();
+}
+
+function findPendingAttacksFor(targetId){
+  return state.night.pendingAttacks.filter(a=>a.targetId===targetId);
+}
+
+function removePendingAttack(attack){
+  const i=state.night.pendingAttacks.indexOf(attack);
+  if(i>=0) state.night.pendingAttacks.splice(i,1);
+}
+
+function ensureReactionQueued(player){
+  if(!player) return;
+  if(state.night.reactionQueue.some(p=>p.id===player.id) && !state.night.reactionCompleted.includes(player.id)) return;
+  state.night.reactionQueue.push(player);
+}
+
+
+function renderReactionTurn(actor){
+  const role=roleOf(actor);
+  const attacks=findPendingAttacksFor(actor.id);
+  setPhase('Night','Night reactions — Round 2');
+  $('nightKnownRoles').innerHTML='';
+  $('nightActionArea').innerHTML='';
+  $('nightResult').innerHTML='';
   $('resolveNightBtn').classList.add('hidden');
-  $('resolveNightBtn').disabled=true; $('resolveNightBtn').textContent='Confirm action';
-  const living=playersAlive().filter(p=>p.id!==actor.id);
-  renderStandardAction(actor,role||{nightAction:'none'},living);
+  $('resolveNightBtn').disabled=true;
+
+  if(!actor.alive){
+    $('nightPrompt').innerHTML='<strong>You were killed during the night.</strong> Your night ability does not activate.';
+    showNightResult('This is your night-response turn. Acknowledge and pass the device.');
+    $('nightActionArea').appendChild(actionButton('Acknowledge & continue','deadAcknowledge',()=>{
+      if(!state.night.busy) setNightBusy(true);
+      completeNightTurn();
+    }));
+    return;
+  }
+
+  if(!attacks.length){
+    $('nightPrompt').innerHTML='<strong>No reaction tonight.</strong> Nothing happened to you during the night.';
+    $('nightActionArea').appendChild(actionButton('Acknowledge & continue','noReaction',()=>{
+      if(!state.night.busy) setNightBusy(true);
+      completeNightTurn();
+    }));
+    return;
+  }
+
+  const attack=attacks[0];
+  const reactiveActions=new Set(['traitor','scapegoat','escape','monkey','rps']);
+  const action=role?.nightAction;
+
+  if(!reactiveActions.has(action)){
+    removePendingAttack(attack);
+    killTarget(actor,[],()=>{});
+    $('nightPrompt').innerHTML='<strong>You were targeted during the night and have been killed.</strong> Your night ability does not activate.';
+    showNightResult('Acknowledge and continue.');
+    $('nightActionArea').appendChild(actionButton('Acknowledge & continue','nightKillAcknowledge',()=>{
+      if(!state.night.busy) setNightBusy(true);
+      completeNightTurn();
+    }));
+    return;
+  }
+
+  showPrivateReaction(actor,attack);
+}
+
+function showPrivateReaction(target,attack){
+  const role=roleOf(target);
+  const attacker=playerOf(attack.attackerId);
+  const action=role?.nightAction;
+  const attackerName=attacker?.name||'the attacker';
+
+  $('nightTitle').textContent=`Night — ${target.name}`;
+  $('nightKnownRoles').innerHTML='';
+  $('nightActionArea').innerHTML='';
+  $('nightResult').innerHTML=`
+    <div class="result">
+      <strong>Your night ability</strong>
+      <div class="big" style="margin-top:8px">${escapeHtml(role?.title||'Unknown')}</div>
+      <div style="margin-top:8px">${escapeHtml(role?.description||'')}</div>
+    </div>`;
+
+  if(action==='scapegoat'){
+    $('nightPrompt').innerHTML='<strong>You were targeted during the night.</strong> Your attacker is not identified. Choose whether to redirect the attack.';
+    renderScapegoatReaction(target,attack);
+    return;
+  }
+
+  $('nightPrompt').innerHTML=`<strong>You were targeted by ${escapeHtml(attackerName)}.</strong> Privately review your night ability, then resolve it below.`;
+
+  if(action==='traitor'){
+    $('nightActionArea').appendChild(actionButton('Join the Mafia & survive','traitorReact',()=>{
+      if(!state.night.busy) setNightBusy(true);
+      removePendingAttack(attack);
+      target.roleId='mafia';
+      addLog(`${target.name} survived a night attack and joined the Mafia.`);
+      completeNightTurn();
+    }));
+    return;
+  }
+
+  if(action==='escape'){
+    $('nightPrompt').innerHTML=`<strong>You were targeted by ${escapeHtml(attackerName)}.</strong> Play out the escape challenge now.`;
+    $('nightActionArea').appendChild(actionButton('I escaped','escaped',()=>{
+      if(!state.night.busy) setNightBusy(true);
+      removePendingAttack(attack);
+      target.escaped=true;
+      addLog(`${target.name} escaped the night attack.`);
+      completeNightTurn();
+    }));
+    $('nightActionArea').appendChild(actionButton('I was caught','caught',()=>{
+      if(!state.night.busy) setNightBusy(true);
+      removePendingAttack(attack);
+      target.escaped=false;
+      target.alive=false;
+      addLog(`${target.name} failed the escape challenge and was killed.`);
+      completeNightTurn();
+    }));
+    return;
+  }
+
+  if(action==='rps'){
+    $('nightPrompt').innerHTML=`<strong>You were targeted by ${escapeHtml(attackerName)}.</strong> Play best-of-3 Rock, Paper, Scissors now.`;
+    $('nightActionArea').appendChild(actionButton('I won','won',()=>{
+      if(!state.night.busy) setNightBusy(true);
+      removePendingAttack(attack);
+      addLog(`${target.name} won Rock, Paper, Scissors and survived.`);
+      completeNightTurn();
+    }));
+    $('nightActionArea').appendChild(actionButton('I lost','lost',()=>{
+      if(!state.night.busy) setNightBusy(true);
+      removePendingAttack(attack);
+      target.alive=false;
+      addLog(`${target.name} lost Rock, Paper, Scissors and was killed.`);
+      completeNightTurn();
+    }));
+    return;
+  }
+
+  if(action==='monkey'){
+    $('nightPrompt').innerHTML=`<strong>You were targeted by ${escapeHtml(attackerName)}.</strong> Go to that attacker and loudly mimic a monkey, then return to the device.`;
+    $('nightActionArea').appendChild(actionButton('Reaction complete','done',()=>{
+      if(!state.night.busy) setNightBusy(true);
+      removePendingAttack(attack);
+      target.alive=false;
+      addLog(`${target.name} performed the Monkey reaction and was killed.`);
+      completeNightTurn();
+    }));
+  }
+}
+
+function renderScapegoatReaction(target,attack){
+  const adjacent=adjacentLiving(target);
+  adjacent.filter(p=>p.id!==target.id).forEach(victim=>{
+    $('nightActionArea').appendChild(actionButton(`Redirect to ${victim.name}`,victim.id,()=>{
+      if(!state.night.busy) setNightBusy(true);
+      removePendingAttack(attack);
+      target.used.scapegoat=true;
+      state.night.pendingAttacks.push({
+        attackerId:attack.attackerId,
+        targetId:victim.id,
+        sourceAction:attack.sourceAction,
+        redirectedFrom:target.id
+      });
+      ensureReactionQueued(victim);
+      addLog(`${target.name} redirected a night attack to ${victim.name}.`);
+      completeNightTurn();
+    }));
+  });
+
+  $('nightActionArea').appendChild(actionButton('Do not redirect','noRedirect',()=>{
+    if(!state.night.busy) setNightBusy(true);
+    removePendingAttack(attack);
+    target.used.scapegoat=true;
+    target.alive=false;
+    addLog(`${target.name} chose not to redirect the night attack and was killed.`);
+    completeNightTurn();
+  }));
 }
 
 function adjacentLiving(target){
@@ -1059,311 +1298,26 @@ function adjacentLiving(target){
   return [left,right].filter((p,idx,arr)=>p && p.id!==target.id && arr.findIndex(x=>x.id===p.id)===idx);
 }
 
-// Resolve a single attack immediately on the attacker's turn. Reactive roles
-// are handled here and the device stays with the current attack until the
-// attacker/target records the real-life outcome. Only after the encounter is
-// complete does the night move to the next queued player.
-const REACTIVE_NIGHT_ACTIONS = new Set(['traitor','scapegoat','escape','monkey','rps']);
-const TARGET_KNOWS_ATTACKER_ACTIONS = new Set(['traitor','escape','monkey','rps']);
-
-function targetHasReactiveNightAbility(target){
-  const role=roleOf(target);
-  return !!role && REACTIVE_NIGHT_ACTIONS.has(role.nightAction);
-}
-
-function beginReactiveTargetReveal(attacker,target,outcomes){
-  const role=roleOf(target);
-  const action=role?.nightAction;
-  if(!targetHasReactiveNightAbility(target)){
-    return false;
-  }
-
-  state.night.reactiveEncounter={
-    attackerId:attacker.id,
-    targetId:target.id,
-    action,
-    outcomes,
-    stage:'targetReveal'
-  };
-
-  $('nightPrompt').innerHTML=`<strong>${escapeHtml(target.name)} has a night ability.</strong> Pass the device to them before continuing. Do not reveal their role to the attacker.`;
-  $('nightActionArea').innerHTML='';
-  $('nightResult').innerHTML='<div class="result"><strong>Private target handoff</strong><br>The attacker has only been told that the target has a night ability. The target should now reveal their ability privately.</div>';
-  $('nightActionArea').appendChild(actionButton(`Pass to ${target.name} & reveal`,target.id,()=>{
-    if(!state.night.busy || state.phase!=='night') return;
-    showReactiveTargetReveal();
-  }));
-  $('resolveNightBtn').classList.add('hidden');
-  $('resolveNightBtn').disabled=true;
-  return true;
-}
-
-function showReactiveTargetReveal(){
-  const encounter=state.night.reactiveEncounter;
-  if(!encounter) return;
-  const attacker=playerOf(encounter.attackerId);
-  const target=playerOf(encounter.targetId);
-  const role=roleOf(target);
-  if(!attacker || !target || !role){
-    state.night.reactiveEncounter=null;
-    completeNightTurn();
-    return;
-  }
-
-  encounter.stage='targetPrivate';
-  $('nightTitle').textContent=`Night — ${target.name}`;
-  $('nightKnownRoles').innerHTML='';
-  $('nightActionArea').innerHTML='';
-  $('nightResult').innerHTML='';
-  if(TARGET_KNOWS_ATTACKER_ACTIONS.has(encounter.action)){
-    $('nightPrompt').innerHTML=`<strong>You were targeted by ${escapeHtml(attacker.name)}.</strong> Privately reveal your night ability below.`;
-  } else {
-    $('nightPrompt').innerHTML='<strong>You were targeted by a Mafia member.</strong> Privately reveal your night ability below.';
-  }
-
-  $('nightResult').innerHTML=`
-    <div class="result">
-      <strong>Your night ability</strong>
-      <div class="big" style="margin-top:8px">${escapeHtml(role.title)}</div>
-      <div style="margin-top:8px">${escapeHtml(role.description||'')}</div>
-    </div>`;
-
-  if(encounter.action==='scapegoat' && !target.used.scapegoat){
-    const adjacent=adjacentLiving(target);
-    if(adjacent.length){
-      $('nightPrompt').innerHTML='<strong>You were targeted.</strong> Choose a living adjacent player to receive the attack instead. Your attacker is not identified.';
-      adjacent.forEach(victim=>{
-        $('nightActionArea').appendChild(actionButton(`Redirect to ${victim.name}`,victim.id,()=>{
-          if(!state.night.busy) return;
-          target.used.scapegoat=true;
-          encounter.redirectTargetId=victim.id;
-          encounter.outcomes.push(`${target.name} redirected the attack to ${victim.name}.`);
-          returnReactiveToAttacker();
-        }));
-      });
-      $('nightActionArea').appendChild(actionButton('Do not redirect','skip',()=>{
-        if(!state.night.busy) return;
-        target.used.scapegoat=true;
-        encounter.outcomes.push(`${target.name} did not redirect the attack.`);
-        returnReactiveToAttacker();
-      }));
-      return;
-    }
-  }
-
-  const passBackLabel=TARGET_KNOWS_ATTACKER_ACTIONS.has(encounter.action)
-    ? `Hide & pass back to ${attacker.name}`
-    : 'Hide & pass back';
-  $('nightActionArea').appendChild(actionButton(passBackLabel,'passBack',()=>{
-    if(!state.night.busy) return;
-    returnReactiveToAttacker();
-  }));
-}
-
-function returnReactiveToAttacker(){
-  const encounter=state.night.reactiveEncounter;
-  if(!encounter) return;
-  const attacker=playerOf(encounter.attackerId);
-  const target=playerOf(encounter.targetId);
-  if(!attacker || !target){
-    state.night.reactiveEncounter=null;
-    completeNightTurn();
-    return;
-  }
-
-  encounter.stage='attackerResolve';
-  renderReactiveAttackerResolution(attacker,target,encounter);
-}
-
-function renderReactiveAttackerResolution(attacker,target,encounter){
-  $('nightTitle').textContent=`Night — ${attacker.name}`;
-  $('nightKnownRoles').innerHTML='';
-  $('nightActionArea').innerHTML='';
-  $('nightResult').innerHTML='';
-
-  if(encounter.action==='scapegoat' && encounter.redirectTargetId!==undefined){
-    const redirected=playerOf(encounter.redirectTargetId);
-    $('nightPrompt').innerHTML=`<strong>The target used a night ability.</strong> The attack was redirected to <strong>${escapeHtml(redirected?.name||'another player')}</strong>. Continue the attack.`;
-    $('nightActionArea').appendChild(actionButton('Continue the attack','continueRedirect',()=>{
-      if(!state.night.busy) return;
-      state.night.reactiveEncounter=null;
-      resolveImmediateAttack(attacker,redirected,encounter.outcomes);
-    }));
-    return;
-  }
-
-  if(encounter.action==='traitor'){
-    $('nightPrompt').innerHTML='<strong>The target used a night ability.</strong> Resolve the encounter to continue the attack.';
-    $('nightActionArea').appendChild(actionButton('Resolve the attack','traitorResolve',()=>{
-      if(!state.night.busy) return;
-      target.roleId='mafia';
-      encounter.outcomes.push(`${target.name} survived the attack and joined the Mafia.`);
-      state.night.reactiveEncounter=null;
-      finishImmediateAttack(attacker,encounter.outcomes);
-    }));
-    return;
-  }
-
-  if(encounter.action==='escape'){
-    $('nightPrompt').innerHTML='<strong>The target used a night ability.</strong> Play out the escape challenge, then record the result.';
-    $('nightActionArea').appendChild(actionButton('Target escaped','escaped',()=>{
-      if(!state.night.busy) return;
-      target.escaped=true;
-      encounter.outcomes.push(`${target.name} escaped the Mafia attack.`);
-      state.night.reactiveEncounter=null;
-      finishImmediateAttack(attacker,encounter.outcomes);
-    }));
-    $('nightActionArea').appendChild(actionButton('Target was caught','caught',()=>{
-      if(!state.night.busy) return;
-      target.escaped=false;
-      state.night.reactiveEncounter=null;
-      killTarget(target,encounter.outcomes,()=>finishImmediateAttack(attacker,encounter.outcomes),`${target.name} failed to escape and was killed.`);
-    }));
-    return;
-  }
-
-  if(encounter.action==='rps'){
-    $('nightPrompt').innerHTML='<strong>The target used a night ability.</strong> Play best-of-3 Rock, Paper, Scissors, then record the result.';
-    $('nightActionArea').appendChild(actionButton('Target won the encounter','won',()=>{
-      if(!state.night.busy) return;
-      encounter.outcomes.push(`${target.name} won the encounter and survived.`);
-      state.night.reactiveEncounter=null;
-      finishImmediateAttack(attacker,encounter.outcomes);
-    }));
-    $('nightActionArea').appendChild(actionButton('Target lost the encounter','lost',()=>{
-      if(!state.night.busy) return;
-      state.night.reactiveEncounter=null;
-      killTarget(target,encounter.outcomes,()=>finishImmediateAttack(attacker,encounter.outcomes),`${target.name} lost the encounter and died.`);
-    }));
-    return;
-  }
-
-  if(encounter.action==='monkey'){
-    $('nightPrompt').innerHTML='<strong>The target used a night ability.</strong> Have them complete their reaction, then resolve the attack.';
-    $('nightActionArea').appendChild(actionButton('Target completed the reaction','done',()=>{
-      if(!state.night.busy) return;
-      encounter.outcomes.push(`${target.name} completed the reaction before the attack was resolved.`);
-      state.night.reactiveEncounter=null;
-      killTarget(target,encounter.outcomes,()=>finishImmediateAttack(attacker,encounter.outcomes));
-    }));
-    return;
-  }
-
-  state.night.reactiveEncounter=null;
-  finishImmediateAttack(attacker,encounter.outcomes);
-}
-
-function resolveImmediateAttack(attacker,target,outcomes){
-  if(state.phase!=='night'){ return; }
-  if(!target || !target.alive){ completeNightTurn(); return; }
-
-  const role=roleOf(target), action=role?.nightAction, next=()=>finishImmediateAttack(attacker,outcomes);
-
-  // Mafia attackers get a blind target handoff before any reactive role is revealed.
-  if(roleOf(attacker)?.orientation==='evil' && targetHasReactiveNightAbility(target)){
-    beginReactiveTargetReveal(attacker,target,outcomes);
-    return;
-  }
-
-  if(action==='traitor'){
-    target.roleId='mafia';
-    outcomes.push(`${target.name} was attacked but became Mafia instead of dying.`);
-    next(); return;
-  }
-
-  if(action==='scapegoat' && !target.used.scapegoat){
-    const adjacent=adjacentLiving(target);
-    if(adjacent.length){
-      $('nightPrompt').innerHTML=`<strong>${escapeHtml(target.name)}</strong> was targeted by <strong>${escapeHtml(attacker.name)}</strong>. They are the <strong>${escapeHtml(role.title)}</strong>. Choose a living adjacent player to receive the attack instead.`;
-      $('nightActionArea').innerHTML='';
-      showNightResult(`This is still <strong>${escapeHtml(attacker.name)}</strong>'s turn. Give the device to ${escapeHtml(target.name)} briefly so the Scapegoat can choose the redirect, then take it back and continue the attack.`);
-      adjacent.forEach(victim=>{
-        $('nightActionArea').appendChild(actionButton(`Redirect to ${victim.name}`,victim.id,()=>{
-          if(!state.night.busy) return;
-          target.used.scapegoat=true;
-          outcomes.push(`${target.name} redirected an attempted kill to ${victim.name}.`);
-          resolveImmediateAttack(attacker,victim,outcomes);
-        }));
-      });
-      $('nightActionArea').appendChild(actionButton('Do not redirect','skip',()=>{
-        if(!state.night.busy) return;
-        target.used.scapegoat=true;
-        outcomes.push(`${target.name} chose not to redirect the attack.`);
-        killTarget(target,outcomes,next);
-      }));
-      return;
-    }
-  }
-
-  if(action==='escape'){
-    $('nightPrompt').innerHTML=`<strong>${escapeHtml(target.name)}</strong> was targeted by <strong>${escapeHtml(attacker.name)}</strong>. They are the <strong>${escapeHtml(role.title)}</strong>. This is handled in real life: play out the escape challenge now, then record the result.`;
-    $('nightActionArea').innerHTML='';
-    showNightResult(`<strong>${escapeHtml(attacker.name)}</strong> records the result of the real-life challenge here. This remains part of the attacker's turn.`);
-    $('nightActionArea').appendChild(actionButton(`${target.name} escaped`,target.id,()=>{
-      if(!state.night.busy) return;
-      target.escaped=true;
-      outcomes.push(`${target.name} escaped the Mafia attack.`);
-      next();
-    }));
-    $('nightActionArea').appendChild(actionButton(`${target.name} was caught`,target.id,()=>{
-      if(!state.night.busy) return;
-      target.escaped=false;
-      killTarget(target,outcomes,next,`${target.name} failed to escape and was killed.`);
-    }));
-    return;
-  }
-
-  if(action==='rps'){
-    $('nightPrompt').innerHTML=`<strong>${escapeHtml(target.name)}</strong> was targeted by <strong>${escapeHtml(attacker.name)}</strong>. They are the <strong>${escapeHtml(role.title)}</strong>. Play best-of-3 Rock, Paper, Scissors in real life now, then record who won.`;
-    $('nightActionArea').innerHTML='';
-    showNightResult(`<strong>${escapeHtml(attacker.name)}</strong> records who won here. This remains part of the attacker's turn.`);
-    $('nightActionArea').appendChild(actionButton(`Joker won the encounter`,target.id,()=>{
-      if(!state.night.busy) return;
-      outcomes.push(`${target.name} won Rock, Paper, Scissors against ${attacker.name} and survived.`);
-      next();
-    }));
-    $('nightActionArea').appendChild(actionButton(`Joker lost the encounter`,target.id,()=>{
-      if(!state.night.busy) return;
-      killTarget(target,outcomes,next,`${target.name} lost Rock, Paper, Scissors against ${attacker.name} and died.`);
-    }));
-    return;
-  }
-
-  if(action==='monkey'){
-    $('nightPrompt').innerHTML=`<strong>${escapeHtml(target.name)}</strong> was targeted by <strong>${escapeHtml(attacker.name)}</strong>. They are the <strong>${escapeHtml(role.title)}</strong>. Go to the attacker and loudly mimic a monkey in their face, then return the device.`;
-    $('nightActionArea').innerHTML='';
-    showNightResult(`<strong>${escapeHtml(attacker.name)}</strong> records the completion here. This remains part of the attacker's turn.`);
-    $('nightActionArea').appendChild(actionButton('Done — resolve the attack',target.id,()=>{
-      if(!state.night.busy) return;
-      outcomes.push(`${target.name} performed the Monkey reaction before dying.`);
-      killTarget(target,outcomes,next);
-    }));
-    return;
-  }
-
-  killTarget(target,outcomes,next);
-}
 function killTarget(target,outcomes,next,customText){
   if(target.alive){
     target.alive=false;
-    outcomes.push(customText||`${target.name} was killed during the night.`);
+    if(outcomes) outcomes.push(customText||`${target.name} was killed during the night.`);
   }
-  next();
+  if(next) next();
 }
-function finishImmediateAttack(attacker,outcomes){
-  if(outcomes.length){ outcomes.forEach(addLog); $('nightResult').innerHTML=outcomes.map(x=>`<div class="result">${escapeHtml(x)}</div>`).join(''); }
-  completeNightTurn();
-}
+
 function finishNight(){
   if(state.phase!=='night') return;
   $('nightPrompt').textContent='Night is resolving…';
   $('nightActionArea').innerHTML='';
+  $('nightResult').innerHTML='';
   const result=checkWin();
   renderGameLog();
   if(result.done){ endGame(result); return; }
   state.round++; $('roundPill').textContent=`Round ${state.round}`;
   setTimeout(startDay,0);
 }
+
 function resolveNight(){
   // Kept as a compatibility entry point for any existing UI references.
   finishNight();
