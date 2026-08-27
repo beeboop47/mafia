@@ -236,17 +236,6 @@
           <option value="rps">Rock, Paper, Scissors</option>
         </select>
       </div>
-      <div style="margin-top:10px">
-        <label>Who else sees this role?</label>
-        <select id="roleVisibility">
-          <option value="nobody">Nobody</option>
-          <option value="everyone">Everyone</option>
-          <option value="sameOrientation">Players with the same orientation</option>
-          <option value="good">Good players</option>
-          <option value="neutral">Neutral players</option>
-          <option value="evil">Evil players</option>
-        </select>
-      </div>
       <div class="row" style="margin-top:10px;justify-content:flex-end">
         <button id="cancelRoleBtn" class="ghost" type="button">Cancel</button>
         <button id="saveRoleBtn" type="button">Save role</button>
@@ -338,57 +327,57 @@ const DEFAULT_ROLES = [
   {
     id:'citizen',title:'Citizen',orientation:'good',
     description:'You are a Citizen. Figure out which of you are the Mafia and help the good side eliminate every evil player.',
-    visibility:'nobody', nightAction:'none'
+nightAction:'none'
   },
   {
     id:'scapegoat',title:'Scapegoat',orientation:'good',
     description:'If the Mafia successfully target you, you may transfer that attempted kill to a living player on either side of you once per game.',
-    visibility:'nobody', nightAction:'scapegoat'
+nightAction:'scapegoat'
   },
   {
     id:'peacemaker',title:'Peacemaker',orientation:'good',
     description:'Once per game, you may attempt to kill a player during the night. Try to use your shot against the Mafia.',
-    visibility:'nobody', nightAction:'killOnce'
+nightAction:'killOnce'
   },
   {
     id:'detective',title:'Detective',orientation:'good',
     description:'Each night, choose one living player and learn whether their orientation is good, neutral, or evil. The answer is truthful.',
-    visibility:'nobody', nightAction:'inspectOrientation'
+nightAction:'inspectOrientation'
   },
   {
     id:'escapist',title:'Escapist',orientation:'good',
     description:'If the Mafia target you, you get a chance to escape by literally running away from the Mafia. You have 15 seconds to survive the kill.',
-    visibility:'nobody', nightAction:'escape'
+nightAction:'escape'
   },
   {
     id:'monkey',title:'Monkey',orientation:'good',
     description:'If you are targeted by a night kill, you may loudly mimic a monkey directly in front of your perpetrator before the result is resolved.',
-    visibility:'nobody', nightAction:'monkey'
+nightAction:'monkey'
   },
   {
     id:'joker',title:'Joker',orientation:'good',
     description:'When you are targeted by a night kill, you and the perpetrator play a best-of-3 Rock, Paper, Scissors. The game decides who survives the encounter.',
-    visibility:'nobody', nightAction:'rps'
+nightAction:'rps'
   },
   {
     id:'seer',title:'Seer',orientation:'good',
     description:'Each night, see the exact role of one random living player other than yourself.',
-    visibility:'nobody', nightAction:'seer'
+nightAction:'seer'
   },
   {
     id:'traitor',title:'Traitor',orientation:'good',
     description:'If the Mafia target you, you join the Mafia instead of dying. Your orientation becomes evil from that point onward.',
-    visibility:'evil', nightAction:'traitor'
+nightAction:'traitor'
   },
   {
     id:'jester',title:'Jester',orientation:'neutral',
     description:'Try to get voted out by the Citizens during the day. You win immediately when the town votes you out.',
-    visibility:'nobody', nightAction:'none'
+nightAction:'none'
   },
   {
     id:'mafia',title:'Mafia',orientation:'evil',
     description:'Work alone or with teammates to kill all the Citizens at night.',
-    visibility:'evil', nightAction:'mafiaKill'
+nightAction:'mafiaKill'
   }
 ];
 
@@ -460,41 +449,24 @@ function hide(...ids){ ids.forEach(id => $(id)?.classList.add('hidden')); }
 function show(...ids){ ids.forEach(id => $(id)?.classList.remove('hidden')); }
 
 // ---- Setup / roles --------------------------------------------------------
-function visibilityText(value){
-  return ({
-    nobody:'Nobody', everyone:'Everyone', sameOrientation:'Same orientation',
-    good:'Good players', neutral:'Neutral players', evil:'Evil players'
-  })[value] || value;
-}
-function visibleTo(viewer,target){
-  const role=roleOf(target);
-  if(!role || !viewer || viewer.id===target.id) return false;
-
-  // Evil players know every other Evil player by default.
-  const viewerRole=roleOf(viewer);
-  if(viewerRole?.orientation==='evil' && role.orientation==='evil') return true;
-
-  if(role.visibility==='everyone') return true;
-  if(role.visibility==='nobody') return false;
-  if(!viewerRole) return false;
-  return role.visibility==='sameOrientation'
-    ? viewerRole.orientation===role.orientation
-    : viewerRole.orientation===role.visibility;
-}
 function renderKnownRoles(viewer, containerId){
   const el=$(containerId); if(!el) return;
-  const known=state.players.filter(target => visibleTo(viewer,target));
+  const viewerRole=roleOf(viewer);
+  const known=viewerRole?.orientation==='evil'
+    ? state.players.filter(target => target.id!==viewer.id && target.alive && roleOf(target)?.orientation==='evil')
+    : [];
   if(!known.length){ el.innerHTML=''; return; }
   el.innerHTML=`
     <div class="known-roles">
-      <strong>Roles you know</strong>
-      <div class="muted tiny" style="margin-top:4px">These roles are visible to you because of their visibility setting.</div>
+      <strong>Evil team</strong>
+      <div class="muted tiny" style="margin-top:4px">All living Evil players know one another.</div>
       <div class="known-role-list">${known.map(target => {
         const role=roleOf(target);
-        return `<div class="known-role"><strong>${escapeHtml(target.name)}</strong><div class="tiny muted" style="margin-top:4px">${escapeHtml(role?.title||'Unknown')} ${rolePill(role)}</div></div>`;
+        return `<div class="known-role"><strong>${escapeHtml(target.name)}</strong><div class="tiny muted" style="margin-top:4px">${escapeHtml(role?.title||'Unknown')}</div></div>`;
       }).join('')}</div>
     </div>`;
 }
+
 function renderPlayers(){
   const el=$('players'); el.innerHTML='';
   state.players.forEach((player,index)=>{
@@ -547,7 +519,7 @@ function renderRoleLibrary(){
         <button class="ghost" data-edit type="button">Edit</button>
         <button class="danger" data-delete type="button">Remove</button></div>
       <div class="role-desc">${escapeHtml(role.description)}</div>
-      <div class="muted tiny" style="margin-top:8px">Night ability: ${escapeHtml(NIGHT_ACTIONS[role.nightAction]?.label || role.nightAction || 'None')} · Seen by: ${escapeHtml(visibilityText(role.visibility))}</div>`;
+      <div class="muted tiny" style="margin-top:8px">Night ability: ${escapeHtml(NIGHT_ACTIONS[role.nightAction]?.label || role.nightAction || 'None')}</div>`;
     card.querySelector('[data-edit]').addEventListener('click',()=>openRoleEditor(role.id));
     card.querySelector('[data-delete]').addEventListener('click',()=>removeRole(role.id));
     el.appendChild(card);
@@ -565,7 +537,6 @@ function openRoleEditor(id=null){
   $('roleOrientation').value=role?.orientation||'good';
   $('roleDescription').value=role?.description||'';
   $('roleNightAction').value=role?.nightAction||'none';
-  $('roleVisibility').value=role?.visibility||'nobody';
   $('roleEditor').classList.remove('hidden'); $('roleTitle').focus();
 }
 function closeRoleEditor(){ state.editingRoleId=null; $('roleEditor').classList.add('hidden'); }
@@ -743,21 +714,22 @@ function resolveDay(){
 function isKillingRole(role){
   return role?.nightAction==='mafiaKill' || role?.nightAction==='killOnce';
 }
-
+function isTeamKillRole(role){
+  return role?.orientation==='evil' && role?.nightAction==='mafiaKill';
+}
+function isIndependentKillRole(role){
+  return role?.nightAction==='killOnce';
+}
 function evilTeamHasKillingAbility(){
-  return playersAlive().some(player=>roleOf(player)?.orientation==='evil' && isKillingRole(roleOf(player)));
+  return playersAlive().some(player=>isTeamKillRole(roleOf(player)));
 }
 
 function sameCoordinationGroup(a,b){
   const roleA=roleOf(a), roleB=roleOf(b);
   if(!roleA || !roleB) return false;
 
-  if(roleA.orientation==='evil' && roleB.orientation==='evil'){
+  if(isTeamKillRole(roleA) && roleB.orientation==='evil'){
     return evilTeamHasKillingAbility();
-  }
-
-  if(isKillingRole(roleA) && isKillingRole(roleB)){
-    return roleA.title===roleB.title;
   }
 
   return false;
@@ -767,12 +739,8 @@ function coordinatedKillMembers(actor){
   const role=roleOf(actor);
   if(!role) return [actor];
 
-  if(role.orientation==='evil' && evilTeamHasKillingAbility()){
+  if(isTeamKillRole(role) && evilTeamHasKillingAbility()){
     return playersAlive().filter(player=>roleOf(player)?.orientation==='evil');
-  }
-
-  if(isKillingRole(role)){
-    return playersAlive().filter(player=>sameCoordinationGroup(actor,player));
   }
 
   return [actor];
@@ -780,28 +748,17 @@ function coordinatedKillMembers(actor){
 
 function buildNightActionQueue(){
   const queue=[];
-  const processed=[];
-  const activeActions=new Set(['mafiaKill','killOnce','inspectOrientation','seer']);
-  const evilKillingTeam=evilTeamHasKillingAbility();
+  const teamKiller=playersAlive().find(player=>isTeamKillRole(roleOf(player)));
+  if(teamKiller) queue.push(teamKiller);
 
   playersAlive().forEach(player=>{
     const role=roleOf(player);
-    if(!role || !activeActions.has(role.nightAction)) return;
-
-    if(role.orientation==='evil' && evilKillingTeam){
-      if(processed.some(rep=>roleOf(rep)?.orientation==='evil')) return;
-      const representative=playersAlive().find(p=>roleOf(p)?.orientation==='evil' && isKillingRole(roleOf(p)));
-      queue.push(representative || player);
-      processed.push(player);
-      return;
-    }
-
-    if(isKillingRole(role)){
-      if(processed.some(rep=>sameCoordinationGroup(rep,player))) return;
-      processed.push(player);
-    }
-
-    queue.push(player);
+    if(!role || isTeamKillRole(role)) return;
+    if(isIndependentKillRole(role) || ['inspectOrientation','seer'].includes(role.nightAction)) queue.push(player);
+  });
+  playersAlive().forEach(player=>{
+    const role=roleOf(player);
+    if(role?.nightAction==='doctor') queue.push(player);
   });
 
   return $('nightOrder').value==='random' ? shuffle(queue) : queue;
@@ -817,7 +774,7 @@ function buildNightReactionQueue(){
 function startNight(){
   state.phase='night';
   const nightPlayers=playersAlive().slice();
-  const actionQueue=nightPlayers.slice();
+  const actionQueue=buildNightActionQueue();
   state.night={
     round:1,
     queue:actionQueue,
@@ -833,11 +790,11 @@ function startNight(){
     sharedKillActorId:null,
     sharedKillActionUsed:false
   };
-  // One Mafia team kill / shared once-per-game kill is still used, but every
-  // player receives a Round 1 turn. The first eligible Mafia killer in the
+  // One Evil team kill is used, while independent one-time kill roles may also act the same night. Every
+  // player receives a Round 1 turn. The first eligible Evil team killer in the
   // pass handles the shared team action; their Mafia teammates still get a
-  // normal Round 1 turn with no duplicate kill.
-  const firstSharedKiller=nightPlayers.find(p=>roleOf(p)?.orientation==='evil' && isKillingRole(roleOf(p)));
+  // no duplicate team kill.
+  const firstSharedKiller=nightPlayers.find(p=>isTeamKillRole(roleOf(p)));
   if(firstSharedKiller){ state.night.sharedKillActorId=firstSharedKiller.id; }
   hide('dayCard','handoffCard'); show('nightCard');
   setPhase('Night','Night actions — Round 1');
@@ -862,8 +819,14 @@ function advanceNightActor(){
 }
 
 function completeNightTurn(){
-  if(state.night.round===2 && Number.isInteger(state.night.currentActorId) && !state.night.reactionCompleted.includes(state.night.currentActorId)){
-    state.night.reactionCompleted.push(state.night.currentActorId);
+  if(state.night.round===2 && Number.isInteger(state.night.currentActorId)){
+    const current=playerOf(state.night.currentActorId);
+    const morePending=!!current?.alive && findPendingAttacksFor(current.id).length>0;
+    if(morePending){
+      state.night.reactionQueue.push(current);
+    }else if(!state.night.reactionCompleted.includes(state.night.currentActorId)){
+      state.night.reactionCompleted.push(state.night.currentActorId);
+    }
   }
   setNightBusy(false);
   const result=checkWin();
@@ -953,7 +916,7 @@ function setChoiceAndContinue(actor,choice){
   }
 
   if(isKillingRole(role)){
-    const coordinated = role.orientation==='evil' && evilTeamHasKillingAbility();
+    const coordinated = isTeamKillRole(role) && evilTeamHasKillingAbility();
     if(coordinated && actor.id!==state.night.sharedKillActorId){
       showNightResult("Your Mafia team uses one shared kill during the night. Your team\'s killing action is handled by the designated Mafia turn.");
       $('nightPrompt').textContent='No separate kill is taken on this turn. Acknowledge and continue.';
@@ -964,8 +927,8 @@ function setChoiceAndContinue(actor,choice){
       }));
       return;
     }
-    if(role.nightAction==='killOnce' && state.night.sharedKillActionUsed){
-      showNightResult('Your shared once-per-game kill has already been used.');
+    if(isIndependentKillRole(role) && actor.used.killOnce){
+      showNightResult('Your once-per-game kill has already been used.');
       $('nightPrompt').textContent='Acknowledge and continue.';
       $('nightActionArea').innerHTML='';
       $('nightActionArea').appendChild(actionButton('Acknowledge & continue','killUsedAcknowledge',()=>{
@@ -981,17 +944,15 @@ function setChoiceAndContinue(actor,choice){
       return;
     }
 
-    const team=coordinatedKillMembers(actor);
-    if(role.nightAction==='killOnce') team.forEach(member=>member.used.killOnce=true);
+    if(isIndependentKillRole(role)) actor.used.killOnce=true;
 
     state.night.pendingAttacks.push({
       attackerId:actor.id,
       targetId:target.id,
-      sourceAction:role.nightAction
+      sourceAction:role.nightAction,
+      teamKill:isTeamKillRole(role)
     });
-    if(role.orientation==='evil' && evilTeamHasKillingAbility()){
-      state.night.sharedKillActionUsed=true;
-    }
+    if(isTeamKillRole(role)) state.night.sharedKillActionUsed=true;
 
     showNightResult(`<strong>Target recorded.</strong> The attack will be resolved during the reaction round.`);
     $('nightPrompt').textContent='Action recorded. Acknowledge to finish this turn.';
@@ -1029,19 +990,14 @@ function renderStandardAction(actor,role,living){
       break;
     }
     case 'killOnce': {
-      const team=coordinatedKillMembers(actor);
-      const alreadyUsed=team.every(member=>member.used.killOnce);
+      const alreadyUsed=!!actor.used.killOnce;
       if(alreadyUsed){
-        $('nightPrompt').textContent=team.length>1
-          ? 'Your group has already used its shared once-per-game kill.'
-          : 'You already used your once-per-game kill.';
+        $('nightPrompt').textContent='You already used your once-per-game kill.';
         area.appendChild(actionButton('Skip tonight','skip',()=>setChoiceAndContinue(actor,'skip')));
       } else {
-        $('nightPrompt').textContent=team.length>1
-          ? `${team.map(p=>escapeHtml(p.name)).join(', ')} share one once-per-game kill. Choose one living target. The attack is resolved in the reaction round.`
-          : 'Choose one living player to attempt to kill. The attack is resolved in the reaction round.';
+        $('nightPrompt').textContent='Choose one living player to attempt to kill. This shot is independent of the Evil team kill and can happen during the same night.';
         living.forEach(choose);
-        area.appendChild(actionButton(team.length>1?'Do not use the group kill':'Do not use my shot','skip',()=>setChoiceAndContinue(actor,'skip')));
+        area.appendChild(actionButton('Do not use my shot','skip',()=>setChoiceAndContinue(actor,'skip')));
       }
       break;
     }
@@ -1415,12 +1371,12 @@ $('cancelRoleBtn').addEventListener('click',closeRoleEditor);
 $('saveRoleBtn').addEventListener('click',()=>{
   const title=$('roleTitle').value.trim(), description=$('roleDescription').value.trim();
   if(!title||!description){ alert('Give the role a title and player-facing description.'); return; }
-  const orientation=$('roleOrientation').value, visibility=$('roleVisibility').value, nightAction=$('roleNightAction').value;
+  const orientation=$('roleOrientation').value, nightAction=$('roleNightAction').value;
   if(state.editingRoleId){
     const role=state.roles.find(r=>r.id===state.editingRoleId);
-    Object.assign(role,{title,orientation,description,visibility,nightAction});
+    Object.assign(role,{title,orientation,description,nightAction});
   } else {
-    state.roles.push({id:`custom_${Date.now()}`,title,orientation,description,visibility,nightAction,randomCount:0});
+    state.roles.push({id:`custom_${Date.now()}`,title,orientation,description,nightAction,randomCount:0});
   }
   closeRoleEditor(); renderSetup();
 });
