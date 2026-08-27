@@ -829,6 +829,7 @@ function startNight(){
     reactionQueue:[],
     reactionCompleted:[],
     round1Players:nightPlayers,
+    turnRevealed:false,
     sharedKillActorId:null,
     sharedKillActionUsed:false
   };
@@ -851,6 +852,7 @@ function advanceNightActor(){
   if(state.phase!=='night') return;
   state.night.index++;
   state.night.handoffReady=false;
+  state.night.turnRevealed=false;
   if(state.night.index>=state.night.queue.length){
     if(state.night.round===1){ beginReactionRound(); return; }
     finishNight();
@@ -1113,6 +1115,19 @@ function updateNight(){
   $('nightResult').innerHTML='';
   $('nightKnownRoles').innerHTML='';
 
+  // Every turn starts behind a neutral reveal gate so nobody passing the device
+  // can accidentally see the next player's private night information.
+  if(!night.turnRevealed){
+    $('nightPrompt').innerHTML='<strong>Pass the device to this player.</strong> Only they should continue.';
+    $('nightResult').innerHTML='<div class="result"><strong>Ready?</strong><br>Press the button below to privately reveal your night turn.</div>';
+    $('nightActionArea').appendChild(actionButton('Reveal my turn','revealTurn',()=>{
+      if(state.phase!=='night' || state.night.busy || state.night.turnRevealed) return;
+      state.night.turnRevealed=true;
+      updateNight();
+    }));
+    return;
+  }
+
   if(night.round===1){
     setPhase('Night','Night actions — Round 1');
     renderNightKnownRoles(actor);
@@ -1141,6 +1156,7 @@ function beginReactionRound(){
   state.night.busy=false;
   state.night.handoffReady=false;
   state.night.reactionCompleted=[];
+  state.night.turnRevealed=false;
   setPhase('Night','Night reactions — Round 2');
   if(!state.night.reactionQueue.length){ finishNight(); return; }
   updateNight();
