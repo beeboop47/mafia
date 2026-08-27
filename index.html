@@ -808,14 +808,16 @@ function buildNightActionQueue(){
 }
 
 function buildNightReactionQueue(){
-  // Everyone gets a reaction-round pass. Reactive roles can respond if targeted;
-  // everyone else either acknowledges that nothing happens or is told they were killed.
-  return playersAlive().slice();
+  // Every player who was alive when the night began gets a Round 2 pass.
+  // This queue is intentionally a snapshot so players killed earlier in Round 2
+  // still receive their own turn and are told they were killed.
+  return state.night.round1Players ? state.night.round1Players.slice() : playersAlive().slice();
 }
 
 function startNight(){
   state.phase='night';
-  const actionQueue=buildNightActionQueue();
+  const nightPlayers=playersAlive().slice();
+  const actionQueue=nightPlayers.slice();
   state.night={
     round:1,
     queue:actionQueue,
@@ -825,8 +827,17 @@ function startNight(){
     handoffReady:false,
     pendingAttacks:[],
     reactionQueue:[],
-    reactionCompleted:[]
+    reactionCompleted:[],
+    round1Players:nightPlayers,
+    sharedKillActorId:null,
+    sharedKillActionUsed:false
   };
+  // One Mafia team kill / shared once-per-game kill is still used, but every
+  // player receives a Round 1 turn. The first eligible Mafia killer in the
+  // pass handles the shared team action; their Mafia teammates still get a
+  // normal Round 1 turn with no duplicate kill.
+  const firstSharedKiller=nightPlayers.find(p=>roleOf(p)?.orientation==='evil' && isKillingRole(roleOf(p)));
+  if(firstSharedKiller){ state.night.sharedKillActorId=firstSharedKiller.id; }
   hide('dayCard','handoffCard'); show('nightCard');
   setPhase('Night','Night actions — Round 1');
   if(!state.night.queue.length){ beginReactionRound(); return; }
@@ -940,6 +951,27 @@ function setChoiceAndContinue(actor,choice){
   }
 
   if(isKillingRole(role)){
+    const coordinated = role.orientation==='evil' && evilTeamHasKillingAbility();
+    if(coordinated && actor.id!==state.night.sharedKillActorId){
+      showNightResult("Your Mafia team uses one shared kill during the night. Your team\'s killing action is handled by the designated Mafia turn.");
+      $('nightPrompt').textContent='No separate kill is taken on this turn. Acknowledge and continue.';
+      $('nightActionArea').innerHTML='';
+      $('nightActionArea').appendChild(actionButton('Acknowledge & continue','mafiaTeamAcknowledge',()=>{
+        if(!state.night.busy) return;
+        completeNightTurn();
+      }));
+      return;
+    }
+    if(role.nightAction==='killOnce' && state.night.sharedKillActionUsed){
+      showNightResult('Your shared once-per-game kill has already been used.');
+      $('nightPrompt').textContent='Acknowledge and continue.';
+      $('nightActionArea').innerHTML='';
+      $('nightActionArea').appendChild(actionButton('Acknowledge & continue','killUsedAcknowledge',()=>{
+        if(!state.night.busy) return;
+        completeNightTurn();
+      }));
+      return;
+    }
     const target=playerOf(choice);
     if(!target || !target.alive){
       showNightResult('That target is no longer available.');
@@ -955,6 +987,9 @@ function setChoiceAndContinue(actor,choice){
       targetId:target.id,
       sourceAction:role.nightAction
     });
+    if(role.orientation==='evil' && evilTeamHasKillingAbility()){
+      state.night.sharedKillActionUsed=true;
+    }
 
     showNightResult(`<strong>Target recorded.</strong> The attack will be resolved during the reaction round.`);
     $('nightPrompt').textContent='Action recorded. Acknowledge to finish this turn.';
