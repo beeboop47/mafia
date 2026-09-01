@@ -225,14 +225,14 @@
         <label>Night ability</label>
         <select id="roleNightAction">
           <option value="none">None</option>
-          <option value="mafiaKill">Mafia kill / team kill</option>
-          <option value="killOnce">One-time kill</option>
+          <option value="teamKill">Team kill</option>
+          <option value="kill">Kill</option>
           <option value="inspectOrientation">Inspect orientation</option>
           <option value="seer">Reveal a random exact role</option>
           <option value="scapegoat">Scapegoat redirect</option>
           <option value="traitor">Traitor conversion</option>
           <option value="escape">Escape challenge</option>
-          <option value="monkey">Monkey reaction</option>
+          <option value="monkey">Confrontation</option>
           <option value="rps">Rock, Paper, Scissors</option>
         </select>
       </div>
@@ -347,8 +347,13 @@ const DEFAULT_ROLES = [
   },
   {
     id:'peacemaker',title:'Peacemaker',orientation:'good',
-    description:'Once per game, you may attempt to kill a player during the night. Try to use your shot against the Mafia.',
-    visibility:'nobody', nightAction:'killOnce'
+    description:'Each night, you may use your team kill to attempt to kill one player. Any other Peacemaker shares the same team kill, so only one Peacemaker can use it per night.',
+    visibility:'nobody', nightAction:'teamKill'
+  },
+  {
+    id:'serial_killer',title:'Serial Killer',orientation:'neutral',
+    description:'Each night, choose one living player to kill.',
+    visibility:'nobody', nightAction:'kill'
   },
   {
     id:'detective',title:'Detective',orientation:'good',
@@ -362,7 +367,7 @@ const DEFAULT_ROLES = [
   },
   {
     id:'monkey',title:'Monkey',orientation:'good',
-    description:'If you are targeted by a night kill, you may loudly mimic a monkey directly in front of your perpetrator before the result is resolved.',
+    description:'If you are targeted by a night kill, you may make a loud sound or otherwise openly confront your perpetrator directly before the result is resolved.',
     visibility:'nobody', nightAction:'monkey'
   },
   {
@@ -387,8 +392,8 @@ const DEFAULT_ROLES = [
   },
   {
     id:'mafia',title:'Mafia',orientation:'evil',
-    description:'Work alone or with teammates to kill all the Citizens at night.',
-    visibility:'evil', nightAction:'mafiaKill'
+    description:'Work with other Mafia players who share this exact role. Together, you have one shared team kill per night.',
+    visibility:'evil', nightAction:'teamKill'
   }
 ];
 
@@ -409,14 +414,14 @@ const state = {
 
 const NIGHT_ACTIONS = Object.freeze({
   none: { label:'None' },
-  mafiaKill: { label:'Mafia kill / team kill' },
-  killOnce: { label:'One-time kill' },
+  teamKill: { label:'Team kill' },
+  kill: { label:'Kill' },
   inspectOrientation: { label:'Inspect orientation' },
   seer: { label:'Reveal a random exact role' },
   scapegoat: { label:'Scapegoat redirect' },
   traitor: { label:'Traitor conversion' },
   escape: { label:'Escape challenge' },
-  monkey: { label:'Monkey reaction' },
+  monkey: { label:'Confrontation' },
   rps: { label:'Rock, Paper, Scissors' },
 });
 
@@ -533,7 +538,15 @@ function renderPlayers(){
 }
 function renderRandomRolePool(){
   const el=$('randomRolePool'); el.innerHTML='';
-  state.roles.filter(role=>role.id!=='citizen').forEach(role=>{
+  const orientationOrder={good:0,neutral:1,evil:2};
+  const roles=[...state.roles]
+    .filter(role=>role.id!=='citizen')
+    .sort((a,b)=>{
+      const orientationDiff=(orientationOrder[a.orientation]??99)-(orientationOrder[b.orientation]??99);
+      if(orientationDiff!==0) return orientationDiff;
+      return a.title.localeCompare(b.title,undefined,{sensitivity:'base'});
+    });
+  roles.forEach(role=>{
     const count=role.randomCount ?? 0;
     const box=document.createElement('div'); box.className='role-card';
     box.innerHTML=`
@@ -549,7 +562,13 @@ function renderRandomRolePool(){
 }
 function renderRoleLibrary(){
   const el=$('roleLibrary'); el.innerHTML='';
-  state.roles.forEach(role=>{
+  const orientationOrder={good:0,neutral:1,evil:2};
+  const roles=[...state.roles].sort((a,b)=>{
+    const orientationDiff=(orientationOrder[a.orientation]??99)-(orientationOrder[b.orientation]??99);
+    if(orientationDiff!==0) return orientationDiff;
+    return a.title.localeCompare(b.title,undefined,{sensitivity:'base'});
+  });
+  roles.forEach(role=>{
     const card=document.createElement('div'); card.className='role-card';
     card.innerHTML=`
       <div class="role-head"><strong>${escapeHtml(role.title)}</strong>${rolePill(role)}<span class="spacer"></span>
@@ -750,66 +769,26 @@ function resolveDay(){
 
 // ---- Night ---------------------------------------------------------------
 function isKillingRole(role){
-  return role?.nightAction==='mafiaKill' || role?.nightAction==='killOnce';
+  return role?.nightAction==='teamKill' || role?.nightAction==='kill';
 }
 
-function evilTeamHasKillingAbility(){
-  return playersAlive().some(player=>roleOf(player)?.orientation==='evil' && isKillingRole(roleOf(player)));
-}
-
-function sameCoordinationGroup(a,b){
-  const roleA=roleOf(a), roleB=roleOf(b);
-  if(!roleA || !roleB) return false;
-
-  if(roleA.orientation==='evil' && roleB.orientation==='evil'){
-    return evilTeamHasKillingAbility() && mutuallyVisible(a,b);
-  }
-
-  if(isKillingRole(roleA) && isKillingRole(roleB)){
-    return roleA.title===roleB.title;
-  }
-
-  return false;
+function isTeamKillRole(role){
+  return role?.nightAction==='teamKill';
 }
 
 function coordinatedKillMembers(actor){
   const role=roleOf(actor);
-  if(!role) return [actor];
-
-  if(role.orientation==='evil' && isKillingRole(role) && evilTeamHasKillingAbility()){
-    return evilTeamMembers(actor);
-  }
-
-  if(isKillingRole(role)){
-    return playersAlive().filter(player=>sameCoordinationGroup(actor,player));
-  }
-
-  return [actor];
+  if(!role || !isTeamKillRole(role)) return [actor];
+  return playersAlive().filter(player=>roleOf(player)?.id===role.id);
 }
 
 function buildNightActionQueue(){
   const queue=[];
-  const processed=[];
-  const activeActions=new Set(['mafiaKill','killOnce','inspectOrientation','seer']);
-  const evilKillingTeam=evilTeamHasKillingAbility();
+  const activeActions=new Set(['teamKill','kill','inspectOrientation','seer']);
 
   playersAlive().forEach(player=>{
     const role=roleOf(player);
     if(!role || !activeActions.has(role.nightAction)) return;
-
-    if(role.orientation==='evil' && evilKillingTeam){
-      if(processed.some(rep=>roleOf(rep)?.orientation==='evil')) return;
-      const representative=playersAlive().find(p=>roleOf(p)?.orientation==='evil' && isKillingRole(roleOf(p)));
-      queue.push(representative || player);
-      processed.push(player);
-      return;
-    }
-
-    if(isKillingRole(role)){
-      if(processed.some(rep=>sameCoordinationGroup(rep,player))) return;
-      processed.push(player);
-    }
-
     queue.push(player);
   });
 
@@ -839,15 +818,10 @@ function startNight(){
     reactionCompleted:[],
     round1Players:nightPlayers,
     turnRevealed:false,
-    sharedKillActorId:null,
-    sharedKillActionUsed:false
+    usedTeamKillRoleIds:[]
   };
-  // One Mafia team kill / shared once-per-game kill is still used, but every
-  // player receives a Round 1 turn. The first eligible Mafia killer in the
-  // pass handles the shared team action; their Mafia teammates still get a
-  // normal Round 1 turn with no duplicate kill.
-  const firstSharedKiller=nightPlayers.find(p=>roleOf(p)?.orientation==='evil' && isKillingRole(roleOf(p)));
-  if(firstSharedKiller){ state.night.sharedKillActorId=firstSharedKiller.id; }
+  // A team-kill role shares one kill per night with players who have the exact same role.
+  // Everyone still gets a private turn and sees the other exact-role members.
   hide('dayCard','handoffCard'); show('nightCard');
   setPhase('Night','Night actions — Round 1');
   if(!state.night.queue.length){ beginReactionRound(); return; }
@@ -886,10 +860,10 @@ function renderNightKnownRoles(actor){
   renderKnownRoles(actor,'nightKnownRoles');
 
   const role=roleOf(actor);
-  const team=coordinatedKillMembers(actor);
-  if(!role || team.length<2) return;
+  const teammates=coordinatedKillMembers(actor).filter(player=>player.id!==actor.id);
+  if(!role || !teammates.length) return;
 
-  const teammateNames=team.map(player=>{
+  const teammateNames=teammates.map(player=>{
     const playerRole=roleOf(player);
     const label=role.orientation==='evil' && playerRole?.orientation==='evil'
       ? 'Evil teammate'
@@ -905,8 +879,8 @@ function renderNightKnownRoles(actor){
 
   $('nightKnownRoles').innerHTML += `
     <div class="known-roles">
-      <strong>Coordinated killing team</strong>
-      <div class="muted tiny" style="margin-top:4px">These living players coordinate on one shared kill.</div>
+      <strong>Team kill members</strong>
+      <div class="muted tiny" style="margin-top:4px">These living players share the same exact role and coordinate on one shared kill.</div>
       <div class="known-role-list">${teammateNames}</div>
     </div>`;
 }
@@ -962,28 +936,20 @@ function setChoiceAndContinue(actor,choice){
   }
 
   if(isKillingRole(role)){
-    const coordinated = role.orientation==='evil' && evilTeamHasKillingAbility();
-    if(coordinated && actor.id!==state.night.sharedKillActorId){
-      showNightResult("Your Mafia team uses one shared kill during the night. Your team\'s killing action is handled by the designated Mafia turn.");
-      $('nightPrompt').textContent='No separate kill is taken on this turn. Acknowledge and continue.';
+    const teamKillUsed = isTeamKillRole(role)
+      && state.night.usedTeamKillRoleIds.includes(role.id);
+
+    if(teamKillUsed){
+      showNightResult(`Your ${escapeHtml(role.title)} team has already used its team kill tonight.`);
+      $('nightPrompt').textContent='Your exact-role team already used the shared kill. Acknowledge and continue.';
       $('nightActionArea').innerHTML='';
-      $('nightActionArea').appendChild(actionButton('Acknowledge & continue','mafiaTeamAcknowledge',()=>{
+      $('nightActionArea').appendChild(actionButton('Acknowledge & continue','teamKillUsedAcknowledge',()=>{
         if(!state.night.busy) return;
         completeNightTurn();
       }));
       return;
     }
-    const evilSharedKill = role.orientation==='evil' && coordinated && state.night.sharedKillActionUsed;
-    if(role.nightAction==='killOnce' && evilSharedKill){
-      showNightResult("Your evil team's shared once-per-game kill has already been used.");
-      $('nightPrompt').textContent='Acknowledge and continue.';
-      $('nightActionArea').innerHTML='';
-      $('nightActionArea').appendChild(actionButton('Acknowledge & continue','killUsedAcknowledge',()=>{
-        if(!state.night.busy) return;
-        completeNightTurn();
-      }));
-      return;
-    }
+
     const target=playerOf(choice);
     if(!target || !target.alive){
       showNightResult('That target is no longer available.');
@@ -991,18 +957,15 @@ function setChoiceAndContinue(actor,choice){
       return;
     }
 
-    const team=coordinatedKillMembers(actor);
-    if(role.nightAction==='killOnce') team.forEach(member=>member.used.killOnce=true);
+    if(isTeamKillRole(role) && !state.night.usedTeamKillRoleIds.includes(role.id)){
+      state.night.usedTeamKillRoleIds.push(role.id);
+    }
 
     state.night.pendingAttacks.push({
       attackerId:actor.id,
       targetId:target.id,
       sourceAction:role.nightAction
     });
-    if(role.orientation==='evil' && evilTeamHasKillingAbility()){
-      state.night.sharedKillActionUsed=true;
-    }
-
     showNightResult(`<strong>Target recorded.</strong> The attack will be resolved during the reaction round.`);
     $('nightPrompt').textContent='Action recorded. Acknowledge to finish this turn.';
     $('nightActionArea').innerHTML='';
@@ -1030,31 +993,27 @@ function renderStandardAction(actor,role,living){
   const choose=target=>area.appendChild(actionButton(target.name,target.id,()=>setChoiceAndContinue(actor,target.id)));
 
   switch(role.nightAction){
-    case 'mafiaKill': {
+    case 'teamKill': {
       const team=coordinatedKillMembers(actor);
+      const used=state.night.usedTeamKillRoleIds.includes(role.id);
+      if(used){
+        $('nightPrompt').innerHTML=`<strong>Team kill already used:</strong> ${team.map(p=>escapeHtml(p.name)).join(', ')} share one kill tonight, and another team member already used it.`;
+        area.appendChild(actionButton('Acknowledge & continue','skip',()=>setChoiceAndContinue(actor,'skip')));
+        break;
+      }
       $('nightPrompt').innerHTML=team.length>1
-        ? `<strong>Evil team:</strong> ${team.map(p=>escapeHtml(p.name)).join(', ')} coordinate on one shared kill. Choose one target. The attack is resolved in the reaction round.`
-        : `<strong>${escapeHtml(role.title)}</strong> — choose a living target. The attack is resolved in the reaction round.`;
+        ? `<strong>Team kill:</strong> ${team.map(p=>escapeHtml(p.name)).join(', ')} share one kill tonight. If one of you uses it, the others cannot. Choose one target.`
+        : `<strong>${escapeHtml(role.title)}</strong> — choose a living target for your team kill.`;
+      living.forEach(choose);
+      area.appendChild(actionButton('Do not use the team kill','skip',()=>setChoiceAndContinue(actor,'skip')));
+      break;
+    }
+    case 'kill': {
+      $('nightPrompt').textContent='Choose one living player to kill. The attack is resolved in the reaction round.';
       living.forEach(choose);
       break;
     }
-    case 'killOnce': {
-      const team=coordinatedKillMembers(actor);
-      const alreadyUsed=team.every(member=>member.used.killOnce);
-      if(alreadyUsed){
-        $('nightPrompt').textContent=team.length>1
-          ? 'Your group has already used its shared once-per-game kill.'
-          : 'You already used your once-per-game kill.';
-        area.appendChild(actionButton('Skip tonight','skip',()=>setChoiceAndContinue(actor,'skip')));
-      } else {
-        $('nightPrompt').textContent=team.length>1
-          ? `${team.map(p=>escapeHtml(p.name)).join(', ')} share one once-per-game kill. Choose one living target. The attack is resolved in the reaction round.`
-          : 'Choose one living player to attempt to kill. The attack is resolved in the reaction round.';
-        living.forEach(choose);
-        area.appendChild(actionButton(team.length>1?'Do not use the group kill':'Do not use my shot','skip',()=>setChoiceAndContinue(actor,'skip')));
-      }
-      break;
-    }
+
     case 'inspectOrientation':
       $('nightPrompt').textContent='Choose one living player to inspect. Their orientation will be revealed privately.';
       living.forEach(choose);
@@ -1199,6 +1158,7 @@ function renderReactionTurn(actor){
   $('resolveNightBtn').disabled=true;
 
   if(!actor.alive){
+    state.night.pendingAttacks = state.night.pendingAttacks.filter(a=>a.targetId!==actor.id);
     $('nightPrompt').innerHTML='<strong>You were killed during the night.</strong> Your night ability does not activate.';
     showNightResult('This is your night-response turn. Acknowledge and pass the device.');
     $('nightActionArea').appendChild(actionButton('Acknowledge & continue','deadAcknowledge',()=>{
@@ -1310,12 +1270,12 @@ function showPrivateReaction(target,attack){
   }
 
   if(action==='monkey'){
-    $('nightPrompt').innerHTML=`<strong>You were targeted by ${escapeHtml(attackerName)}.</strong> Go to that attacker and loudly mimic a monkey, then return to the device.`;
+    $('nightPrompt').innerHTML=`<strong>You were targeted by ${escapeHtml(attackerName)}.</strong> Go to that attacker and make a loud sound or otherwise openly confront them, then return to the device.`;
     $('nightActionArea').appendChild(actionButton('Reaction complete','done',()=>{
       if(!state.night.busy) setNightBusy(true);
       removePendingAttack(attack);
       target.alive=false;
-      addLog(`${target.name} performed the Monkey reaction and was killed.`);
+      addLog(`${target.name} completed the confrontation and was killed.`);
       completeNightTurn();
     }));
   }
