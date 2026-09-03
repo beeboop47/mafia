@@ -960,8 +960,8 @@
         <div>
           <label>Night order</label>
           <select id="nightOrder">
-            <option value="role">By role list order</option>
-            <option value="random">Random each night</option>
+            <option value="player">By player list order</option>
+            <option value="random">Fully random each night</option>
           </select>
         </div>
       </div>
@@ -1666,40 +1666,30 @@
     }
 
     function buildNightActionQueue() {
-      const queue = [];
+      // Pass-and-play night order never gives priority to a role or ability.
+      // Player mode preserves the current player-list order; random mode shuffles
+      // the complete eligible queue.
       const activeActions = new Set(['teamKill', 'kill', 'inspectOrientation', 'seer', 'framer', 'hater', 'protect', 'roleblock', 'silence', 'track', 'watch']);
-
-      playersAlive().forEach(player => {
+      const queue = playersAlive().filter(player => {
         const role = roleOf(player);
-        if (!role || !activeActions.has(role.nightAction)) return;
-        if (role.nightAction === 'hater' && state.round !== 1) return;
-        queue.push(player);
+        return !!role && activeActions.has(role.nightAction) && !(role.nightAction === 'hater' && state.round !== 1);
       });
-
-      // Framers act first so their target gets to choose a framed role before any information is resolved.
-      // Control/information abilities then act before the rest so their effects are available to later turns.
-      const priority = {framer: 0, protect: 1, roleblock: 2, silence: 3, track: 4, watch: 5};
-      queue.sort((a, b) => (priority[roleOf(a)?.nightAction] ?? 10) - (priority[roleOf(b)?.nightAction] ?? 10));
-      if ($('nightOrder').value === 'random') {
-        const grouped = [...Array.from(new Set(Object.values(priority)))].sort((a,b)=>a-b).map(level => shuffle(queue.filter(p => (priority[roleOf(p)?.nightAction] ?? 10) === level)));
-        return grouped.flat();
-      }
-      return queue;
+      return $('nightOrder').value === 'random' ? shuffle(queue) : queue;
     }
 
     function buildNightReactionQueue() {
-      // Every player who was alive when the night began gets a Round 2 pass.
-      // Doctors are placed last so every ordinary night kill/reaction has resolved
-      // before the Doctor chooses someone who was actually killed that night.
+      // Reaction turns use the same selected ordering rule; no role is moved
+      // earlier or later because of its ability.
       const queue = state.night.round1Players ? state.night.round1Players.slice() : playersAlive().slice();
-      const doctors = queue.filter(p => roleOf(p)?.nightAction === 'doctor');
-      return queue.filter(p => roleOf(p)?.nightAction !== 'doctor').concat(doctors);
+      return $('nightOrder').value === 'random' ? shuffle(queue) : queue;
     }
 
     function startNight() {
       state.phase = 'night';
       const nightPlayers = playersAlive().slice();
-      const actionQueue = nightPlayers.slice().sort((a, b) => (roleOf(a)?.nightAction === 'framer' ? -1 : 0) - (roleOf(b)?.nightAction === 'framer' ? -1 : 0));
+      // Framing lasts for one night only.
+      nightPlayers.forEach(player => { player.framedRoleId = null; });
+      const actionQueue = buildNightActionQueue();
       state.night = {
         round: 1,
         queue: actionQueue,
@@ -2268,7 +2258,16 @@
           if (role.nightAction === 'track') detail = `<strong>${escapeHtml(target.name)}</strong> had the <strong>${escapeHtml(targetRole?.nightAction ? (NIGHT_ACTIONS[targetRole.nightAction]?.label || targetRole.nightAction) : 'None')}</strong> night ability.`;
           else {
             const pending = state.night.pendingAttacks.find(a => a.attackerId === target.id);
-            detail = pending ? `<strong>${escapeHtml(target.name)}</strong> targeted <strong>${escapeHtml(playerOf(pending.targetId)?.name || 'Unknown')}</strong>.` : `<strong>${escapeHtml(target.name)}</strong> did not make a recorded target-based night action.`;
+            const framed = target.framedRoleId ? state.roles.find(r => r.id === target.framedRoleId) : null;
+            if (framed) {
+              const framedAction = framed.nightAction || 'none';
+              const framedAbility = NIGHT_ACTIONS[framedAction]?.label || framedAction;
+              detail = framedAction === 'none'
+                ? `<strong>${escapeHtml(target.name)}</strong> was framed as <strong>${escapeHtml(framed.title)}</strong>, which has no night ability.`
+                : `<strong>${escapeHtml(target.name)}</strong> used the <strong>${escapeHtml(framedAbility)}</strong> ability of the role they were framed as (<strong>${escapeHtml(framed.title)}</strong>).`;
+            } else {
+              detail = pending ? `<strong>${escapeHtml(target.name)}</strong> targeted <strong>${escapeHtml(playerOf(pending.targetId)?.name || 'Unknown')}</strong>.` : `<strong>${escapeHtml(target.name)}</strong> did not make a recorded target-based night action.`;
+            }
           }
         }
         showNightResult(`<strong>${role.nightAction === 'track' ? 'Track result' : 'Watch result'}</strong><br>${detail}`);
@@ -3072,7 +3071,7 @@
           const infoAction = r.nightAction;
           if (!player.alive) payload.turn = {type:'ack',prompt:'You were killed during the night. Your Detective/Seer result is withheld.'};
           else if (infoAction === 'hater' && state.round === 1) { const target=playerOf(night.haterTargets?.[player.id] ?? player.haterTargetId); payload.turn={type:'reaction',action:'hater',prompt:target ? `${target.name} is your Hater target. If they are voted out, the evil side wins.` : 'No valid Hater target was assigned.',options:[{id:'ack',name:'Acknowledge & continue'}]}; }
-          else if (['track','watch'].includes(infoAction)) { const target=playerOf((infoAction==='track' ? night.trackTargets : night.watchTargets)?.[player.id]); let prompt='No valid target remained.'; if(target&&infoAction==='track'){const er=effectiveRoleOf(target);prompt=`${target.name} had the ${NIGHT_ACTIONS[er?.nightAction]?.label||er?.nightAction||'None'} night ability.`;} if(target&&infoAction==='watch'){const pending=night.pendingAttacks.find(a=>a.attackerId===target.id);prompt=pending?`${target.name} targeted ${playerOf(pending.targetId)?.name||'Unknown'}.`:`${target.name} did not make a recorded target-based night action.`;} payload.turn={type:'reaction',action:infoAction,prompt,options:[{id:'ack',name:'Acknowledge & continue'}]}; }
+          else if (['track','watch'].includes(infoAction)) { const target=playerOf((infoAction==='track' ? night.trackTargets : night.watchTargets)?.[player.id]); let prompt='No valid target remained.'; if(target&&infoAction==='track'){const er=effectiveRoleOf(target);prompt=`${target.name} had the ${NIGHT_ACTIONS[er?.nightAction]?.label||er?.nightAction||'None'} night ability.`;} if(target&&infoAction==='watch'){const pending=night.pendingAttacks.find(a=>a.attackerId===target.id);const framed=target.framedRoleId?state.roles.find(r=>r.id===target.framedRoleId):null;if(framed){const framedAbility=NIGHT_ACTIONS[framed.nightAction]?.label||framed.nightAction||'None';prompt=framed.nightAction==='none'?`${target.name} was framed as ${framed.title}, which has no night ability.`:`${target.name} used the ${framedAbility} ability of the role they were framed as (${framed.title}).`;}else{prompt=pending?`${target.name} targeted ${playerOf(pending.targetId)?.name||'Unknown'}.`:`${target.name} did not make a recorded target-based night action.`;}} payload.turn={type:'reaction',action:infoAction,prompt,options:[{id:'ack',name:'Acknowledge & continue'}]}; }
           else if (infoAction === 'inspectOrientation' || infoAction === 'seer') {
             const targetId = infoAction === 'inspectOrientation' ? night.round1InspectTargets?.[player.id] : night.round1SeerTargets?.[player.id];
             const target = playerOf(targetId);
@@ -3644,13 +3643,17 @@
 
     async function startOnlineNight() {
       state.phase='night'; const nightPlayers=playersAlive().slice(); const round1SeerTargets={};
-      nightPlayers.forEach(p=>{if(roleOf(p)?.nightAction==='seer'){const choices=nightPlayers.filter(t=>t.id!==p.id);round1SeerTargets[p.id]=randomChoice(choices)?.id??null;}});
-      state.night={round:1,queue:nightPlayers.slice().sort((a,b)=>(roleOf(a)?.nightAction==='framer'?-1:0)-(roleOf(b)?.nightAction==='framer'?-1:0)),index:0,busy:false,usedTeamKillRoleIds:[],pendingAttacks:[],reactionQueue:[],reactionCompleted:[],round1Players:nightPlayers,round1Submitted:{},round1SeerTargets,round1InspectTargets:{},framerTargetId:null,framerRoleChooserId:null,haterTargets:{},protectedIds:[],blockedIds:[],trackTargets:{},watchTargets:{},onlineAckNeeded:false,onlineResults:{},onlineSeerTargetId:null};
+      nightPlayers.forEach(p=>{p.framedRoleId=null; if(roleOf(p)?.nightAction==='seer'){const choices=nightPlayers.filter(t=>t.id!==p.id);round1SeerTargets[p.id]=randomChoice(choices)?.id??null;}});
+      const queue = $('nightOrder').value === 'random' ? shuffle(nightPlayers.slice()) : nightPlayers.slice();
+      state.night={round:1,queue,index:0,busy:false,usedTeamKillRoleIds:[],pendingAttacks:[],reactionQueue:[],reactionCompleted:[],round1Players:nightPlayers,round1Submitted:{},round1SeerTargets,round1InspectTargets:{},framerTargetId:null,framerRoleChooserId:null,haterTargets:{},protectedIds:[],blockedIds:[],trackTargets:{},watchTargets:{},onlineAckNeeded:false,onlineResults:{},onlineSeerTargetId:null};
       await publishOnlineRoom();
     }
 
     function beginOnlineReactionRound() {
-      state.night.round=2;state.night.reactionQueue=buildNightReactionQueue();state.night.index=0;state.night.onlineAckNeeded=false;state.night.onlineResults={};publishOnlineRoom().catch(console.error);
+      state.night.round=2;
+      const base = state.night.round1Players ? state.night.round1Players.slice() : playersAlive().slice();
+      state.night.reactionQueue = $('nightOrder').value === 'random' ? shuffle(base) : base;
+      state.night.index=0;state.night.onlineAckNeeded=false;state.night.onlineResults={};publishOnlineRoom().catch(console.error);
     }
 
     async function finishOnlineNightOnline() {
