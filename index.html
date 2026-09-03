@@ -3401,11 +3401,11 @@
       }
       if (state.phase !== 'night') return;
       const n = state.night;
-      if (n.round === 1) await handleOnlineNightRound1(actor,String(value));
+      if (n.round === 1) await handleOnlineNightRound1(actor,String(value),String(cmd.payload.actionType || cmd.payload.turnType || ''));
       else { const current=onlineCurrentNightActor(); if (!current || current.id !== actor.id) return; await handleOnlineNightReaction(actor,String(value)); }
     }
 
-    async function handleOnlineNightRound1(actor, value) {
+    async function handleOnlineNightRound1(actor, value, actionType) {
       const role = roleOf(actor), n = state.night;
       if (!n.round1Players?.some(p => p.id === actor.id)) return;
       if (n.blockedIds?.includes(actor.id)) { n.round1Submitted=n.round1Submitted||{}; n.round1Submitted[actor.id]=true; setPrivateResult(actor.id,'Your night ability was blocked.'); await publishOnlineRoom(); await maybeFinishOnlineRound1(); return; }
@@ -3422,7 +3422,7 @@
       // The Framer chooses the target first, then chooses the role that target
       // will appear as. Keep this entirely on the Framer's private turn; the
       // framed player never receives a role-choice prompt.
-      if (cmd.payload.actionType === 'framerRoleChoice' && role?.nightAction==='framer') {
+      if (actionType === 'framerRoleChoice' && role?.nightAction==='framer') {
         if (n.framerRoleChooserId !== actor.id || !n.framerTargetId) return;
         if (!state.roles.some(r => r.id === String(value))) return;
         const target = playerOf(n.framerTargetId);
