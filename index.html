@@ -1,1429 +1,3112 @@
 \
 <!doctype html>
 <html lang="en">
+
 <head>
-<meta charset="utf-8" />
-<meta name="viewport" content="width=device-width,initial-scale=1" />
-<title>Mafia — Pass & Play</title>
-<style>
-  :root{
-    --bg:#090a0f;--panel:#11131a;--panel2:#171a22;--ink:#f4f1ea;--muted:#a7a9b5;
-    --accent:#d84b4b;--good:#5fbf86;--neutral:#c8a653;--evil:#d84b4b;--line:#2a2f3a;
-  }
-  *{box-sizing:border-box;font-family:Inter,system-ui,Arial,sans-serif}
-  body{margin:0;min-height:100vh;background:
-    radial-gradient(circle at 15% 10%,rgba(216,75,75,.12),transparent 30%),
-    radial-gradient(circle at 85% 0%,rgba(95,191,134,.07),transparent 25%),
-    linear-gradient(180deg,#07080c,#0c0e14 45%,#0a0b10);color:var(--ink);padding:20px}
-  .wrap{max-width:1080px;margin:0 auto}
-  h1,h2,h3{margin:0}
-  h1{font-size:32px;letter-spacing:.02em}
-  h2{font-size:21px}
-  h3{font-size:16px}
-  .sub{color:var(--muted);margin-top:6px}
-  .card{background:rgba(17,19,26,.93);border:1px solid var(--line);padding:16px;border-radius:14px;margin-top:14px;box-shadow:0 18px 50px rgba(0,0,0,.18)}
-  .grid2{display:grid;grid-template-columns:1fr 1fr;gap:14px}
-  .grid3{display:grid;grid-template-columns:repeat(3,1fr);gap:10px}
-  @media (max-width:760px){.grid2,.grid3{grid-template-columns:1fr}}
-  label{font-size:12px;color:var(--muted);display:block;margin-bottom:6px}
-  input,select,textarea,button{font:inherit}
-  input[type=text],input[type=number],select,textarea{
-    width:100%;padding:10px 11px;border-radius:9px;border:1px solid var(--line);
-    background:#0c0e14;color:inherit;outline:none
-  }
-  textarea{min-height:90px;resize:vertical}
-  button{background:var(--accent);border:none;padding:10px 13px;border-radius:9px;color:#fff;font-weight:800;cursor:pointer}
-  button.ghost{background:transparent;border:1px solid var(--line);color:var(--ink)}
-  button.danger{background:#6f1f28}
-  button.good{background:#245a3a}
-  button:disabled{opacity:.45;cursor:not-allowed}
-  .row{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
-  .row > *{min-width:0}
-  .spacer{flex:1}
-  .tiny{font-size:12px}
-  .muted{color:var(--muted)}
-  .pill{display:inline-flex;align-items:center;gap:6px;padding:4px 8px;border-radius:999px;font-size:11px;font-weight:800;background:#1c202a}
-  .pill.good{color:#dff6e8;background:#173724}.pill.neutral{color:#fff2bd;background:#3a2e10}.pill.evil{color:#ffdcdc;background:#42191e}
-  .notice{padding:12px;border-radius:10px;background:#151924;border:1px solid #292f3d;margin-top:10px}
-  .hidden{display:none !important}
-  .players{display:flex;flex-direction:column;gap:8px;margin-top:10px}
-  .player-row{display:grid;grid-template-columns:1fr 190px 36px;gap:8px;align-items:center}
-  .role-card{padding:12px;border:1px solid var(--line);border-radius:11px;background:#10131a}
-  .role-head{display:flex;gap:8px;align-items:center}
-  .role-desc{margin-top:8px;line-height:1.45;color:#d8dae2}
-  .role-actions{display:flex;gap:8px;margin-top:10px}
-  .role-list{display:grid;grid-template-columns:1fr 1fr;gap:10px}
-  @media(max-width:760px){.role-list{grid-template-columns:1fr}}
-  .role-editor-grid{display:grid;grid-template-columns:1fr 180px;gap:10px}
-  @media(max-width:760px){.role-editor-grid{grid-template-columns:1fr}}
-  .stack{display:flex;flex-direction:column;gap:10px}
-  .section-title{display:flex;align-items:center;gap:10px;margin-bottom:10px}
-  .divider{height:1px;background:var(--line);margin:14px 0}
-  .phase{font-size:12px;letter-spacing:.08em;text-transform:uppercase;color:var(--muted)}
-  .big{font-size:27px;font-weight:900}
-  .center{display:flex;align-items:center;justify-content:center;text-align:center}
-  .role-reveal{min-height:260px;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:26px}
-  .role-reveal .secret{font-size:34px;font-weight:900;margin:10px 0}
-  .role-reveal .desc{max-width:720px;line-height:1.55;color:#d9dce5}
-  .vote-grid,.action-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px;margin-top:12px}
-  .vote-btn,.action-btn{padding:14px;border-radius:10px;border:1px solid var(--line);background:#121620;color:var(--ink);cursor:pointer;font-weight:800}
-  .vote-btn:hover,.action-btn:hover{border-color:#555d6e}
-  .eliminated{opacity:.45;text-decoration:line-through}
-  .target-card{padding:10px;border:1px solid var(--line);border-radius:9px;background:#0e1118}
-  .log{max-height:280px;overflow:auto;display:flex;flex-direction:column;gap:6px}
-  .log-item{padding:8px 10px;border-radius:8px;background:#0c0f15;border:1px solid #20242e;font-size:13px}
-  .summary-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:10px}
-  .result{padding:14px;border-radius:11px;border:1px solid var(--line);background:#11141b}
-  .known-roles{margin-top:12px;padding:12px;border-radius:10px;background:#121620;border:1px solid var(--line)}
-  .known-role-list{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:8px;margin-top:8px}
-  .known-role{padding:9px 10px;border-radius:9px;background:#0e1118;border:1px solid #242a35}
-  .countdown{font-size:28px;font-weight:900;text-align:center;margin:10px 0}
-  .danger-text{color:#ff9d9d}
-  .good-text{color:#a8edc2}
-  .neutral-text{color:#ffe59a}
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Mafia — Pass & Play</title>
+  <style>
+    :root {
+      --bg: #090a0f;
+      --panel: #11131a;
+      --panel2: #171a22;
+      --ink: #f4f1ea;
+      --muted: #a7a9b5;
+      --accent: #d84b4b;
+      --good: #5fbf86;
+      --neutral: #c8a653;
+      --evil: #d84b4b;
+      --line: #2a2f3a;
+    }
 
-  /* Phone / iPhone-sized layout polish */
-  html{-webkit-text-size-adjust:100%;}
-  @media(max-width:760px){
-    body{padding:12px;overflow-x:hidden;}
-    .wrap{width:100%;max-width:none;}
-    h1{font-size:26px;line-height:1.15;}
-    h2{font-size:19px;}
-    h3{font-size:15px;}
-    .sub{font-size:13px;line-height:1.4;}
-    .card{padding:12px;border-radius:12px;margin-top:10px;box-shadow:0 10px 30px rgba(0,0,0,.16);}
-    .section-title{align-items:flex-start;flex-wrap:wrap;}
-    .section-title .spacer{display:none;}
-    .row{width:100%;}
-    .row > button{flex:1 1 150px;}
-    button,input,select,textarea{font-size:16px;}
-    button{min-height:44px;padding:10px 12px;}
-    input[type=text],input[type=number],select,textarea{min-height:44px;}
+    * {
+      box-sizing: border-box;
+      font-family: Inter, system-ui, Arial, sans-serif
+    }
 
-    /* Setup player rows: name + remove on row one, role selector underneath. */
-    .player-row{grid-template-columns:minmax(0,1fr) 44px;gap:8px;}
-    .player-row select{grid-column:1 / -1;}
-    .player-row button{width:44px;min-width:44px;padding:8px;}
+    body {
+      margin: 0;
+      min-height: 100vh;
+      background:
+        radial-gradient(circle at 15% 10%, rgba(216, 75, 75, .12), transparent 30%),
+        radial-gradient(circle at 85% 0%, rgba(95, 191, 134, .07), transparent 25%),
+        linear-gradient(180deg, #07080c, #0c0e14 45%, #0a0b10);
+      color: var(--ink);
+      padding: 20px
+    }
 
-    .role-list{grid-template-columns:1fr;}
-    .role-card{padding:10px;}
-    .role-head{flex-wrap:wrap;}
-    .role-actions{flex-wrap:wrap;}
-    .role-actions input{min-width:0;flex:1 1 120px;}
+    .wrap {
+      max-width: 1080px;
+      margin: 0 auto
+    }
 
-    .role-reveal{min-height:220px;padding:18px 8px;text-align:center;}
-    .role-reveal .secret{font-size:28px;line-height:1.15;overflow-wrap:anywhere;}
-    .role-reveal .desc{font-size:14px;line-height:1.5;}
+    h1,
+    h2,
+    h3 {
+      margin: 0
+    }
 
-    .big{font-size:23px;}
-    .phase{font-size:11px;}
-    .notice{padding:10px;font-size:13px;line-height:1.45;}
-    .vote-grid,.action-grid{grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;}
-    .vote-btn,.action-btn{min-height:48px;padding:11px 8px;font-size:14px;}
-    .target-card{padding:10px;}
-    .known-role-list{grid-template-columns:1fr;}
-    .known-role{padding:10px;}
-    .summary-grid{grid-template-columns:1fr;}
-    .result{padding:12px;}
-    .log{max-height:220px;}
+    h1 {
+      font-size: 32px;
+      letter-spacing: .02em
+    }
 
-    /* Header controls stay usable without creating a horizontal scroll. */
-    #gameScreen > .card:first-child .row{align-items:stretch;}
-    #gameScreen > .card:first-child .row > div:first-child{flex:1 1 100%;}
-    #endGameEarlyBtn{flex:1 1 100%;order:3;}
-    #roundPill{align-self:center;}
+    h2 {
+      font-size: 21px
+    }
 
-    /* Give the main action a comfortable thumb target. */
-    #startBtn,#nextNightBtn,#resolveNightBtn,#revealRoleBtn,#handoffNextBtn,#backSetupBtn{width:100%;}
-  }
+    h3 {
+      font-size: 16px
+    }
 
-  @media(max-width:430px){
-    body{padding:10px;}
-    .card{padding:10px;}
-    .vote-grid,.action-grid{grid-template-columns:1fr;}
-    .section-title{gap:8px;}
-    .section-title button{width:100%;}
-    .role-editor-grid{gap:8px;}
-    .known-roles{padding:10px;}
-  }
-</style>
+    .sub {
+      color: var(--muted);
+      margin-top: 6px
+    }
+
+    .card {
+      background: rgba(17, 19, 26, .93);
+      border: 1px solid var(--line);
+      padding: 16px;
+      border-radius: 14px;
+      margin-top: 14px;
+      box-shadow: 0 18px 50px rgba(0, 0, 0, .18)
+    }
+
+    .grid2 {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 14px
+    }
+
+    .grid3 {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 10px
+    }
+
+    @media (max-width:760px) {
+
+      .grid2,
+      .grid3 {
+        grid-template-columns: 1fr
+      }
+    }
+
+    label {
+      font-size: 12px;
+      color: var(--muted);
+      display: block;
+      margin-bottom: 6px
+    }
+
+    input,
+    select,
+    textarea,
+    button {
+      font: inherit
+    }
+
+    input[type=text],
+    input[type=number],
+    select,
+    textarea {
+      width: 100%;
+      padding: 10px 11px;
+      border-radius: 9px;
+      border: 1px solid var(--line);
+      background: #0c0e14;
+      color: inherit;
+      outline: none
+    }
+
+    textarea {
+      min-height: 90px;
+      resize: vertical
+    }
+
+    button {
+      background: var(--accent);
+      border: none;
+      padding: 10px 13px;
+      border-radius: 9px;
+      color: #fff;
+      font-weight: 800;
+      cursor: pointer
+    }
+
+    button.ghost {
+      background: transparent;
+      border: 1px solid var(--line);
+      color: var(--ink)
+    }
+
+    button.danger {
+      background: #6f1f28
+    }
+
+    button.good {
+      background: #245a3a
+    }
+
+    button:disabled {
+      opacity: .45;
+      cursor: not-allowed
+    }
+
+    .row {
+      display: flex;
+      gap: 10px;
+      align-items: center;
+      flex-wrap: wrap
+    }
+
+    .row>* {
+      min-width: 0
+    }
+
+    .spacer {
+      flex: 1
+    }
+
+    .tiny {
+      font-size: 12px
+    }
+
+    .muted {
+      color: var(--muted)
+    }
+
+    .pill {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 4px 8px;
+      border-radius: 999px;
+      font-size: 11px;
+      font-weight: 800;
+      background: #1c202a
+    }
+
+    .pill.good {
+      color: #dff6e8;
+      background: #173724
+    }
+
+    .pill.neutral {
+      color: #fff2bd;
+      background: #3a2e10
+    }
+
+    .pill.evil {
+      color: #ffdcdc;
+      background: #42191e
+    }
+
+    .notice {
+      padding: 12px;
+      border-radius: 10px;
+      background: #151924;
+      border: 1px solid #292f3d;
+      margin-top: 10px
+    }
+
+    .hidden {
+      display: none !important
+    }
+
+    .players {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      margin-top: 10px
+    }
+
+    .player-row {
+      display: grid;
+      grid-template-columns: 1fr 190px 36px;
+      gap: 8px;
+      align-items: center
+    }
+
+    .role-card {
+      padding: 12px;
+      border: 1px solid var(--line);
+      border-radius: 11px;
+      background: #10131a
+    }
+
+    .role-head {
+      display: flex;
+      gap: 8px;
+      align-items: center
+    }
+
+    .role-desc {
+      margin-top: 8px;
+      line-height: 1.45;
+      color: #d8dae2
+    }
+
+    .role-actions {
+      display: flex;
+      gap: 8px;
+      margin-top: 10px
+    }
+
+    .role-list {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 10px
+    }
+
+    @media(max-width:760px) {
+      .role-list {
+        grid-template-columns: 1fr
+      }
+    }
+
+    .role-editor-grid {
+      display: grid;
+      grid-template-columns: 1fr 180px;
+      gap: 10px
+    }
+
+    @media(max-width:760px) {
+      .role-editor-grid {
+        grid-template-columns: 1fr
+      }
+    }
+
+    .stack {
+      display: flex;
+      flex-direction: column;
+      gap: 10px
+    }
+
+    .section-title {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      margin-bottom: 10px
+    }
+
+    .divider {
+      height: 1px;
+      background: var(--line);
+      margin: 14px 0
+    }
+
+    .phase {
+      font-size: 12px;
+      letter-spacing: .08em;
+      text-transform: uppercase;
+      color: var(--muted)
+    }
+
+    .big {
+      font-size: 27px;
+      font-weight: 900
+    }
+
+    .center {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      text-align: center
+    }
+
+    .role-reveal {
+      min-height: 260px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      padding: 26px
+    }
+
+    .role-reveal .secret {
+      font-size: 34px;
+      font-weight: 900;
+      margin: 10px 0
+    }
+
+    .role-reveal .desc {
+      max-width: 720px;
+      line-height: 1.55;
+      color: #d9dce5
+    }
+
+    .vote-grid,
+    .action-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+      gap: 10px;
+      margin-top: 12px
+    }
+
+    .vote-btn,
+    .action-btn {
+      padding: 14px;
+      border-radius: 10px;
+      border: 1px solid var(--line);
+      background: #121620;
+      color: var(--ink);
+      cursor: pointer;
+      font-weight: 800
+    }
+
+    .vote-btn:hover,
+    .action-btn:hover {
+      border-color: #555d6e
+    }
+
+    .eliminated {
+      opacity: .45;
+      text-decoration: line-through
+    }
+
+    .target-card {
+      padding: 10px;
+      border: 1px solid var(--line);
+      border-radius: 9px;
+      background: #0e1118
+    }
+
+    .log {
+      max-height: 280px;
+      overflow: auto;
+      display: flex;
+      flex-direction: column;
+      gap: 6px
+    }
+
+    .log-item {
+      padding: 8px 10px;
+      border-radius: 8px;
+      background: #0c0f15;
+      border: 1px solid #20242e;
+      font-size: 13px
+    }
+
+    .summary-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+      gap: 10px
+    }
+
+    .result {
+      padding: 14px;
+      border-radius: 11px;
+      border: 1px solid var(--line);
+      background: #11141b
+    }
+
+    .known-roles {
+      margin-top: 12px;
+      padding: 12px;
+      border-radius: 10px;
+      background: #121620;
+      border: 1px solid var(--line)
+    }
+
+    .known-role-list {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+      gap: 8px;
+      margin-top: 8px
+    }
+
+    .known-role {
+      padding: 9px 10px;
+      border-radius: 9px;
+      background: #0e1118;
+      border: 1px solid #242a35
+    }
+
+    .countdown {
+      font-size: 28px;
+      font-weight: 900;
+      text-align: center;
+      margin: 10px 0
+    }
+
+    .danger-text {
+      color: #ff9d9d
+    }
+
+    .good-text {
+      color: #a8edc2
+    }
+
+    .neutral-text {
+      color: #ffe59a
+    }
+
+    /* Phone / iPhone-sized layout polish */
+    html {
+      -webkit-text-size-adjust: 100%;
+    }
+
+    @media(max-width:760px) {
+      body {
+        padding: 12px;
+        overflow-x: hidden;
+      }
+
+      .wrap {
+        width: 100%;
+        max-width: none;
+      }
+
+      h1 {
+        font-size: 26px;
+        line-height: 1.15;
+      }
+
+      h2 {
+        font-size: 19px;
+      }
+
+      h3 {
+        font-size: 15px;
+      }
+
+      .sub {
+        font-size: 13px;
+        line-height: 1.4;
+      }
+
+      .card {
+        padding: 12px;
+        border-radius: 12px;
+        margin-top: 10px;
+        box-shadow: 0 10px 30px rgba(0, 0, 0, .16);
+      }
+
+      .section-title {
+        align-items: flex-start;
+        flex-wrap: wrap;
+      }
+
+      .section-title .spacer {
+        display: none;
+      }
+
+      .row {
+        width: 100%;
+      }
+
+      .row>button {
+        flex: 1 1 150px;
+      }
+
+      button,
+      input,
+      select,
+      textarea {
+        font-size: 16px;
+      }
+
+      button {
+        min-height: 44px;
+        padding: 10px 12px;
+      }
+
+      input[type=text],
+      input[type=number],
+      select,
+      textarea {
+        min-height: 44px;
+      }
+
+      /* Setup player rows: name + remove on row one, role selector underneath. */
+      .player-row {
+        grid-template-columns: minmax(0, 1fr) 44px;
+        gap: 8px;
+      }
+
+      .player-row select {
+        grid-column: 1 / -1;
+      }
+
+      .player-row button {
+        width: 44px;
+        min-width: 44px;
+        padding: 8px;
+      }
+
+      .role-list {
+        grid-template-columns: 1fr;
+      }
+
+      .role-card {
+        padding: 10px;
+      }
+
+      .role-head {
+        flex-wrap: wrap;
+      }
+
+      .role-actions {
+        flex-wrap: wrap;
+      }
+
+      .role-actions input {
+        min-width: 0;
+        flex: 1 1 120px;
+      }
+
+      .role-reveal {
+        min-height: 220px;
+        padding: 18px 8px;
+        text-align: center;
+      }
+
+      .role-reveal .secret {
+        font-size: 28px;
+        line-height: 1.15;
+        overflow-wrap: anywhere;
+      }
+
+      .role-reveal .desc {
+        font-size: 14px;
+        line-height: 1.5;
+      }
+
+      .big {
+        font-size: 23px;
+      }
+
+      .phase {
+        font-size: 11px;
+      }
+
+      .notice {
+        padding: 10px;
+        font-size: 13px;
+        line-height: 1.45;
+      }
+
+      .vote-grid,
+      .action-grid {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 8px;
+      }
+
+      .vote-btn,
+      .action-btn {
+        min-height: 48px;
+        padding: 11px 8px;
+        font-size: 14px;
+      }
+
+      .target-card {
+        padding: 10px;
+      }
+
+      .known-role-list {
+        grid-template-columns: 1fr;
+      }
+
+      .known-role {
+        padding: 10px;
+      }
+
+      .summary-grid {
+        grid-template-columns: 1fr;
+      }
+
+      .result {
+        padding: 12px;
+      }
+
+      .log {
+        max-height: 220px;
+      }
+
+      /* Header controls stay usable without creating a horizontal scroll. */
+      #gameScreen>.card:first-child .row {
+        align-items: stretch;
+      }
+
+      #gameScreen>.card:first-child .row>div:first-child {
+        flex: 1 1 100%;
+      }
+
+      #endGameEarlyBtn {
+        flex: 1 1 100%;
+        order: 3;
+      }
+
+      #roundPill {
+        align-self: center;
+      }
+
+      /* Give the main action a comfortable thumb target. */
+      #startBtn,
+      #nextNightBtn,
+      #resolveNightBtn,
+      #revealRoleBtn,
+      #handoffNextBtn,
+      #backSetupBtn {
+        width: 100%;
+      }
+    }
+
+    /* Online multiplayer */
+    .online-header {
+      display: flex;
+      gap: 10px;
+      align-items: flex-end;
+      flex-wrap: wrap
+    }
+
+    .online-header .field {
+      flex: 1 1 180px
+    }
+
+    .room-code {
+      font-size: 30px;
+      font-weight: 1000;
+      letter-spacing: .18em;
+      word-break: break-all
+    }
+
+    .online-status {
+      margin-top: 10px
+    }
+
+    .online-players {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      margin-top: 10px
+    }
+
+    .online-player {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 10px 12px;
+      border: 1px solid var(--line);
+      border-radius: 10px;
+      background: #0e1118
+    }
+
+    .online-player .spacer {
+      min-width: 0
+    }
+
+    .online-player .name {
+      font-weight: 800;
+      overflow: hidden;
+      text-overflow: ellipsis
+    }
+
+    .online-turn {
+      border: 1px solid var(--accent);
+      box-shadow: 0 0 0 1px rgba(216, 75, 75, .18) inset
+    }
+
+    .online-choice {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+      gap: 10px;
+      margin-top: 12px
+    }
+
+    .online-choice button {
+      min-height: 48px
+    }
+
+    .online-private {
+      border-color: #4f3d61;
+      background: #15101d
+    }
+
+    .online-small-code {
+      font-size: 13px;
+      letter-spacing: .14em;
+      font-weight: 900
+    }
+
+    @media(max-width:760px) {
+      .online-choice {
+        grid-template-columns: repeat(2, minmax(0, 1fr))
+      }
+    }
+
+    @media(max-width:430px) {
+      .online-choice {
+        grid-template-columns: 1fr
+      }
+
+      .room-code {
+        font-size: 25px
+      }
+    }
+
+    @media(max-width:430px) {
+      body {
+        padding: 10px;
+      }
+
+      .card {
+        padding: 10px;
+      }
+
+      .vote-grid,
+      .action-grid {
+        grid-template-columns: 1fr;
+      }
+
+      .section-title {
+        gap: 8px;
+      }
+
+      .section-title button {
+        width: 100%;
+      }
+
+      .role-editor-grid {
+        gap: 8px;
+      }
+
+      .known-roles {
+        padding: 10px;
+      }
+    }
+  </style>
 </head>
+
 <body>
-<div class="wrap">
-  <header>
-    <h1>Mafia — Pass & Play</h1>
-    <div class="sub">Private role handoff → day voting → night abilities → repeat until a win condition is met.</div>
-  </header>
+  <div class="wrap">
+    <header>
+      <h1>Mafia — Pass & Play</h1>
+      <div class="sub">Private role handoff → day voting → night abilities → repeat until a win condition is met.</div>
+    </header>
 
-  <section id="setupScreen" class="card">
-    <div class="section-title">
-      <div>
-        <div class="phase">Game setup</div>
-        <h2>Players & round rules</h2>
-      </div>
-    </div>
-
-    <div class="grid2">
-      <div>
-        <label>Role assignment mode</label>
-        <select id="roundMode">
-          <option value="random">Random</option>
-          <option value="manual">Manual</option>
-        </select>
-      </div>
-      <div>
-        <label>Night order</label>
-        <select id="nightOrder">
-          <option value="role">By role list order</option>
-          <option value="random">Random each night</option>
-        </select>
-      </div>
-    </div>
-
-    <div class="divider"></div>
-
-    <div class="section-title">
-      <h3>Players</h3><span class="pill">Pass the device</span>
-      <div class="spacer"></div>
-      <button id="addPlayerBtn" type="button">Add player</button>
-    </div>
-    <div id="players" class="players"></div>
-
-    <div class="divider"></div>
-
-    <div class="section-title"><h3>Random-mode role pool</h3></div>
-    <div class="muted tiny">Select which roles can appear randomly and how many copies each role may have. Manual mode ignores these counts.</div>
-    <div id="randomRolePool" class="role-list" style="margin-top:10px"></div>
-
-    <div class="divider"></div>
-
-    <div class="section-title">
-      <h3>Role library</h3><div class="spacer"></div>
-      <button id="newRoleBtn" class="ghost" type="button">Create role</button>
-    </div>
-    <div id="roleLibrary" class="role-list"></div>
-
-    <div id="roleEditor" class="card hidden" style="margin:12px 0 0 0">
-      <div class="section-title"><h3 id="editorTitle">New role</h3></div>
-      <div class="role-editor-grid">
+    <section id="onlineEntry" class="card">
+      <div class="section-title">
         <div>
-          <label>Title</label>
-          <input id="roleTitle" type="text" placeholder="e.g. Bodyguard">
+          <div class="phase">Online multiplayer</div>
+          <h2>Play from separate devices</h2>
+        </div>
+        <div class="spacer"></div>
+        <span id="onlineAuthPill" class="pill">Connecting…</span>
+      </div>
+      <div class="notice">Create a room on one device, share the six-character code, and have everyone else join. The
+        host controls the start screen and game state.</div>
+      <div class="grid2" style="margin-top:12px">
+        <div>
+          <label>Your display name</label>
+          <input id="onlineName" type="text" maxlength="24" placeholder="e.g. Alex">
+        </div>
+        <div class="stack">
+          <div>
+            <label>Join an existing room</label>
+            <div class="row"><input id="onlineJoinCode" type="text" maxlength="6" placeholder="ABC123"
+                style="text-transform:uppercase"><button id="joinRoomBtn" class="ghost" type="button">Join room</button>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="row" style="margin-top:12px">
+        <button id="createRoomBtn" type="button">Create room</button>
+        <button id="offlineContinueBtn" class="ghost" type="button">Use offline pass & play</button>
+      </div>
+      <div id="onlineStatus" class="notice hidden"></div>
+    </section>
+
+    <section id="onlineLobby" class="card hidden">
+      <div class="section-title">
+        <div>
+          <div class="phase" id="onlineLobbyPhase">Room lobby</div>
+          <h2 id="onlineLobbyTitle">Waiting for players</h2>
+        </div>
+        <div class="spacer"></div>
+        <button id="leaveRoomBtn" class="ghost" type="button">Leave room</button>
+      </div>
+      <div id="hostRoomControls" class="notice hidden">
+        <div class="muted tiny">ROOM CODE</div>
+        <div id="hostRoomCode" class="room-code">------</div>
+        <div class="row" style="margin-top:10px"><button id="copyRoomBtn" class="ghost" type="button">Copy
+            code</button><span class="muted tiny">Share this code with the other players.</span></div>
+      </div>
+      <div id="onlineLobbyStatus" class="notice"></div>
+      <div id="onlineLobbyPlayers" class="online-players"></div>
+      <div id="guestLobbyNotice" class="notice hidden">The host is configuring the roles. You will automatically enter
+        the game when the host starts.</div>
+    </section>
+
+    <section id="onlineGame" class="hidden">
+      <div class="card">
+        <div class="row">
+          <div>
+            <div class="phase" id="onlinePhaseLabel">Lobby</div>
+            <div class="big" id="onlinePhaseTitle">Waiting</div>
+          </div>
+          <div class="spacer"></div>
+          <div class="pill" id="onlineRoundPill">Round 1</div>
+        </div>
+      </div>
+
+      <div class="card online-private">
+        <div class="section-title">
+          <div>
+            <div class="phase">Private</div>
+            <h2>Your role</h2>
+          </div>
+        </div>
+        <div id="onlineRoleBox" class="role-reveal" style="min-height:0;padding:18px">Waiting for the host to start…
+        </div>
+        <div id="onlineKnownRoles"></div>
+      </div>
+
+      <div id="onlineActionCard" class="card">
+        <div class="section-title">
+          <div>
+            <div class="phase">Your turn</div>
+            <h2 id="onlineActionTitle">Waiting</h2>
+          </div>
+        </div>
+        <div id="onlineActionPrompt" class="notice">Waiting for the game to advance.</div>
+        <div id="onlineActionArea" class="online-choice"></div>
+        <div id="onlineActionResult" class="summary-grid" style="margin-top:12px"></div>
+      </div>
+
+      <div class="card">
+        <div class="section-title">
+          <div>
+            <div class="phase">Public</div>
+            <h2>Players</h2>
+          </div>
+        </div>
+        <div id="onlinePublicStatus" class="notice"></div>
+        <div id="onlinePlayersList" class="online-players"></div>
+      </div>
+
+      <div id="onlineGameOver" class="card hidden">
+        <div class="section-title">
+          <div>
+            <div class="phase">Game over</div>
+            <h2 id="onlineWinnerTitle">Winner</h2>
+          </div>
+        </div>
+        <div id="onlineWinnerText" class="notice"></div>
+        <div id="onlineFinalRoles" class="summary-grid" style="margin-top:12px"></div>
+        <div class="row" style="margin-top:14px"><button id="onlineBackToLobbyBtn" type="button">Back to lobby</button>
+        </div>
+      </div>
+    </section>
+
+    <section id="setupScreen" class="card">
+      <div class="section-title">
+        <div>
+          <div class="phase">Game setup</div>
+          <h2>Players & round rules</h2>
+        </div>
+        <div class="spacer"></div>
+        <span id="setupOnlineBadge" class="pill hidden">Online host</span>
+      </div>
+
+      <div class="grid2">
+        <div>
+          <label>Role assignment mode</label>
+          <select id="roundMode">
+            <option value="random">Random</option>
+            <option value="manual">Manual</option>
+          </select>
         </div>
         <div>
-          <label>Orientation</label>
-          <select id="roleOrientation">
-            <option value="good">Good</option><option value="neutral">Neutral</option><option value="evil">Evil</option>
+          <label>Night order</label>
+          <select id="nightOrder">
+            <option value="role">By role list order</option>
+            <option value="random">Random each night</option>
           </select>
         </div>
       </div>
-      <div style="margin-top:10px">
-        <label>Description shown to the player who gets the role</label>
-        <textarea id="roleDescription" placeholder="Write the complete player-facing role instructions."></textarea>
-      </div>
-      <div style="margin-top:10px">
-        <label>Night ability</label>
-        <select id="roleNightAction">
-          <option value="none">None</option>
-          <option value="teamKill">Team kill</option>
-          <option value="kill">Kill</option>
-          <option value="inspectOrientation">Inspect orientation</option>
-          <option value="seer">Reveal a random exact role</option>
-          <option value="scapegoat">Scapegoat redirect</option>
-          <option value="traitor">Traitor conversion</option>
-          <option value="escape">Escape challenge</option>
-          <option value="monkey">Confrontation</option>
-          <option value="rps">Rock, Paper, Scissors</option>
-        </select>
-      </div>
-      <div style="margin-top:10px">
-        <label>Who else sees this role?</label>
-        <select id="roleVisibility">
-          <option value="nobody">Nobody</option>
-          <option value="everyone">Everyone</option>
-          <option value="sameOrientation">Players with the same orientation</option>
-          <option value="good">Good players</option>
-          <option value="neutral">Neutral players</option>
-          <option value="evil">Evil players</option>
-        </select>
-      </div>
-      <div class="row" style="margin-top:10px;justify-content:flex-end">
-        <button id="cancelRoleBtn" class="ghost" type="button">Cancel</button>
-        <button id="saveRoleBtn" type="button">Save role</button>
-      </div>
-    </div>
 
-    <div class="divider"></div>
+      <div class="divider"></div>
 
-    <div class="notice">
-      <strong>Win logic:</strong> Evil wins when the number of living evil players is at least the number of living non-evil players. Good wins when no evil players remain. Neutral roles use their own description as their win condition and are checked when their condition can be evaluated.
-    </div>
-
-    <div class="row" style="justify-content:flex-end;margin-top:14px">
-      <button id="startBtn" type="button">Start game</button>
-    </div>
-  </section>
-
-  <section id="gameScreen" class="hidden">
-    <div class="card">
-      <div class="row">
-        <div><div class="phase" id="phaseLabel">Role handoff</div><div class="big" id="phaseTitle">Roles</div></div>
+      <div class="section-title">
+        <h3>Players</h3><span class="pill">Pass the device</span>
         <div class="spacer"></div>
-        <button id="endGameEarlyBtn" class="ghost" type="button">End game & reveal roles</button>
-        <div class="pill" id="roundPill">Round 1</div>
+        <button id="addPlayerBtn" type="button">Add player</button>
       </div>
-    </div>
+      <div id="players" class="players"></div>
 
-    <div id="handoffCard" class="card">
-      <div class="role-reveal">
-        <div class="muted">Pass the device to</div>
-        <div class="big" id="handoffPlayer">Player 1</div>
-        <div id="handoffSecret" class="secret">Ready?</div>
-        <div id="handoffDescription" class="desc muted">Tap reveal to privately see your role.</div>
-        <div id="handoffKnownRoles"></div>
-        <div class="row" style="margin-top:18px">
-          <button id="revealRoleBtn" type="button">Reveal my role</button>
-          <button id="handoffNextBtn" class="ghost" type="button" disabled>Hide & pass</button>
+      <div class="divider"></div>
+
+      <div class="section-title">
+        <h3>Random-mode role pool</h3>
+      </div>
+      <div class="muted tiny">Select which roles can appear randomly and how many copies each role may have. Manual mode
+        ignores these counts.</div>
+      <div id="randomRolePool" class="role-list" style="margin-top:10px"></div>
+
+      <div class="divider"></div>
+
+      <div class="section-title">
+        <h3>Role library</h3>
+        <div class="spacer"></div>
+        <button id="newRoleBtn" class="ghost" type="button">Create role</button>
+      </div>
+      <div id="roleLibrary" class="role-list"></div>
+
+      <div id="roleEditor" class="card hidden" style="margin:12px 0 0 0">
+        <div class="section-title">
+          <h3 id="editorTitle">New role</h3>
+        </div>
+        <div class="role-editor-grid">
+          <div>
+            <label>Title</label>
+            <input id="roleTitle" type="text" placeholder="e.g. Bodyguard">
+          </div>
+          <div>
+            <label>Orientation</label>
+            <select id="roleOrientation">
+              <option value="good">Good</option>
+              <option value="neutral">Neutral</option>
+              <option value="evil">Evil</option>
+            </select>
+          </div>
+        </div>
+        <div style="margin-top:10px">
+          <label>Description shown to the player who gets the role</label>
+          <textarea id="roleDescription" placeholder="Write the complete player-facing role instructions."></textarea>
+        </div>
+        <div style="margin-top:10px">
+          <label>Night ability</label>
+          <select id="roleNightAction">
+            <option value="none">None</option>
+            <option value="teamKill">Team kill</option>
+            <option value="kill">Kill</option>
+            <option value="inspectOrientation">Inspect orientation</option>
+            <option value="seer">Reveal a random exact role</option>
+            <option value="scapegoat">Scapegoat redirect</option>
+            <option value="traitor">Traitor conversion</option>
+            <option value="escape">Escape challenge</option>
+            <option value="monkey">Confrontation</option>
+            <option value="rps">Rock, Paper, Scissors</option>
+          </select>
+        </div>
+        <div style="margin-top:10px">
+          <label>Who else sees this role?</label>
+          <select id="roleVisibility">
+            <option value="nobody">Nobody</option>
+            <option value="everyone">Everyone</option>
+            <option value="sameOrientation">Players with the same orientation</option>
+            <option value="good">Good players</option>
+            <option value="neutral">Neutral players</option>
+            <option value="evil">Evil players</option>
+          </select>
+        </div>
+        <div class="row" style="margin-top:10px;justify-content:flex-end">
+          <button id="cancelRoleBtn" class="ghost" type="button">Cancel</button>
+          <button id="saveRoleBtn" type="button">Save role</button>
         </div>
       </div>
-    </div>
 
-    <div id="dayCard" class="card hidden">
-      <div class="section-title">
-        <div><div class="phase">Day</div><h2>Discuss & vote</h2></div>
-        <div class="spacer"></div><div class="pill" id="dayLiving"></div>
-      </div>
-      <div class="notice">Everyone who is alive votes for one living player. You may not vote for yourself. The player with the most votes is eliminated. A tied vote is resolved by a second ballot between the tied players; if it is still tied, nobody is eliminated.</div>
-      <div id="dayVoteArea" class="vote-grid"></div>
-      <div id="dayResult" class="summary-grid" style="margin-top:12px"></div>
-      <div class="row" style="justify-content:flex-end;margin-top:12px">
-        <button id="skipDayBtn" class="ghost" type="button">Skip voting & begin night</button>
-        <button id="nextNightBtn" type="button" disabled>Begin night</button>
-      </div>
-    </div>
+      <div class="divider"></div>
 
-    <div id="nightCard" class="card hidden">
-      <div class="section-title">
-        <div><div class="phase">Night</div><h2 id="nightTitle">Night actions</h2></div>
-        <div class="spacer"></div><div class="pill" id="nightProgress"></div>
+      <div class="notice">
+        <strong>Win logic:</strong> Evil wins when the number of living evil players is at least the number of living
+        non-evil players. Good wins when no evil players remain. Neutral roles use their own description as their win
+        condition and are checked when their condition can be evaluated.
       </div>
-      <div id="nightKnownRoles"></div>
-      <div id="nightPrompt" class="notice"></div>
-      <div id="nightActionArea" class="action-grid"></div>
-      <div id="nightResult" class="summary-grid" style="margin-top:12px"></div>
-      <div class="row" style="justify-content:flex-end;margin-top:12px">
-        <button id="resolveNightBtn" type="button" disabled>Resolve night</button>
-      </div>
-    </div>
 
-    <div id="winCard" class="card hidden">
-      <div class="section-title"><div><div class="phase">Game over</div><h2 id="winnerTitle">Winner</h2></div></div>
-      <div id="winnerText" class="notice"></div>
-      <div id="finalRoles" class="summary-grid" style="margin-top:12px"></div>
       <div class="row" style="justify-content:flex-end;margin-top:14px">
-        <button id="backSetupBtn" type="button">Back to setup</button>
+        <button id="startBtn" type="button">Start game</button>
       </div>
-    </div>
+    </section>
 
-    <div class="card">
-      <div class="section-title"><h3>Game log</h3></div>
-      <div id="gameLog" class="log"></div>
-    </div>
-  </section>
-</div>
+    <section id="gameScreen" class="hidden">
+      <div class="card">
+        <div class="row">
+          <div>
+            <div class="phase" id="phaseLabel">Role handoff</div>
+            <div class="big" id="phaseTitle">Roles</div>
+          </div>
+          <div class="spacer"></div>
+          <button id="endGameEarlyBtn" class="ghost" type="button">End game & reveal roles</button>
+          <div class="pill" id="roundPill">Round 1</div>
+        </div>
+      </div>
 
-<script>
-const DEFAULT_ROLES = [
+      <div id="handoffCard" class="card">
+        <div class="role-reveal">
+          <div class="muted">Pass the device to</div>
+          <div class="big" id="handoffPlayer">Player 1</div>
+          <div id="handoffSecret" class="secret">Ready?</div>
+          <div id="handoffDescription" class="desc muted">Tap reveal to privately see your role.</div>
+          <div id="handoffKnownRoles"></div>
+          <div class="row" style="margin-top:18px">
+            <button id="revealRoleBtn" type="button">Reveal my role</button>
+            <button id="handoffNextBtn" class="ghost" type="button" disabled>Hide & pass</button>
+          </div>
+        </div>
+      </div>
 
-  {
-    id:'citizen',title:'Citizen',orientation:'good',
-    description:'You are a Citizen. Figure out which of you are the Mafia and help the good side eliminate every evil player.',
-    visibility:'nobody', nightAction:'none'
-  },
-  {
-    id:'scapegoat',title:'Scapegoat',orientation:'good',
-    description:'If the Mafia successfully target you, you may transfer that attempted kill to a living player on either side of you once per game.',
-    visibility:'nobody', nightAction:'scapegoat'
-  },
-  {
-    id:'peacemaker',title:'Peacemaker',orientation:'good',
-    description:'Each night, you may use your team kill to attempt to kill one player. Any other Peacemaker shares the same team kill, so only one Peacemaker can use it per night.',
-    visibility:'nobody', nightAction:'teamKill'
-  },
-  {
-    id:'serial_killer',title:'Serial Killer',orientation:'neutral',
-    description:'Each night, choose one living player to kill.',
-    visibility:'nobody', nightAction:'kill'
-  },
-  {
-    id:'detective',title:'Detective',orientation:'good',
-    description:'Each night, choose one living player and learn whether their orientation is good, neutral, or evil. The answer is truthful.',
-    visibility:'nobody', nightAction:'inspectOrientation'
-  },
-  {
-    id:'escapist',title:'Escapist',orientation:'good',
-    description:'If the Mafia target you, you get a chance to escape by literally running away from the Mafia. You have 15 seconds to survive the kill.',
-    visibility:'nobody', nightAction:'escape'
-  },
-  {
-    id:'monkey',title:'Monkey',orientation:'good',
-    description:'If you are targeted by a night kill, you may make a loud sound or otherwise openly confront your perpetrator directly before the result is resolved.',
-    visibility:'nobody', nightAction:'monkey'
-  },
-  {
-    id:'joker',title:'Joker',orientation:'good',
-    description:'When you are targeted by a night kill, you and the perpetrator play a best-of-3 Rock, Paper, Scissors. The game decides who survives the encounter.',
-    visibility:'nobody', nightAction:'rps'
-  },
-  {
-    id:'seer',title:'Seer',orientation:'good',
-    description:'Each night, see the exact role of one random living player other than yourself.',
-    visibility:'nobody', nightAction:'seer'
-  },
-  {
-    id:'traitor',title:'Traitor',orientation:'good',
-    description:'If the Mafia target you, you join the Mafia instead of dying. Your orientation becomes evil from that point onward.',
-    visibility:'evil', nightAction:'traitor'
-  },
-  {
-    id:'jester',title:'Jester',orientation:'neutral',
-    description:'Try to get voted out by the Citizens during the day. You win immediately when the town votes you out.',
-    visibility:'nobody', nightAction:'none'
-  },
-  {
-    id:'mafia',title:'Mafia',orientation:'evil',
-    description:'Work with other Mafia players who share this exact role. Together, you have one shared team kill per night.',
-    visibility:'evil', nightAction:'teamKill'
-  }
-];
+      <div id="dayCard" class="card hidden">
+        <div class="section-title">
+          <div>
+            <div class="phase">Day</div>
+            <h2>Discuss & vote</h2>
+          </div>
+          <div class="spacer"></div>
+          <div class="pill" id="dayLiving"></div>
+        </div>
+        <div class="notice">Everyone who is alive votes for one living player. You may not vote for yourself. The player
+          with the most votes is eliminated. A tied vote is resolved by a second ballot between the tied players; if it
+          is still tied, nobody is eliminated.</div>
+        <div id="dayVoteArea" class="vote-grid"></div>
+        <div id="dayResult" class="summary-grid" style="margin-top:12px"></div>
+        <div class="row" style="justify-content:flex-end;margin-top:12px">
+          <button id="skipDayBtn" class="ghost" type="button">Skip voting & begin night</button>
+          <button id="nextNightBtn" type="button" disabled>Begin night</button>
+        </div>
+      </div>
 
-// ---- State ---------------------------------------------------------------
-const state = {
-  roles: structuredClone(DEFAULT_ROLES),
-  players: Array.from({length:4}, (_, id) => createPlayer(id, `Player ${id+1}`)),
-  mode: 'random',
-  phase: 'setup',
-  handoffIndex: 0,
-  handoffRevealed: false,
-  round: 1,
-  day: { secondBallot:false, votes:{}, tiedCandidates:[] },
-  night: { queue:[], index:0, choices:{}, resolving:false, seerReveal:null, handoffReady:false, reactiveEncounter:null },
-  logs: [],
-  editingRoleId: null,
-};
+      <div id="nightCard" class="card hidden">
+        <div class="section-title">
+          <div>
+            <div class="phase">Night</div>
+            <h2 id="nightTitle">Night actions</h2>
+          </div>
+          <div class="spacer"></div>
+          <div class="pill" id="nightProgress"></div>
+        </div>
+        <div id="nightKnownRoles"></div>
+        <div id="nightPrompt" class="notice"></div>
+        <div id="nightActionArea" class="action-grid"></div>
+        <div id="nightResult" class="summary-grid" style="margin-top:12px"></div>
+        <div class="row" style="justify-content:flex-end;margin-top:12px">
+          <button id="resolveNightBtn" type="button" disabled>Resolve night</button>
+        </div>
+      </div>
 
-const NIGHT_ACTIONS = Object.freeze({
-  none: { label:'None' },
-  teamKill: { label:'Team kill' },
-  kill: { label:'Kill' },
-  inspectOrientation: { label:'Inspect orientation' },
-  seer: { label:'Reveal a random exact role' },
-  scapegoat: { label:'Scapegoat redirect' },
-  traitor: { label:'Traitor conversion' },
-  escape: { label:'Escape challenge' },
-  monkey: { label:'Confrontation' },
-  rps: { label:'Rock, Paper, Scissors' },
-});
+      <div id="winCard" class="card hidden">
+        <div class="section-title">
+          <div>
+            <div class="phase">Game over</div>
+            <h2 id="winnerTitle">Winner</h2>
+          </div>
+        </div>
+        <div id="winnerText" class="notice"></div>
+        <div id="finalRoles" class="summary-grid" style="margin-top:12px"></div>
+        <div class="row" style="justify-content:flex-end;margin-top:14px">
+          <button id="backSetupBtn" type="button">Back to setup</button>
+        </div>
+      </div>
 
-const $ = id => document.getElementById(id);
-const isChosen = value => value !== undefined && value !== null;
-const escapeHtml = value => String(value ?? '')
-  .replaceAll('&','&amp;').replaceAll('<','&lt;').replaceAll('>','&gt;')
-  .replaceAll('"','&quot;').replaceAll("'",'&#39;');
+      <div class="card">
+        <div class="section-title">
+          <h3>Game log</h3>
+        </div>
+        <div id="gameLog" class="log"></div>
+      </div>
+    </section>
+  </div>
 
-function createPlayer(id, name){
-  return {id,name,roleId:null,alive:true,used:{},escaped:false,eliminatedByVote:false};
-}
-function playersAlive(){ return state.players.filter(p => p.alive); }
-function roleOf(player){ return player ? state.roles.find(r => r.id === player.roleId) : null; }
-function playerOf(id){ return state.players.find(p => p.id === Number(id)); }
-function labelOrientation(value){ return value ? value[0].toUpperCase() + value.slice(1) : ''; }
-function shuffle(list){
-  for(let i=list.length-1;i>0;i--){
-    const j=Math.floor(Math.random()*(i+1));
-    [list[i],list[j]]=[list[j],list[i]];
-  }
-  return list;
-}
-function randomChoice(list){ return list.length ? list[Math.floor(Math.random()*list.length)] : null; }
-function rolePill(role){
-  return `<span class="pill ${role?.orientation||'neutral'}">${escapeHtml(labelOrientation(role?.orientation||''))}</span>`;
-}
-function addLog(text){
-  state.logs.unshift({text,time:new Date().toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'})});
-}
+  <script>
+    const DEFAULT_ROLES = [
 
-function renderGameLog(){
-  $('gameLog').innerHTML=state.logs.map(x => `<div class="log-item"><span class="muted">${x.time}</span> ${escapeHtml(x.text)}</div>`).join('');
-}
-function setPhase(label,title){
-  $('phaseLabel').textContent=label;
-  $('phaseTitle').textContent=title;
-  $('roundPill').textContent=`Round ${state.round}`;
-}
-function hide(...ids){ ids.forEach(id => $(id)?.classList.add('hidden')); }
-function show(...ids){ ids.forEach(id => $(id)?.classList.remove('hidden')); }
+      {
+        id: 'citizen', title: 'Citizen', orientation: 'good',
+        description: 'You are a Citizen. Figure out which of you are the Mafia and help the good side eliminate every evil player.',
+        visibility: 'nobody', nightAction: 'none'
+      },
+      {
+        id: 'scapegoat', title: 'Scapegoat', orientation: 'good',
+        description: 'If the Mafia successfully target you, you may transfer that attempted kill to a living player on either side of you once per game.',
+        visibility: 'nobody', nightAction: 'scapegoat'
+      },
+      {
+        id: 'peacemaker', title: 'Peacemaker', orientation: 'good',
+        description: 'Each night, you may use your team kill to attempt to kill one player. Any other Peacemaker shares the same team kill, so only one Peacemaker can use it per night.',
+        visibility: 'nobody', nightAction: 'teamKill'
+      },
+      {
+        id: 'serial_killer', title: 'Serial Killer', orientation: 'neutral',
+        description: 'Each night, choose one living player to kill.',
+        visibility: 'nobody', nightAction: 'kill'
+      },
+      {
+        id: 'detective', title: 'Detective', orientation: 'good',
+        description: 'Each night, choose one living player and learn whether their orientation is good, neutral, or evil. The answer is truthful.',
+        visibility: 'nobody', nightAction: 'inspectOrientation'
+      },
+      {
+        id: 'escapist', title: 'Escapist', orientation: 'good',
+        description: 'If the Mafia target you, you get a chance to escape by literally running away from the Mafia. You have 15 seconds to survive the kill.',
+        visibility: 'nobody', nightAction: 'escape'
+      },
+      {
+        id: 'monkey', title: 'Monkey', orientation: 'good',
+        description: 'If you are targeted by a night kill, you may make a loud sound or otherwise openly confront your perpetrator directly before the result is resolved.',
+        visibility: 'nobody', nightAction: 'monkey'
+      },
+      {
+        id: 'joker', title: 'Joker', orientation: 'good',
+        description: 'When you are targeted by a night kill, you and the perpetrator play a best-of-3 Rock, Paper, Scissors. The game decides who survives the encounter.',
+        visibility: 'nobody', nightAction: 'rps'
+      },
+      {
+        id: 'seer', title: 'Seer', orientation: 'good',
+        description: 'Each night, see the exact role of one random living player other than yourself.',
+        visibility: 'nobody', nightAction: 'seer'
+      },
+      {
+        id: 'traitor', title: 'Traitor', orientation: 'good',
+        description: 'If the Mafia target you, you join the Mafia instead of dying. Your orientation becomes evil from that point onward.',
+        visibility: 'evil', nightAction: 'traitor'
+      },
+      {
+        id: 'jester', title: 'Jester', orientation: 'neutral',
+        description: 'Try to get voted out by the Citizens during the day. You win immediately when the town votes you out.',
+        visibility: 'nobody', nightAction: 'none'
+      },
+      {
+        id: 'mafia', title: 'Mafia', orientation: 'evil',
+        description: 'Work with other Mafia players who share this exact role. Together, you have one shared team kill per night.',
+        visibility: 'evil', nightAction: 'teamKill'
+      }
+    ];
 
-// ---- Setup / roles --------------------------------------------------------
-function visibilityText(value){
-  return ({
-    nobody:'Nobody', everyone:'Everyone', sameOrientation:'Same orientation',
-    good:'Good players', neutral:'Neutral players', evil:'Evil players'
-  })[value] || value;
-}
-function visibleTo(viewer,target){
-  const role=roleOf(target);
-  if(!role || !viewer || viewer.id===target.id) return false;
+    // ---- State ---------------------------------------------------------------
+    const state = {
+      roles: structuredClone(DEFAULT_ROLES),
+      players: Array.from({length: 4}, (_, id) => createPlayer(id, `Player ${id + 1}`)),
+      mode: 'random',
+      phase: 'setup',
+      handoffIndex: 0,
+      handoffRevealed: false,
+      round: 1,
+      day: {secondBallot: false, votes: {}, tiedCandidates: []},
+      night: {queue: [], index: 0, choices: {}, resolving: false, seerReveal: null, handoffReady: false, reactiveEncounter: null},
+      logs: [],
+      editingRoleId: null,
+    };
 
-  const viewerRole=roleOf(viewer);
-  if(role.visibility==='everyone') return true;
-  if(role.visibility==='nobody') return false;
-  if(!viewerRole) return false;
-  return role.visibility==='sameOrientation'
-    ? viewerRole.orientation===role.orientation
-    : viewerRole.orientation===role.visibility;
-}
+    const NIGHT_ACTIONS = Object.freeze({
+      none: {label: 'None'},
+      teamKill: {label: 'Team kill'},
+      kill: {label: 'Kill'},
+      inspectOrientation: {label: 'Inspect orientation'},
+      seer: {label: 'Reveal a random exact role'},
+      scapegoat: {label: 'Scapegoat redirect'},
+      traitor: {label: 'Traitor conversion'},
+      escape: {label: 'Escape challenge'},
+      monkey: {label: 'Confrontation'},
+      rps: {label: 'Rock, Paper, Scissors'},
+    });
 
-function mutuallyVisible(a,b){
-  return !!a && !!b && visibleTo(a,b) && visibleTo(b,a);
-}
+    const $ = id => document.getElementById(id);
+    const isChosen = value => value !== undefined && value !== null;
+    const escapeHtml = value => String(value ?? '')
+      .replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;')
+      .replaceAll('"', '&quot;').replaceAll("'", '&#39;');
 
-function evilTeamMembers(actor){
-  if(!actor || roleOf(actor)?.orientation!=='evil') return [actor].filter(Boolean);
-  return playersAlive().filter(player=>{
-    if(roleOf(player)?.orientation!=='evil') return false;
-    return player.id===actor.id || mutuallyVisible(actor,player);
-  });
-}
-function renderKnownRoles(viewer, containerId){
-  const el=$(containerId); if(!el) return;
-  const known=state.players.filter(target => visibleTo(viewer,target));
-  if(!known.length){ el.innerHTML=''; return; }
-  el.innerHTML=`
+    function createPlayer(id, name) {
+      return {id, name, roleId: null, alive: true, used: {}, escaped: false, eliminatedByVote: false};
+    }
+    function playersAlive() {return state.players.filter(p => p.alive);}
+    function roleOf(player) {return player ? state.roles.find(r => r.id === player.roleId) : null;}
+    function playerOf(id) {return state.players.find(p => p.id === Number(id));}
+    function labelOrientation(value) {return value ? value[0].toUpperCase() + value.slice(1) : '';}
+    function shuffle(list) {
+      for (let i = list.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [list[i], list[j]] = [list[j], list[i]];
+      }
+      return list;
+    }
+    function randomChoice(list) {return list.length ? list[Math.floor(Math.random() * list.length)] : null;}
+    function rolePill(role) {
+      return `<span class="pill ${role?.orientation || 'neutral'}">${escapeHtml(labelOrientation(role?.orientation || ''))}</span>`;
+    }
+    function addLog(text) {
+      state.logs.unshift({text, time: new Date().toLocaleTimeString([], {hour: '2-digit', minute: '2-digit'})});
+    }
+
+    function renderGameLog() {
+      $('gameLog').innerHTML = state.logs.map(x => `<div class="log-item"><span class="muted">${x.time}</span> ${escapeHtml(x.text)}</div>`).join('');
+    }
+    function setPhase(label, title) {
+      $('phaseLabel').textContent = label;
+      $('phaseTitle').textContent = title;
+      $('roundPill').textContent = `Round ${state.round}`;
+    }
+    function hide(...ids) {ids.forEach(id => $(id)?.classList.add('hidden'));}
+    function show(...ids) {ids.forEach(id => $(id)?.classList.remove('hidden'));}
+
+    // ---- Setup / roles --------------------------------------------------------
+    function visibilityText(value) {
+      return ({
+        nobody: 'Nobody', everyone: 'Everyone', sameOrientation: 'Same orientation',
+        good: 'Good players', neutral: 'Neutral players', evil: 'Evil players'
+      })[value] || value;
+    }
+    function visibleTo(viewer, target) {
+      const role = roleOf(target);
+      if (!role || !viewer || viewer.id === target.id) return false;
+
+      const viewerRole = roleOf(viewer);
+      if (role.visibility === 'everyone') return true;
+      if (role.visibility === 'nobody') return false;
+      if (!viewerRole) return false;
+      return role.visibility === 'sameOrientation'
+        ? viewerRole.orientation === role.orientation
+        : viewerRole.orientation === role.visibility;
+    }
+
+    function mutuallyVisible(a, b) {
+      return !!a && !!b && visibleTo(a, b) && visibleTo(b, a);
+    }
+
+    function evilTeamMembers(actor) {
+      if (!actor || roleOf(actor)?.orientation !== 'evil') return [actor].filter(Boolean);
+      return playersAlive().filter(player => {
+        if (roleOf(player)?.orientation !== 'evil') return false;
+        return player.id === actor.id || mutuallyVisible(actor, player);
+      });
+    }
+    function renderKnownRoles(viewer, containerId) {
+      const el = $(containerId); if (!el) return;
+      const known = state.players.filter(target => visibleTo(viewer, target));
+      if (!known.length) {el.innerHTML = ''; return;}
+      el.innerHTML = `
     <div class="known-roles">
       <strong>Roles you know</strong>
       <div class="muted tiny" style="margin-top:4px">These roles are visible to you because of their visibility setting.</div>
       <div class="known-role-list">${known.map(target => {
-        const role=roleOf(target);
-        return `<div class="known-role"><strong>${escapeHtml(target.name)}</strong><div class="tiny muted" style="margin-top:4px">${escapeHtml(role?.title||'Unknown')} ${rolePill(role)}</div></div>`;
+        const role = roleOf(target);
+        return `<div class="known-role"><strong>${escapeHtml(target.name)}</strong><div class="tiny muted" style="margin-top:4px">${escapeHtml(role?.title || 'Unknown')} ${rolePill(role)}</div></div>`;
       }).join('')}</div>
     </div>`;
-}
-function renderPlayers(){
-  const el=$('players'); el.innerHTML='';
-  state.players.forEach((player,index)=>{
-    const row=document.createElement('div'); row.className='player-row';
-    const name=document.createElement('input'); name.type='text'; name.value=player.name; name.setAttribute('aria-label','Player name');
-    name.addEventListener('input',e => player.name=e.target.value);
-    row.appendChild(name);
+    }
+    function renderPlayers() {
+      const el = $('players'); el.innerHTML = '';
+      state.players.forEach((player, index) => {
+        const row = document.createElement('div'); row.className = 'player-row';
+        const name = document.createElement('input'); name.type = 'text'; name.value = player.name; name.setAttribute('aria-label', 'Player name');
+        name.addEventListener('input', e => player.name = e.target.value);
+        row.appendChild(name);
 
-    const select=document.createElement('select');
-    select.style.display=state.mode==='manual'?'block':'none';
-    state.roles.forEach(role => { const option=new Option(role.title,role.id); select.appendChild(option); });
-    select.value=player.roleId || state.roles[0]?.id || '';
-    select.addEventListener('change',e => player.roleId=e.target.value);
-    row.appendChild(select);
+        const select = document.createElement('select');
+        select.style.display = state.mode === 'manual' ? 'block' : 'none';
+        state.roles.forEach(role => {const option = new Option(role.title, role.id); select.appendChild(option);});
+        select.value = player.roleId || state.roles[0]?.id || '';
+        select.addEventListener('change', e => player.roleId = e.target.value);
+        row.appendChild(select);
 
-    const remove=document.createElement('button');
-    remove.className='ghost'; remove.textContent='×'; remove.title='Remove';
-    remove.addEventListener('click',()=>{
-      if(state.players.length<=2){ alert('Need at least 2 players.'); return; }
-      state.players.splice(index,1);
-      state.players.forEach((p,i)=>p.id=i);
-      renderSetup();
-    });
-    row.appendChild(remove);
-    el.appendChild(row);
-  });
-}
-function renderRandomRolePool(){
-  const el=$('randomRolePool'); el.innerHTML='';
-  const orientationOrder={good:0,neutral:1,evil:2};
-  const roles=[...state.roles]
-    .filter(role=>role.id!=='citizen')
-    .sort((a,b)=>{
-      const orientationDiff=(orientationOrder[a.orientation]??99)-(orientationOrder[b.orientation]??99);
-      if(orientationDiff!==0) return orientationDiff;
-      return a.title.localeCompare(b.title,undefined,{sensitivity:'base'});
-    });
-  roles.forEach(role=>{
-    const count=role.randomCount ?? 0;
-    const box=document.createElement('div'); box.className='role-card';
-    box.innerHTML=`
-      <div class="role-head"><input type="checkbox" ${count>0?'checked':''}>
+        const remove = document.createElement('button');
+        remove.className = 'ghost'; remove.textContent = '×'; remove.title = 'Remove';
+        remove.addEventListener('click', () => {
+          if (state.players.length <= 2) {alert('Need at least 2 players.'); return;}
+          state.players.splice(index, 1);
+          state.players.forEach((p, i) => p.id = i);
+          renderSetup();
+        });
+        row.appendChild(remove);
+        el.appendChild(row);
+      });
+    }
+    function renderRandomRolePool() {
+      const el = $('randomRolePool'); el.innerHTML = '';
+      const orientationOrder = {good: 0, neutral: 1, evil: 2};
+      const roles = [...state.roles]
+        .filter(role => role.id !== 'citizen')
+        .sort((a, b) => {
+          const orientationDiff = (orientationOrder[a.orientation] ?? 99) - (orientationOrder[b.orientation] ?? 99);
+          if (orientationDiff !== 0) return orientationDiff;
+          return a.title.localeCompare(b.title, undefined, {sensitivity: 'base'});
+        });
+      roles.forEach(role => {
+        const count = role.randomCount ?? 0;
+        const box = document.createElement('div'); box.className = 'role-card';
+        box.innerHTML = `
+      <div class="role-head"><input type="checkbox" ${count > 0 ? 'checked' : ''}>
         <strong>${escapeHtml(role.title)}</strong>${rolePill(role)}</div>
       <div class="role-actions"><input type="number" min="0" max="20" step="1" value="${count}" aria-label="${escapeHtml(role.title)} copies in random mode"></div>`;
-    const cb=box.querySelector('input[type=checkbox]');
-    const num=box.querySelector('input[type=number]');
-    cb.addEventListener('change',()=>{ role.randomCount=cb.checked ? Math.max(1,Number(num.value)||1) : 0; });
-    num.addEventListener('input',()=>{ role.randomCount=Math.max(0,Math.floor(Number(num.value)||0)); cb.checked=role.randomCount>0; });
-    el.appendChild(box);
-  });
-}
-function renderRoleLibrary(){
-  const el=$('roleLibrary'); el.innerHTML='';
-  const orientationOrder={good:0,neutral:1,evil:2};
-  const roles=[...state.roles].sort((a,b)=>{
-    const orientationDiff=(orientationOrder[a.orientation]??99)-(orientationOrder[b.orientation]??99);
-    if(orientationDiff!==0) return orientationDiff;
-    return a.title.localeCompare(b.title,undefined,{sensitivity:'base'});
-  });
-  roles.forEach(role=>{
-    const card=document.createElement('div'); card.className='role-card';
-    card.innerHTML=`
+        const cb = box.querySelector('input[type=checkbox]');
+        const num = box.querySelector('input[type=number]');
+        cb.addEventListener('change', () => {role.randomCount = cb.checked ? Math.max(1, Number(num.value) || 1) : 0;});
+        num.addEventListener('input', () => {role.randomCount = Math.max(0, Math.floor(Number(num.value) || 0)); cb.checked = role.randomCount > 0;});
+        el.appendChild(box);
+      });
+    }
+    function renderRoleLibrary() {
+      const el = $('roleLibrary'); el.innerHTML = '';
+      const orientationOrder = {good: 0, neutral: 1, evil: 2};
+      const roles = [...state.roles].sort((a, b) => {
+        const orientationDiff = (orientationOrder[a.orientation] ?? 99) - (orientationOrder[b.orientation] ?? 99);
+        if (orientationDiff !== 0) return orientationDiff;
+        return a.title.localeCompare(b.title, undefined, {sensitivity: 'base'});
+      });
+      roles.forEach(role => {
+        const card = document.createElement('div'); card.className = 'role-card';
+        card.innerHTML = `
       <div class="role-head"><strong>${escapeHtml(role.title)}</strong>${rolePill(role)}<span class="spacer"></span>
         <button class="ghost" data-edit type="button">Edit</button>
         <button class="danger" data-delete type="button">Remove</button></div>
       <div class="role-desc">${escapeHtml(role.description)}</div>
       <div class="muted tiny" style="margin-top:8px">Night ability: ${escapeHtml(NIGHT_ACTIONS[role.nightAction]?.label || role.nightAction || 'None')} · Seen by: ${escapeHtml(visibilityText(role.visibility))}</div>`;
-    card.querySelector('[data-edit]').addEventListener('click',()=>openRoleEditor(role.id));
-    card.querySelector('[data-delete]').addEventListener('click',()=>removeRole(role.id));
-    el.appendChild(card);
-  });
-}
-function renderSetup(){
-  $('roundMode').value=state.mode;
-  renderPlayers(); renderRandomRolePool(); renderRoleLibrary();
-}
-function openRoleEditor(id=null){
-  state.editingRoleId=id;
-  const role=id ? state.roles.find(r=>r.id===id) : null;
-  $('editorTitle').textContent=role?`Edit: ${role.title}`:'New role';
-  $('roleTitle').value=role?.title||'';
-  $('roleOrientation').value=role?.orientation||'good';
-  $('roleDescription').value=role?.description||'';
-  $('roleNightAction').value=role?.nightAction||'none';
-  $('roleVisibility').value=role?.visibility||'nobody';
-  $('roleEditor').classList.remove('hidden'); $('roleTitle').focus();
-}
-function closeRoleEditor(){ state.editingRoleId=null; $('roleEditor').classList.add('hidden'); }
-function removeRole(id){
-  const role=state.roles.find(r=>r.id===id); if(!role) return;
-  const affected=state.players.filter(p=>p.roleId===id).map(p=>p.name||`Player ${p.id+1}`);
-  let message=`Remove the role "${role.title}"?`;
-  if(affected.length) message+=`\n\nIt is currently assigned to: ${affected.join(', ')}.\nThose players will have their role assignment cleared.`;
-  if((role.randomCount||0)>0) message+='\n\nIt is enabled in Random mode and will be removed from the random role pool.';
-  if(!confirm(message)) return;
-  state.roles=state.roles.filter(r=>r.id!==id);
-  state.players.forEach(p=>{ if(p.roleId===id) p.roleId=null; });
-  if(!state.roles.length) state.roles=structuredClone(DEFAULT_ROLES);
-  renderSetup();
-}
-function assignRoles(){
-  if(state.mode==='manual'){
-    state.players.forEach(p=>{ if(!p.roleId) p.roleId=state.roles[0]?.id||null; });
-  } else {
-    // Random mode: selected role counts are used as minimums. Every selected
-    // evil role is guaranteed first, not just the default Mafia role. This
-    // also covers custom evil roles.
-    const playerCount=state.players.length;
-    const assigned=[];
+        card.querySelector('[data-edit]').addEventListener('click', () => openRoleEditor(role.id));
+        card.querySelector('[data-delete]').addEventListener('click', () => removeRole(role.id));
+        el.appendChild(card);
+      });
+    }
+    function renderSetup() {
+      $('roundMode').value = state.mode;
+      renderPlayers(); renderRandomRolePool(); renderRoleLibrary();
+    }
+    function openRoleEditor(id = null) {
+      state.editingRoleId = id;
+      const role = id ? state.roles.find(r => r.id === id) : null;
+      $('editorTitle').textContent = role ? `Edit: ${role.title}` : 'New role';
+      $('roleTitle').value = role?.title || '';
+      $('roleOrientation').value = role?.orientation || 'good';
+      $('roleDescription').value = role?.description || '';
+      $('roleNightAction').value = role?.nightAction || 'none';
+      $('roleVisibility').value = role?.visibility || 'nobody';
+      $('roleEditor').classList.remove('hidden'); $('roleTitle').focus();
+    }
+    function closeRoleEditor() {state.editingRoleId = null; $('roleEditor').classList.add('hidden');}
+    function removeRole(id) {
+      const role = state.roles.find(r => r.id === id); if (!role) return;
+      const affected = state.players.filter(p => p.roleId === id).map(p => p.name || `Player ${p.id + 1}`);
+      let message = `Remove the role "${role.title}"?`;
+      if (affected.length) message += `\n\nIt is currently assigned to: ${affected.join(', ')}.\nThose players will have their role assignment cleared.`;
+      if ((role.randomCount || 0) > 0) message += '\n\nIt is enabled in Random mode and will be removed from the random role pool.';
+      if (!confirm(message)) return;
+      state.roles = state.roles.filter(r => r.id !== id);
+      state.players.forEach(p => {if (p.roleId === id) p.roleId = null;});
+      if (!state.roles.length) state.roles = structuredClone(DEFAULT_ROLES);
+      renderSetup();
+    }
+    function assignRoles() {
+      if (state.mode === 'manual') {
+        state.players.forEach(p => {if (!p.roleId) p.roleId = state.roles[0]?.id || null;});
+      } else {
+        // Random mode: selected role counts are used as minimums. Every selected
+        // evil role is guaranteed first, not just the default Mafia role. This
+        // also covers custom evil roles.
+        const playerCount = state.players.length;
+        const assigned = [];
 
-    state.roles.filter(role=>role.id!=='citizen' && role.orientation==='evil').forEach(role=>{
-      const requested=Math.max(0,Math.floor(role.randomCount||0));
-      const guaranteed=Math.min(requested,playerCount-assigned.length);
-      for(let i=0;i<guaranteed;i++) assigned.push(role.id);
-    });
+        state.roles.filter(role => role.id !== 'citizen' && role.orientation === 'evil').forEach(role => {
+          const requested = Math.max(0, Math.floor(role.randomCount || 0));
+          const guaranteed = Math.min(requested, playerCount - assigned.length);
+          for (let i = 0; i < guaranteed; i++) assigned.push(role.id);
+        });
 
-    // Fill remaining slots from the other selected roles, including any
-    // remaining copies of evil roles beyond their guaranteed minimum.
-    let otherPool=[];
-    state.roles.forEach(role=>{
-      if(role.id==='citizen') return;
-      const count=Math.max(0,Math.floor(role.randomCount||0));
-      for(let i=0;i<count;i++) otherPool.push(role.id);
-    });
+        // Fill remaining slots from the other selected roles, including any
+        // remaining copies of evil roles beyond their guaranteed minimum.
+        let otherPool = [];
+        state.roles.forEach(role => {
+          if (role.id === 'citizen') return;
+          const count = Math.max(0, Math.floor(role.randomCount || 0));
+          for (let i = 0; i < count; i++) otherPool.push(role.id);
+        });
 
-    // Remove the copies already guaranteed above so they aren't duplicated
-    // merely because they were also present in the normal role pool.
-    const guaranteedCounts={};
-    assigned.forEach(id=>guaranteedCounts[id]=(guaranteedCounts[id]||0)+1);
-    Object.entries(guaranteedCounts).forEach(([id,count])=>{
-      for(let i=0;i<count;i++){
-        const index=otherPool.indexOf(id);
-        if(index>=0) otherPool.splice(index,1);
+        // Remove the copies already guaranteed above so they aren't duplicated
+        // merely because they were also present in the normal role pool.
+        const guaranteedCounts = {};
+        assigned.forEach(id => guaranteedCounts[id] = (guaranteedCounts[id] || 0) + 1);
+        Object.entries(guaranteedCounts).forEach(([id, count]) => {
+          for (let i = 0; i < count; i++) {
+            const index = otherPool.indexOf(id);
+            if (index >= 0) otherPool.splice(index, 1);
+          }
+        });
+
+        otherPool = shuffle(otherPool);
+        while (assigned.length < playerCount && otherPool.length) {
+          assigned.push(otherPool.shift());
+        }
+        while (assigned.length < playerCount) {
+          const citizenExists = state.roles.some(r => r.id === 'citizen');
+          if (citizenExists) assigned.push('citizen');
+          else if (state.roles.length) assigned.push(state.roles[0].id);
+          else assigned.push(null);
+        }
+
+        const shuffledAssigned = shuffle(assigned);
+        state.players.forEach((p, i) => {p.roleId = shuffledAssigned[i] || null;});
       }
-    });
-
-    otherPool=shuffle(otherPool);
-    while(assigned.length<playerCount && otherPool.length){
-      assigned.push(otherPool.shift());
-    }
-    while(assigned.length<playerCount){
-      const citizenExists=state.roles.some(r=>r.id==='citizen');
-      if(citizenExists) assigned.push('citizen');
-      else if(state.roles.length) assigned.push(state.roles[0].id);
-      else assigned.push(null);
+      state.players.forEach(p => {p.alive = true; p.used = {}; p.escaped = false; p.eliminatedByVote = false;});
     }
 
-    const shuffledAssigned=shuffle(assigned);
-    state.players.forEach((p,i)=>{ p.roleId=shuffledAssigned[i] || null; });
-  }
-  state.players.forEach(p=>{p.alive=true;p.used={};p.escaped=false;p.eliminatedByVote=false;});
-}
+    // ---- Handoff / day --------------------------------------------------------
+    function beginHandoff() {
+      state.phase = 'handoff'; state.handoffIndex = 0; state.handoffRevealed = false;
+      hide('setupScreen', 'dayCard', 'nightCard', 'winCard'); show('gameScreen', 'handoffCard');
+      updateHandoff();
+    }
+    function updateHandoff() {
+      const player = state.players[state.handoffIndex], role = roleOf(player);
+      setPhase('Role handoff', 'Private roles');
+      $('handoffPlayer').textContent = player?.name || `Player ${state.handoffIndex + 1}`;
+      $('handoffSecret').textContent = state.handoffRevealed ? role?.title || 'Unknown' : 'Ready?';
+      $('handoffDescription').innerHTML = state.handoffRevealed
+        ? `${rolePill(role)}<div style="margin-top:10px">${escapeHtml(role?.description || '')}</div><div class="tiny muted" style="margin-top:10px">Night ability: ${escapeHtml(NIGHT_ACTIONS[role?.nightAction]?.label || 'None')}</div>`
+        : 'Tap reveal to privately see your role.';
+      if (state.handoffRevealed) renderKnownRoles(player, 'handoffKnownRoles'); else $('handoffKnownRoles').innerHTML = '';
+      $('revealRoleBtn').disabled = state.handoffRevealed;
+      $('handoffNextBtn').disabled = !state.handoffRevealed;
+      $('handoffNextBtn').textContent = state.handoffIndex === state.players.length - 1 ? 'Start day' : 'Hide & pass';
+    }
+    function startDay() {
+      state.phase = 'day'; state.day = {secondBallot: false, votes: {}, tiedCandidates: []};
+      hide('handoffCard', 'nightCard'); show('dayCard');
+      setPhase('Day', 'Vote someone out'); renderDay();
+    }
+    function validDayTarget(voter, targetId) {
+      const target = playerOf(targetId);
+      const allowed = state.day.secondBallot ? state.day.tiedCandidates : playersAlive().map(p => p.id);
+      return !!target && target.alive && target.id !== voter.id && allowed.includes(target.id);
+    }
+    function renderDay() {
+      $('dayLiving').textContent = `${playersAlive().length} living`;
+      const area = $('dayVoteArea'); area.innerHTML = '';
+      const living = playersAlive();
+      const candidates = state.day.secondBallot ? state.day.tiedCandidates : living.map(p => p.id);
+      living.forEach(voter => {
+        const box = document.createElement('div'); box.className = 'target-card';
+        box.innerHTML = `<strong>${escapeHtml(voter.name)}</strong><div class="muted tiny" style="margin-top:5px">Vote:</div>`;
+        const select = document.createElement('select'); select.style.marginTop = '6px';
+        select.appendChild(new Option('Choose player', ''));
+        candidates.filter(id => id !== voter.id).map(playerOf).filter(Boolean).forEach(target => select.appendChild(new Option(target.name, target.id)));
+        select.value = isChosen(state.day.votes[voter.id]) ? state.day.votes[voter.id] : '';
+        select.addEventListener('change', e => {
+          const targetId = Number(e.target.value);
+          state.day.votes[voter.id] = Number.isInteger(targetId) && validDayTarget(voter, targetId) ? targetId : null;
+          updateDayResolveButton();
+        });
+        box.appendChild(select); area.appendChild(box);
+      });
+      $('dayResult').innerHTML = ''; updateDayResolveButton();
+    }
+    function updateDayResolveButton() {
+      const living = playersAlive();
+      const ready = living.length > 1 && living.every(voter => isChosen(state.day.votes[voter.id]) && validDayTarget(voter, state.day.votes[voter.id]));
+      $('nextNightBtn').disabled = !ready;
+      $('nextNightBtn').textContent = state.day.secondBallot ? 'Resolve tie' : 'Resolve vote';
+      $('skipDayBtn').disabled = false;
+    }
+    function skipDay() {
+      if (state.phase !== 'day') return;
+      state.day = {secondBallot: false, votes: {}, tiedCandidates: []};
+      $('dayResult').innerHTML = '<div class="result">Voting was skipped. Nobody was eliminated today.</div>';
+      addLog('Day voting was skipped; nobody was eliminated.');
+      const result = checkWin();
+      if (result.done) {endGame(result); return;}
+      $('nextNightBtn').disabled = false;
+      $('nextNightBtn').textContent = 'Begin night';
+      $('skipDayBtn').disabled = true;
+    }
 
-// ---- Handoff / day --------------------------------------------------------
-function beginHandoff(){
-  state.phase='handoff'; state.handoffIndex=0; state.handoffRevealed=false;
-  hide('setupScreen','dayCard','nightCard','winCard'); show('gameScreen','handoffCard');
-  updateHandoff();
-}
-function updateHandoff(){
-  const player=state.players[state.handoffIndex], role=roleOf(player);
-  setPhase('Role handoff','Private roles');
-  $('handoffPlayer').textContent=player?.name||`Player ${state.handoffIndex+1}`;
-  $('handoffSecret').textContent=state.handoffRevealed ? role?.title||'Unknown' : 'Ready?';
-  $('handoffDescription').innerHTML=state.handoffRevealed
-    ? `${rolePill(role)}<div style="margin-top:10px">${escapeHtml(role?.description||'')}</div><div class="tiny muted" style="margin-top:10px">Night ability: ${escapeHtml(NIGHT_ACTIONS[role?.nightAction]?.label||'None')}</div>`
-    : 'Tap reveal to privately see your role.';
-  if(state.handoffRevealed) renderKnownRoles(player,'handoffKnownRoles'); else $('handoffKnownRoles').innerHTML='';
-  $('revealRoleBtn').disabled=state.handoffRevealed;
-  $('handoffNextBtn').disabled=!state.handoffRevealed;
-  $('handoffNextBtn').textContent=state.handoffIndex===state.players.length-1?'Start day':'Hide & pass';
-}
-function startDay(){
-  state.phase='day'; state.day={secondBallot:false,votes:{},tiedCandidates:[]};
-  hide('handoffCard','nightCard'); show('dayCard');
-  setPhase('Day','Vote someone out'); renderDay();
-}
-function validDayTarget(voter,targetId){
-  const target=playerOf(targetId);
-  const allowed=state.day.secondBallot ? state.day.tiedCandidates : playersAlive().map(p=>p.id);
-  return !!target && target.alive && target.id!==voter.id && allowed.includes(target.id);
-}
-function renderDay(){
-  $('dayLiving').textContent=`${playersAlive().length} living`;
-  const area=$('dayVoteArea'); area.innerHTML='';
-  const living=playersAlive();
-  const candidates=state.day.secondBallot ? state.day.tiedCandidates : living.map(p=>p.id);
-  living.forEach(voter=>{
-    const box=document.createElement('div'); box.className='target-card';
-    box.innerHTML=`<strong>${escapeHtml(voter.name)}</strong><div class="muted tiny" style="margin-top:5px">Vote:</div>`;
-    const select=document.createElement('select'); select.style.marginTop='6px';
-    select.appendChild(new Option('Choose player',''));
-    candidates.filter(id=>id!==voter.id).map(playerOf).filter(Boolean).forEach(target=>select.appendChild(new Option(target.name,target.id)));
-    select.value=isChosen(state.day.votes[voter.id]) ? state.day.votes[voter.id] : '';
-    select.addEventListener('change',e=>{
-      const targetId=Number(e.target.value);
-      state.day.votes[voter.id]=Number.isInteger(targetId)&&validDayTarget(voter,targetId)?targetId:null;
-      updateDayResolveButton();
-    });
-    box.appendChild(select); area.appendChild(box);
-  });
-  $('dayResult').innerHTML=''; updateDayResolveButton();
-}
-function updateDayResolveButton(){
-  const living=playersAlive();
-  const ready=living.length>1 && living.every(voter=>isChosen(state.day.votes[voter.id]) && validDayTarget(voter,state.day.votes[voter.id]));
-  $('nextNightBtn').disabled=!ready;
-  $('nextNightBtn').textContent=state.day.secondBallot?'Resolve tie':'Resolve vote';
-  $('skipDayBtn').disabled=false;
-}
-function skipDay(){
-  if(state.phase!=='day') return;
-  state.day={secondBallot:false,votes:{},tiedCandidates:[]};
-  $('dayResult').innerHTML='<div class="result">Voting was skipped. Nobody was eliminated today.</div>';
-  addLog('Day voting was skipped; nobody was eliminated.');
-  const result=checkWin();
-  if(result.done){ endGame(result); return; }
-  $('nextNightBtn').disabled=false;
-  $('nextNightBtn').textContent='Begin night';
-  $('skipDayBtn').disabled=true;
-}
+    function resolveDay() {
+      const living = playersAlive();
+      const counts = new Map();
+      living.forEach(voter => {
+        const target = state.day.votes[voter.id]; if (!validDayTarget(voter, target)) return;
+        counts.set(target, (counts.get(target) || 0) + 1);
+      });
+      const top = Math.max(-1, ...counts.values());
+      const winners = [...counts.entries()].filter(([, count]) => count === top).map(([id]) => id);
+      if (!winners.length) {$('dayResult').innerHTML = '<div class="result">No valid vote was submitted.</div>'; return;}
 
-function resolveDay(){
-  const living=playersAlive();
-  const counts=new Map();
-  living.forEach(voter=>{
-    const target=state.day.votes[voter.id]; if(!validDayTarget(voter,target)) return;
-    counts.set(target,(counts.get(target)||0)+1);
-  });
-  const top=Math.max(-1,...counts.values());
-  const winners=[...counts.entries()].filter(([,count])=>count===top).map(([id])=>id);
-  if(!winners.length){ $('dayResult').innerHTML='<div class="result">No valid vote was submitted.</div>'; return; }
+      if (winners.length > 1 && !state.day.secondBallot) {
+        state.day.secondBallot = true; state.day.tiedCandidates = winners; state.day.votes = {};
+        $('dayResult').innerHTML = `<div class="result">Tie between ${winners.map(id => escapeHtml(playerOf(id)?.name || id)).join(', ')}. A second ballot will happen.</div>`;
+        renderDay();
+        return;
+      }
+      if (winners.length > 1) {
+        state.day.secondBallot = false;
+        $('dayResult').innerHTML = '<div class="result">The second vote was tied. Nobody is eliminated today.</div>';
+        $('nextNightBtn').disabled = false; $('nextNightBtn').textContent = 'Begin night';
+        $('skipDayBtn').disabled = true;
+        addLog('Day ended in a tie; nobody was eliminated.'); return;
+      }
 
-  if(winners.length>1 && !state.day.secondBallot){
-    state.day.secondBallot=true; state.day.tiedCandidates=winners; state.day.votes={};
-    $('dayResult').innerHTML=`<div class="result">Tie between ${winners.map(id=>escapeHtml(playerOf(id)?.name||id)).join(', ')}. A second ballot will happen.</div>`;
-    renderDay();
-    return;
-  }
-  if(winners.length>1){
-    state.day.secondBallot=false;
-    $('dayResult').innerHTML='<div class="result">The second vote was tied. Nobody is eliminated today.</div>';
-    $('nextNightBtn').disabled=false; $('nextNightBtn').textContent='Begin night';
-    $('skipDayBtn').disabled=true;
-    addLog('Day ended in a tie; nobody was eliminated.'); return;
-  }
+      const out = playerOf(winners[0]);
+      out.alive = false; out.eliminatedByVote = true;
+      const role = roleOf(out);
+      $('dayResult').innerHTML = `<div class="result"><strong>${escapeHtml(out.name)}</strong> was voted out. ${escapeHtml(role?.title || 'Unknown')} (${escapeHtml(labelOrientation(role?.orientation))}).</div>`;
+      addLog(`${out.name} was voted out during the day (${role?.title || 'Unknown'}).`);
+      state.day.secondBallot = false;
+      const result = checkWin(); if (result.done) {endGame(result); return;}
+      $('nextNightBtn').disabled = false; $('nextNightBtn').textContent = 'Begin night';
+      $('skipDayBtn').disabled = true;
+    }
 
-  const out=playerOf(winners[0]);
-  out.alive=false; out.eliminatedByVote=true;
-  const role=roleOf(out);
-  $('dayResult').innerHTML=`<div class="result"><strong>${escapeHtml(out.name)}</strong> was voted out. ${escapeHtml(role?.title||'Unknown')} (${escapeHtml(labelOrientation(role?.orientation))}).</div>`;
-  addLog(`${out.name} was voted out during the day (${role?.title||'Unknown'}).`);
-  state.day.secondBallot=false;
-  const result=checkWin(); if(result.done){ endGame(result); return; }
-  $('nextNightBtn').disabled=false; $('nextNightBtn').textContent='Begin night';
-  $('skipDayBtn').disabled=true;
-}
+    // ---- Night ---------------------------------------------------------------
+    function isKillingRole(role) {
+      return role?.nightAction === 'teamKill' || role?.nightAction === 'kill';
+    }
 
-// ---- Night ---------------------------------------------------------------
-function isKillingRole(role){
-  return role?.nightAction==='teamKill' || role?.nightAction==='kill';
-}
+    function isTeamKillRole(role) {
+      return role?.nightAction === 'teamKill';
+    }
 
-function isTeamKillRole(role){
-  return role?.nightAction==='teamKill';
-}
+    function coordinatedKillMembers(actor) {
+      const role = roleOf(actor);
+      if (!role || !isTeamKillRole(role)) return [actor];
+      return playersAlive().filter(player => roleOf(player)?.id === role.id);
+    }
 
-function coordinatedKillMembers(actor){
-  const role=roleOf(actor);
-  if(!role || !isTeamKillRole(role)) return [actor];
-  return playersAlive().filter(player=>roleOf(player)?.id===role.id);
-}
+    function buildNightActionQueue() {
+      const queue = [];
+      const activeActions = new Set(['teamKill', 'kill', 'inspectOrientation', 'seer']);
 
-function buildNightActionQueue(){
-  const queue=[];
-  const activeActions=new Set(['teamKill','kill','inspectOrientation','seer']);
+      playersAlive().forEach(player => {
+        const role = roleOf(player);
+        if (!role || !activeActions.has(role.nightAction)) return;
+        queue.push(player);
+      });
 
-  playersAlive().forEach(player=>{
-    const role=roleOf(player);
-    if(!role || !activeActions.has(role.nightAction)) return;
-    queue.push(player);
-  });
+      return $('nightOrder').value === 'random' ? shuffle(queue) : queue;
+    }
 
-  return $('nightOrder').value==='random' ? shuffle(queue) : queue;
-}
+    function buildNightReactionQueue() {
+      // Every player who was alive when the night began gets a Round 2 pass.
+      // This queue is intentionally a snapshot so players killed earlier in Round 2
+      // still receive their own turn and are told they were killed.
+      return state.night.round1Players ? state.night.round1Players.slice() : playersAlive().slice();
+    }
 
-function buildNightReactionQueue(){
-  // Every player who was alive when the night began gets a Round 2 pass.
-  // This queue is intentionally a snapshot so players killed earlier in Round 2
-  // still receive their own turn and are told they were killed.
-  return state.night.round1Players ? state.night.round1Players.slice() : playersAlive().slice();
-}
+    function startNight() {
+      state.phase = 'night';
+      const nightPlayers = playersAlive().slice();
+      const actionQueue = nightPlayers.slice();
+      state.night = {
+        round: 1,
+        queue: actionQueue,
+        index: 0,
+        busy: false,
+        seerReveal: null,
+        handoffReady: false,
+        pendingAttacks: [],
+        reactionQueue: [],
+        reactionCompleted: [],
+        round1Players: nightPlayers,
+        turnRevealed: false,
+        usedTeamKillRoleIds: []
+      };
+      // A team-kill role shares one kill per night with players who have the exact same role.
+      // Everyone still gets a private turn and sees the other exact-role members.
+      hide('dayCard', 'handoffCard'); show('nightCard');
+      setPhase('Night', 'Night actions — Round 1');
+      if (!state.night.queue.length) {beginReactionRound(); return;}
+      updateNight();
+    }
 
-function startNight(){
-  state.phase='night';
-  const nightPlayers=playersAlive().slice();
-  const actionQueue=nightPlayers.slice();
-  state.night={
-    round:1,
-    queue:actionQueue,
-    index:0,
-    busy:false,
-    seerReveal:null,
-    handoffReady:false,
-    pendingAttacks:[],
-    reactionQueue:[],
-    reactionCompleted:[],
-    round1Players:nightPlayers,
-    turnRevealed:false,
-    usedTeamKillRoleIds:[]
-  };
-  // A team-kill role shares one kill per night with players who have the exact same role.
-  // Everyone still gets a private turn and sees the other exact-role members.
-  hide('dayCard','handoffCard'); show('nightCard');
-  setPhase('Night','Night actions — Round 1');
-  if(!state.night.queue.length){ beginReactionRound(); return; }
-  updateNight();
-}
+    function showNightResult(text) {$('nightResult').innerHTML = `<div class="result">${text}</div>`;}
+    function setNightBusy(busy) {state.night.busy = busy;}
 
-function showNightResult(text){ $('nightResult').innerHTML=`<div class="result">${text}</div>`; }
-function setNightBusy(busy){ state.night.busy=busy; }
+    function advanceNightActor() {
+      if (state.phase !== 'night') return;
+      state.night.index++;
+      state.night.handoffReady = false;
+      state.night.turnRevealed = false;
+      if (state.night.index >= state.night.queue.length) {
+        if (state.night.round === 1) {beginReactionRound(); return;}
+        finishNight();
+        return;
+      }
+      updateNight();
+    }
 
-function advanceNightActor(){
-  if(state.phase!=='night') return;
-  state.night.index++;
-  state.night.handoffReady=false;
-  state.night.turnRevealed=false;
-  if(state.night.index>=state.night.queue.length){
-    if(state.night.round===1){ beginReactionRound(); return; }
-    finishNight();
-    return;
-  }
-  updateNight();
-}
+    function completeNightTurn() {
+      if (state.night.round === 2 && Number.isInteger(state.night.currentActorId) && !state.night.reactionCompleted.includes(state.night.currentActorId)) {
+        state.night.reactionCompleted.push(state.night.currentActorId);
+      }
+      setNightBusy(false);
+      const result = checkWin();
+      if (result.done) {endGame(result); return;}
+      state.night.handoffReady = true;
+      updateNightHandoffGate();
+    }
 
-function completeNightTurn(){
-  if(state.night.round===2 && Number.isInteger(state.night.currentActorId) && !state.night.reactionCompleted.includes(state.night.currentActorId)){
-    state.night.reactionCompleted.push(state.night.currentActorId);
-  }
-  setNightBusy(false);
-  const result=checkWin();
-  if(result.done){ endGame(result); return; }
-  state.night.handoffReady=true;
-  updateNightHandoffGate();
-}
+    function renderNightKnownRoles(actor) {
+      $('nightKnownRoles').innerHTML = '';
+      renderKnownRoles(actor, 'nightKnownRoles');
 
-function renderNightKnownRoles(actor){
-  $('nightKnownRoles').innerHTML='';
-  renderKnownRoles(actor,'nightKnownRoles');
+      const role = roleOf(actor);
+      const teammates = coordinatedKillMembers(actor).filter(player => player.id !== actor.id);
+      if (!role || !teammates.length) return;
 
-  const role=roleOf(actor);
-  const teammates=coordinatedKillMembers(actor).filter(player=>player.id!==actor.id);
-  if(!role || !teammates.length) return;
-
-  const teammateNames=teammates.map(player=>{
-    const playerRole=roleOf(player);
-    const label=role.orientation==='evil' && playerRole?.orientation==='evil'
-      ? 'Evil teammate'
-      : 'Same role';
-    return `
+      const teammateNames = teammates.map(player => {
+        const playerRole = roleOf(player);
+        const label = role.orientation === 'evil' && playerRole?.orientation === 'evil'
+          ? 'Evil teammate'
+          : 'Same role';
+        return `
       <div class="known-role">
         <strong>${escapeHtml(player.name)}</strong>
         <div class="tiny muted" style="margin-top:4px">
-          ${escapeHtml(playerRole?.title||'Unknown')} · ${label}
+          ${escapeHtml(playerRole?.title || 'Unknown')} · ${label}
         </div>
       </div>`;
-  }).join('');
+      }).join('');
 
-  $('nightKnownRoles').innerHTML += `
+      $('nightKnownRoles').innerHTML += `
     <div class="known-roles">
       <strong>Team kill members</strong>
       <div class="muted tiny" style="margin-top:4px">These living players share the same exact role and coordinate on one shared kill.</div>
       <div class="known-role-list">${teammateNames}</div>
     </div>`;
-}
-
-function setChoiceAndContinue(actor,choice){
-  if(state.night.busy) return;
-  setNightBusy(true);
-
-  if(choice==='skip'){
-    showNightResult('No active choice tonight.');
-    completeNightTurn();
-    return;
-  }
-
-  const role=roleOf(actor);
-  if(!role){ completeNightTurn(); return; }
-
-  if(role.nightAction==='inspectOrientation'){
-    const target=playerOf(choice);
-    if(!target || !target.alive){
-      showNightResult('That player is no longer available to inspect.');
-      completeNightTurn();
-      return;
     }
-    const orientation=labelOrientation(roleOf(target)?.orientation||'unknown');
-    showNightResult(`<strong>Investigation result</strong><br><strong>${escapeHtml(target.name)}</strong> is <strong>${escapeHtml(orientation)}</strong>.`);
-    $('nightPrompt').textContent='Investigation complete. Acknowledge the result before continuing.';
-    $('nightActionArea').innerHTML='';
-    $('nightActionArea').appendChild(actionButton('Acknowledge & continue','inspectAcknowledge',()=>{
-      if(!state.night.busy) return;
-      completeNightTurn();
-    }));
-    return;
-  }
 
-  if(role.nightAction==='seer'){
-    const target=playerOf(choice);
-    if(!target || !target.alive){
-      showNightResult('That target is no longer available.');
-      completeNightTurn();
-      return;
-    }
-    state.night.seerReveal={targetId:target.id};
-    showNightResult(`<strong>${escapeHtml(target.name)}</strong> is a <strong>${escapeHtml(roleOf(target)?.title||'Unknown')}</strong>.`);
-    $('nightPrompt').textContent='The exact role has been revealed. Acknowledge the result before continuing.';
-    $('nightActionArea').innerHTML='';
-    $('nightActionArea').appendChild(actionButton('Acknowledge & continue','seerAcknowledge',()=>{
-      if(!state.night.busy) return;
-      state.night.seerReveal=null;
-      completeNightTurn();
-    }));
-    return;
-  }
+    function setChoiceAndContinue(actor, choice) {
+      if (state.night.busy) return;
+      setNightBusy(true);
 
-  if(isKillingRole(role)){
-    const teamKillUsed = isTeamKillRole(role)
-      && state.night.usedTeamKillRoleIds.includes(role.id);
-
-    if(teamKillUsed){
-      showNightResult(`Your ${escapeHtml(role.title)} team has already used its team kill tonight.`);
-      $('nightPrompt').textContent='Your exact-role team already used the shared kill. Acknowledge and continue.';
-      $('nightActionArea').innerHTML='';
-      $('nightActionArea').appendChild(actionButton('Acknowledge & continue','teamKillUsedAcknowledge',()=>{
-        if(!state.night.busy) return;
+      if (choice === 'skip') {
+        showNightResult('No active choice tonight.');
         completeNightTurn();
-      }));
-      return;
-    }
-
-    const target=playerOf(choice);
-    if(!target || !target.alive){
-      showNightResult('That target is no longer available.');
-      completeNightTurn();
-      return;
-    }
-
-    if(isTeamKillRole(role) && !state.night.usedTeamKillRoleIds.includes(role.id)){
-      state.night.usedTeamKillRoleIds.push(role.id);
-    }
-
-    state.night.pendingAttacks.push({
-      attackerId:actor.id,
-      targetId:target.id,
-      sourceAction:role.nightAction
-    });
-    showNightResult(`<strong>Target recorded.</strong> The attack will be resolved during the reaction round.`);
-    $('nightPrompt').textContent='Action recorded. Acknowledge to finish this turn.';
-    $('nightActionArea').innerHTML='';
-    $('nightActionArea').appendChild(actionButton('Acknowledge & continue','attackAcknowledge',()=>{
-      if(!state.night.busy) return;
-      completeNightTurn();
-    }));
-    return;
-  }
-
-  completeNightTurn();
-}
-
-function actionButton(label,value,onClick){
-  const button=document.createElement('button');
-  button.type='button';
-  button.className='action-btn';
-  button.textContent=label;
-  button.addEventListener('click',onClick);
-  return button;
-}
-
-function renderStandardAction(actor,role,living){
-  const area=$('nightActionArea');
-  const choose=target=>area.appendChild(actionButton(target.name,target.id,()=>setChoiceAndContinue(actor,target.id)));
-
-  switch(role.nightAction){
-    case 'teamKill': {
-      const team=coordinatedKillMembers(actor);
-      const used=state.night.usedTeamKillRoleIds.includes(role.id);
-      if(used){
-        $('nightPrompt').innerHTML=`<strong>Team kill already used:</strong> ${team.map(p=>escapeHtml(p.name)).join(', ')} share one kill tonight, and another team member already used it.`;
-        area.appendChild(actionButton('Acknowledge & continue','skip',()=>setChoiceAndContinue(actor,'skip')));
-        break;
+        return;
       }
-      $('nightPrompt').innerHTML=team.length>1
-        ? `<strong>Team kill:</strong> ${team.map(p=>escapeHtml(p.name)).join(', ')} share one kill tonight. If one of you uses it, the others cannot. Choose one target.`
-        : `<strong>${escapeHtml(role.title)}</strong> — choose a living target for your team kill.`;
-      living.forEach(choose);
-      area.appendChild(actionButton('Do not use the team kill','skip',()=>setChoiceAndContinue(actor,'skip')));
-      break;
+
+      const role = roleOf(actor);
+      if (!role) {completeNightTurn(); return;}
+
+      if (role.nightAction === 'inspectOrientation') {
+        const target = playerOf(choice);
+        if (!target || !target.alive) {
+          showNightResult('That player is no longer available to inspect.');
+          completeNightTurn();
+          return;
+        }
+        const orientation = labelOrientation(roleOf(target)?.orientation || 'unknown');
+        showNightResult(`<strong>Investigation result</strong><br><strong>${escapeHtml(target.name)}</strong> is <strong>${escapeHtml(orientation)}</strong>.`);
+        $('nightPrompt').textContent = 'Investigation complete. Acknowledge the result before continuing.';
+        $('nightActionArea').innerHTML = '';
+        $('nightActionArea').appendChild(actionButton('Acknowledge & continue', 'inspectAcknowledge', () => {
+          if (!state.night.busy) return;
+          completeNightTurn();
+        }));
+        return;
+      }
+
+      if (role.nightAction === 'seer') {
+        const target = playerOf(choice);
+        if (!target || !target.alive) {
+          showNightResult('That target is no longer available.');
+          completeNightTurn();
+          return;
+        }
+        state.night.seerReveal = {targetId: target.id};
+        showNightResult(`<strong>${escapeHtml(target.name)}</strong> is a <strong>${escapeHtml(roleOf(target)?.title || 'Unknown')}</strong>.`);
+        $('nightPrompt').textContent = 'The exact role has been revealed. Acknowledge the result before continuing.';
+        $('nightActionArea').innerHTML = '';
+        $('nightActionArea').appendChild(actionButton('Acknowledge & continue', 'seerAcknowledge', () => {
+          if (!state.night.busy) return;
+          state.night.seerReveal = null;
+          completeNightTurn();
+        }));
+        return;
+      }
+
+      if (isKillingRole(role)) {
+        const teamKillUsed = isTeamKillRole(role)
+          && state.night.usedTeamKillRoleIds.includes(role.id);
+
+        if (teamKillUsed) {
+          showNightResult(`Your ${escapeHtml(role.title)} team has already used its team kill tonight.`);
+          $('nightPrompt').textContent = 'Your exact-role team already used the shared kill. Acknowledge and continue.';
+          $('nightActionArea').innerHTML = '';
+          $('nightActionArea').appendChild(actionButton('Acknowledge & continue', 'teamKillUsedAcknowledge', () => {
+            if (!state.night.busy) return;
+            completeNightTurn();
+          }));
+          return;
+        }
+
+        const target = playerOf(choice);
+        if (!target || !target.alive) {
+          showNightResult('That target is no longer available.');
+          completeNightTurn();
+          return;
+        }
+
+        if (isTeamKillRole(role) && !state.night.usedTeamKillRoleIds.includes(role.id)) {
+          state.night.usedTeamKillRoleIds.push(role.id);
+        }
+
+        state.night.pendingAttacks.push({
+          attackerId: actor.id,
+          targetId: target.id,
+          sourceAction: role.nightAction
+        });
+        showNightResult(`<strong>Target recorded.</strong> The attack will be resolved during the reaction round.`);
+        $('nightPrompt').textContent = 'Action recorded. Acknowledge to finish this turn.';
+        $('nightActionArea').innerHTML = '';
+        $('nightActionArea').appendChild(actionButton('Acknowledge & continue', 'attackAcknowledge', () => {
+          if (!state.night.busy) return;
+          completeNightTurn();
+        }));
+        return;
+      }
+
+      completeNightTurn();
     }
-    case 'kill': {
-      $('nightPrompt').textContent='Choose one living player to kill. The attack is resolved in the reaction round.';
-      living.forEach(choose);
-      break;
+
+    function actionButton(label, value, onClick) {
+      const button = document.createElement('button');
+      button.type = 'button';
+      button.className = 'action-btn';
+      button.textContent = label;
+      button.addEventListener('click', onClick);
+      return button;
     }
 
-    case 'inspectOrientation':
-      $('nightPrompt').textContent='Choose one living player to inspect. Their orientation will be revealed privately.';
-      living.forEach(choose);
-      break;
-    case 'seer': {
-      const possible=living.filter(t=>t.id!==actor.id), target=randomChoice(possible);
-      $('nightPrompt').textContent=target
-        ? `A random living player has been selected: ${target.name}. Confirm to reveal their exact role.`
-        : 'No valid target exists.';
-      area.appendChild(actionButton(target?`Reveal ${target.name}`:'Skip tonight',target?.id??'skip',()=>setChoiceAndContinue(actor,target?.id??'skip')));
-      break;
+    function renderStandardAction(actor, role, living) {
+      const area = $('nightActionArea');
+      const choose = target => area.appendChild(actionButton(target.name, target.id, () => setChoiceAndContinue(actor, target.id)));
+
+      switch (role.nightAction) {
+        case 'teamKill': {
+          const team = coordinatedKillMembers(actor);
+          const used = state.night.usedTeamKillRoleIds.includes(role.id);
+          if (used) {
+            $('nightPrompt').innerHTML = `<strong>Team kill already used:</strong> ${team.map(p => escapeHtml(p.name)).join(', ')} share one kill tonight, and another team member already used it.`;
+            area.appendChild(actionButton('Acknowledge & continue', 'skip', () => setChoiceAndContinue(actor, 'skip')));
+            break;
+          }
+          $('nightPrompt').innerHTML = team.length > 1
+            ? `<strong>Team kill:</strong> ${team.map(p => escapeHtml(p.name)).join(', ')} share one kill tonight. If one of you uses it, the others cannot. Choose one target.`
+            : `<strong>${escapeHtml(role.title)}</strong> — choose a living target for your team kill.`;
+          living.forEach(choose);
+          area.appendChild(actionButton('Do not use the team kill', 'skip', () => setChoiceAndContinue(actor, 'skip')));
+          break;
+        }
+        case 'kill': {
+          $('nightPrompt').textContent = 'Choose one living player to kill. The attack is resolved in the reaction round.';
+          living.forEach(choose);
+          break;
+        }
+
+        case 'inspectOrientation':
+          $('nightPrompt').textContent = 'Choose one living player to inspect. Their orientation will be revealed privately.';
+          living.forEach(choose);
+          break;
+        case 'seer': {
+          const possible = living.filter(t => t.id !== actor.id), target = randomChoice(possible);
+          $('nightPrompt').textContent = target
+            ? `A random living player has been selected: ${target.name}. Confirm to reveal their exact role.`
+            : 'No valid target exists.';
+          area.appendChild(actionButton(target ? `Reveal ${target.name}` : 'Skip tonight', target?.id ?? 'skip', () => setChoiceAndContinue(actor, target?.id ?? 'skip')));
+          break;
+        }
+        default:
+          $('nightPrompt').textContent = 'No active action in this round. Acknowledge your turn, then pass the device.';
+          area.appendChild(actionButton('Acknowledge & continue', 'skip', () => setChoiceAndContinue(actor, 'skip')));
+      }
     }
-    default:
-      $('nightPrompt').textContent='No active action in this round. Acknowledge your turn, then pass the device.';
-      area.appendChild(actionButton('Acknowledge & continue','skip',()=>setChoiceAndContinue(actor,'skip')));
-  }
-}
 
-function updateNightHandoffGate(){
-  const night=state.night;
-  const queue=night.round===1 ? night.queue : night.reactionQueue;
-  const nextActor=queue[night.index+1];
-  $('nightActionArea').innerHTML='';
-  $('nightResult').innerHTML='';
+    function updateNightHandoffGate() {
+      const night = state.night;
+      const queue = night.round === 1 ? night.queue : night.reactionQueue;
+      const nextActor = queue[night.index + 1];
+      $('nightActionArea').innerHTML = '';
+      $('nightResult').innerHTML = '';
 
-  if(nextActor){
-    $('nightPrompt').innerHTML=`<strong>Turn complete.</strong> Pass the device to ${escapeHtml(nextActor.name)}.`;
-    $('nightActionArea').appendChild(actionButton(`Pass to ${escapeHtml(nextActor.name)} & continue`,'nightHandoff',()=>{
-      if(state.phase!=='night' || state.night.busy || !state.night.handoffReady) return;
-      state.night.handoffReady=false;
-      advanceNightActor();
-    }));
-  } else if(night.round===1){
-    $('nightPrompt').innerHTML='<strong>Round 1 complete.</strong> Begin the reaction round.';
-    $('nightActionArea').appendChild(actionButton('Begin reaction round','beginReactionRound',()=>{
-      if(state.phase!=='night' || state.night.busy || !state.night.handoffReady) return;
-      state.night.handoffReady=false;
-      beginReactionRound();
-    }));
-  } else {
-    $('nightPrompt').innerHTML='<strong>Reaction round complete.</strong> Finish the night.';
-    $('nightActionArea').appendChild(actionButton('Finish night','finishNight',()=>{
-      if(state.phase!=='night' || state.night.busy || !state.night.handoffReady) return;
-      state.night.handoffReady=false;
-      finishNight();
-    }));
-  }
+      if (nextActor) {
+        $('nightPrompt').innerHTML = `<strong>Turn complete.</strong> Pass the device to ${escapeHtml(nextActor.name)}.`;
+        $('nightActionArea').appendChild(actionButton(`Pass to ${escapeHtml(nextActor.name)} & continue`, 'nightHandoff', () => {
+          if (state.phase !== 'night' || state.night.busy || !state.night.handoffReady) return;
+          state.night.handoffReady = false;
+          advanceNightActor();
+        }));
+      } else if (night.round === 1) {
+        $('nightPrompt').innerHTML = '<strong>Round 1 complete.</strong> Begin the reaction round.';
+        $('nightActionArea').appendChild(actionButton('Begin reaction round', 'beginReactionRound', () => {
+          if (state.phase !== 'night' || state.night.busy || !state.night.handoffReady) return;
+          state.night.handoffReady = false;
+          beginReactionRound();
+        }));
+      } else {
+        $('nightPrompt').innerHTML = '<strong>Reaction round complete.</strong> Finish the night.';
+        $('nightActionArea').appendChild(actionButton('Finish night', 'finishNight', () => {
+          if (state.phase !== 'night' || state.night.busy || !state.night.handoffReady) return;
+          state.night.handoffReady = false;
+          finishNight();
+        }));
+      }
 
-  $('resolveNightBtn').classList.add('hidden');
-  $('resolveNightBtn').disabled=true;
-}
+      $('resolveNightBtn').classList.add('hidden');
+      $('resolveNightBtn').disabled = true;
+    }
 
-function updateNight(){
-  const night=state.night;
-  const queue=night.round===1 ? night.queue : night.reactionQueue;
-  if(night.index>=queue.length){
-    if(night.round===1){ beginReactionRound(); return; }
-    finishNight();
-    return;
-  }
+    function updateNight() {
+      const night = state.night;
+      const queue = night.round === 1 ? night.queue : night.reactionQueue;
+      if (night.index >= queue.length) {
+        if (night.round === 1) {beginReactionRound(); return;}
+        finishNight();
+        return;
+      }
 
-  const actor=queue[night.index];
-  night.currentActorId=actor.id;
-  night.handoffReady=false;
-  $('nightTitle').textContent=`Night — ${actor.name}`;
-  $('nightProgress').textContent=`${night.index+1} / ${queue.length}`;
-  $('nightActionArea').innerHTML='';
-  $('nightResult').innerHTML='';
-  $('nightKnownRoles').innerHTML='';
+      const actor = queue[night.index];
+      night.currentActorId = actor.id;
+      night.handoffReady = false;
+      $('nightTitle').textContent = `Night — ${actor.name}`;
+      $('nightProgress').textContent = `${night.index + 1} / ${queue.length}`;
+      $('nightActionArea').innerHTML = '';
+      $('nightResult').innerHTML = '';
+      $('nightKnownRoles').innerHTML = '';
 
-  // Every turn starts behind a neutral reveal gate so nobody passing the device
-  // can accidentally see the next player's private night information.
-  if(!night.turnRevealed){
-    $('nightPrompt').innerHTML='<strong>Pass the device to this player.</strong> Only they should continue.';
-    $('nightResult').innerHTML='<div class="result"><strong>Ready?</strong><br>Press the button below to privately reveal your night turn.</div>';
-    $('nightActionArea').appendChild(actionButton('Reveal my turn','revealTurn',()=>{
-      if(state.phase!=='night' || state.night.busy || state.night.turnRevealed) return;
-      state.night.turnRevealed=true;
+      // Every turn starts behind a neutral reveal gate so nobody passing the device
+      // can accidentally see the next player's private night information.
+      if (!night.turnRevealed) {
+        $('nightPrompt').innerHTML = '<strong>Pass the device to this player.</strong> Only they should continue.';
+        $('nightResult').innerHTML = '<div class="result"><strong>Ready?</strong><br>Press the button below to privately reveal your night turn.</div>';
+        $('nightActionArea').appendChild(actionButton('Reveal my turn', 'revealTurn', () => {
+          if (state.phase !== 'night' || state.night.busy || state.night.turnRevealed) return;
+          state.night.turnRevealed = true;
+          updateNight();
+        }));
+        return;
+      }
+
+      if (night.round === 1) {
+        setPhase('Night', 'Night actions — Round 1');
+        renderNightKnownRoles(actor);
+        if (!actor.alive) {
+          $('resolveNightBtn').classList.remove('hidden');
+          $('nightPrompt').innerHTML = '<strong>You were eliminated before your night action.</strong> Your night action is skipped.';
+          $('resolveNightBtn').disabled = false;
+          $('resolveNightBtn').textContent = 'Acknowledge & continue';
+          return;
+        }
+        $('resolveNightBtn').classList.add('hidden');
+        $('resolveNightBtn').disabled = true;
+        const living = playersAlive().filter(p => p.id !== actor.id);
+        renderStandardAction(actor, roleOf(actor) || {nightAction: 'none'}, living);
+        return;
+      }
+
+      renderReactionTurn(actor);
+    }
+
+    function beginReactionRound() {
+      if (state.phase !== 'night') return;
+      state.night.round = 2;
+      state.night.reactionQueue = buildNightReactionQueue();
+      state.night.index = 0;
+      state.night.busy = false;
+      state.night.handoffReady = false;
+      state.night.reactionCompleted = [];
+      state.night.turnRevealed = false;
+      setPhase('Night', 'Night reactions — Round 2');
+      if (!state.night.reactionQueue.length) {finishNight(); return;}
       updateNight();
-    }));
-    return;
-  }
-
-  if(night.round===1){
-    setPhase('Night','Night actions — Round 1');
-    renderNightKnownRoles(actor);
-    if(!actor.alive){
-      $('resolveNightBtn').classList.remove('hidden');
-      $('nightPrompt').innerHTML='<strong>You were eliminated before your night action.</strong> Your night action is skipped.';
-      $('resolveNightBtn').disabled=false;
-      $('resolveNightBtn').textContent='Acknowledge & continue';
-      return;
     }
-    $('resolveNightBtn').classList.add('hidden');
-    $('resolveNightBtn').disabled=true;
-    const living=playersAlive().filter(p=>p.id!==actor.id);
-    renderStandardAction(actor,roleOf(actor)||{nightAction:'none'},living);
-    return;
-  }
 
-  renderReactionTurn(actor);
-}
+    function findPendingAttacksFor(targetId) {
+      return state.night.pendingAttacks.filter(a => a.targetId === targetId);
+    }
 
-function beginReactionRound(){
-  if(state.phase!=='night') return;
-  state.night.round=2;
-  state.night.reactionQueue=buildNightReactionQueue();
-  state.night.index=0;
-  state.night.busy=false;
-  state.night.handoffReady=false;
-  state.night.reactionCompleted=[];
-  state.night.turnRevealed=false;
-  setPhase('Night','Night reactions — Round 2');
-  if(!state.night.reactionQueue.length){ finishNight(); return; }
-  updateNight();
-}
+    function removePendingAttack(attack) {
+      const i = state.night.pendingAttacks.indexOf(attack);
+      if (i >= 0) state.night.pendingAttacks.splice(i, 1);
+    }
 
-function findPendingAttacksFor(targetId){
-  return state.night.pendingAttacks.filter(a=>a.targetId===targetId);
-}
-
-function removePendingAttack(attack){
-  const i=state.night.pendingAttacks.indexOf(attack);
-  if(i>=0) state.night.pendingAttacks.splice(i,1);
-}
-
-function ensureReactionQueued(player){
-  if(!player) return;
-  if(state.night.reactionQueue.some(p=>p.id===player.id) && !state.night.reactionCompleted.includes(player.id)) return;
-  state.night.reactionQueue.push(player);
-}
+    function ensureReactionQueued(player) {
+      if (!player) return;
+      if (state.night.reactionQueue.some(p => p.id === player.id) && !state.night.reactionCompleted.includes(player.id)) return;
+      state.night.reactionQueue.push(player);
+    }
 
 
-function renderReactionTurn(actor){
-  const role=roleOf(actor);
-  const attacks=findPendingAttacksFor(actor.id);
-  setPhase('Night','Night reactions — Round 2');
-  $('nightKnownRoles').innerHTML='';
-  $('nightActionArea').innerHTML='';
-  $('nightResult').innerHTML='';
-  $('resolveNightBtn').classList.add('hidden');
-  $('resolveNightBtn').disabled=true;
+    function renderReactionTurn(actor) {
+      const role = roleOf(actor);
+      const attacks = findPendingAttacksFor(actor.id);
+      setPhase('Night', 'Night reactions — Round 2');
+      $('nightKnownRoles').innerHTML = '';
+      $('nightActionArea').innerHTML = '';
+      $('nightResult').innerHTML = '';
+      $('resolveNightBtn').classList.add('hidden');
+      $('resolveNightBtn').disabled = true;
 
-  if(!actor.alive){
-    state.night.pendingAttacks = state.night.pendingAttacks.filter(a=>a.targetId!==actor.id);
-    $('nightPrompt').innerHTML='<strong>You were killed during the night.</strong> Your night ability does not activate.';
-    showNightResult('This is your night-response turn. Acknowledge and pass the device.');
-    $('nightActionArea').appendChild(actionButton('Acknowledge & continue','deadAcknowledge',()=>{
-      if(!state.night.busy) setNightBusy(true);
-      completeNightTurn();
-    }));
-    return;
-  }
+      if (!actor.alive) {
+        state.night.pendingAttacks = state.night.pendingAttacks.filter(a => a.targetId !== actor.id);
+        $('nightPrompt').innerHTML = '<strong>You were killed during the night.</strong> Your night ability does not activate.';
+        showNightResult('This is your night-response turn. Acknowledge and pass the device.');
+        $('nightActionArea').appendChild(actionButton('Acknowledge & continue', 'deadAcknowledge', () => {
+          if (!state.night.busy) setNightBusy(true);
+          completeNightTurn();
+        }));
+        return;
+      }
 
-  if(!attacks.length){
-    $('nightPrompt').innerHTML='<strong>No reaction tonight.</strong> Nothing happened to you during the night.';
-    $('nightActionArea').appendChild(actionButton('Acknowledge & continue','noReaction',()=>{
-      if(!state.night.busy) setNightBusy(true);
-      completeNightTurn();
-    }));
-    return;
-  }
+      if (!attacks.length) {
+        $('nightPrompt').innerHTML = '<strong>No reaction tonight.</strong> Nothing happened to you during the night.';
+        $('nightActionArea').appendChild(actionButton('Acknowledge & continue', 'noReaction', () => {
+          if (!state.night.busy) setNightBusy(true);
+          completeNightTurn();
+        }));
+        return;
+      }
 
-  const attack=attacks[0];
-  const reactiveActions=new Set(['traitor','scapegoat','escape','monkey','rps']);
-  const action=role?.nightAction;
+      const attack = attacks[0];
+      const reactiveActions = new Set(['traitor', 'scapegoat', 'escape', 'monkey', 'rps']);
+      const action = role?.nightAction;
 
-  if(!reactiveActions.has(action)){
-    removePendingAttack(attack);
-    killTarget(actor,[],()=>{});
-    $('nightPrompt').innerHTML='<strong>You were targeted during the night and have been killed.</strong> Your night ability does not activate.';
-    showNightResult('Acknowledge and continue.');
-    $('nightActionArea').appendChild(actionButton('Acknowledge & continue','nightKillAcknowledge',()=>{
-      if(!state.night.busy) setNightBusy(true);
-      completeNightTurn();
-    }));
-    return;
-  }
+      if (!reactiveActions.has(action)) {
+        removePendingAttack(attack);
+        killTarget(actor, [], () => { });
+        $('nightPrompt').innerHTML = '<strong>You were targeted during the night and have been killed.</strong> Your night ability does not activate.';
+        showNightResult('Acknowledge and continue.');
+        $('nightActionArea').appendChild(actionButton('Acknowledge & continue', 'nightKillAcknowledge', () => {
+          if (!state.night.busy) setNightBusy(true);
+          completeNightTurn();
+        }));
+        return;
+      }
 
-  showPrivateReaction(actor,attack);
-}
+      showPrivateReaction(actor, attack);
+    }
 
-function showPrivateReaction(target,attack){
-  const role=roleOf(target);
-  const attacker=playerOf(attack.attackerId);
-  const action=role?.nightAction;
-  const attackerName=attacker?.name||'the attacker';
+    function showPrivateReaction(target, attack) {
+      const role = roleOf(target);
+      const attacker = playerOf(attack.attackerId);
+      const action = role?.nightAction;
+      const attackerName = attacker?.name || 'the attacker';
 
-  $('nightTitle').textContent=`Night — ${target.name}`;
-  $('nightKnownRoles').innerHTML='';
-  $('nightActionArea').innerHTML='';
-  $('nightResult').innerHTML=`
+      $('nightTitle').textContent = `Night — ${target.name}`;
+      $('nightKnownRoles').innerHTML = '';
+      $('nightActionArea').innerHTML = '';
+      $('nightResult').innerHTML = `
     <div class="result">
       <strong>Your night ability</strong>
-      <div class="big" style="margin-top:8px">${escapeHtml(role?.title||'Unknown')}</div>
-      <div style="margin-top:8px">${escapeHtml(role?.description||'')}</div>
+      <div class="big" style="margin-top:8px">${escapeHtml(role?.title || 'Unknown')}</div>
+      <div style="margin-top:8px">${escapeHtml(role?.description || '')}</div>
     </div>`;
 
-  if(action==='scapegoat'){
-    $('nightPrompt').innerHTML='<strong>You were targeted during the night.</strong> Your attacker is not identified. Choose whether to redirect the attack.';
-    renderScapegoatReaction(target,attack);
-    return;
-  }
+      if (action === 'scapegoat') {
+        $('nightPrompt').innerHTML = '<strong>You were targeted during the night.</strong> Your attacker is not identified. Choose whether to redirect the attack.';
+        renderScapegoatReaction(target, attack);
+        return;
+      }
 
-  $('nightPrompt').innerHTML=`<strong>You were targeted by ${escapeHtml(attackerName)}.</strong> Privately review your night ability, then resolve it below.`;
+      $('nightPrompt').innerHTML = `<strong>You were targeted by ${escapeHtml(attackerName)}.</strong> Privately review your night ability, then resolve it below.`;
 
-  if(action==='traitor'){
-    $('nightActionArea').appendChild(actionButton('Join the Mafia & survive','traitorReact',()=>{
-      if(!state.night.busy) setNightBusy(true);
-      removePendingAttack(attack);
-      target.roleId='mafia';
-      addLog(`${target.name} survived a night attack and joined the Mafia.`);
-      completeNightTurn();
-    }));
-    return;
-  }
+      if (action === 'traitor') {
+        $('nightActionArea').appendChild(actionButton('Join the Mafia & survive', 'traitorReact', () => {
+          if (!state.night.busy) setNightBusy(true);
+          removePendingAttack(attack);
+          target.roleId = 'mafia';
+          addLog(`${target.name} survived a night attack and joined the Mafia.`);
+          completeNightTurn();
+        }));
+        return;
+      }
 
-  if(action==='escape'){
-    $('nightPrompt').innerHTML=`<strong>You were targeted by ${escapeHtml(attackerName)}.</strong> Play out the escape challenge now.`;
-    $('nightActionArea').appendChild(actionButton('I escaped','escaped',()=>{
-      if(!state.night.busy) setNightBusy(true);
-      removePendingAttack(attack);
-      target.escaped=true;
-      addLog(`${target.name} escaped the night attack.`);
-      completeNightTurn();
-    }));
-    $('nightActionArea').appendChild(actionButton('I was caught','caught',()=>{
-      if(!state.night.busy) setNightBusy(true);
-      removePendingAttack(attack);
-      target.escaped=false;
-      target.alive=false;
-      addLog(`${target.name} failed the escape challenge and was killed.`);
-      completeNightTurn();
-    }));
-    return;
-  }
+      if (action === 'escape') {
+        $('nightPrompt').innerHTML = `<strong>You were targeted by ${escapeHtml(attackerName)}.</strong> Play out the escape challenge now.`;
+        $('nightActionArea').appendChild(actionButton('I escaped', 'escaped', () => {
+          if (!state.night.busy) setNightBusy(true);
+          removePendingAttack(attack);
+          target.escaped = true;
+          addLog(`${target.name} escaped the night attack.`);
+          completeNightTurn();
+        }));
+        $('nightActionArea').appendChild(actionButton('I was caught', 'caught', () => {
+          if (!state.night.busy) setNightBusy(true);
+          removePendingAttack(attack);
+          target.escaped = false;
+          target.alive = false;
+          addLog(`${target.name} failed the escape challenge and was killed.`);
+          completeNightTurn();
+        }));
+        return;
+      }
 
-  if(action==='rps'){
-    $('nightPrompt').innerHTML=`<strong>You were targeted by ${escapeHtml(attackerName)}.</strong> Play best-of-3 Rock, Paper, Scissors now.`;
-    $('nightActionArea').appendChild(actionButton('I won','won',()=>{
-      if(!state.night.busy) setNightBusy(true);
-      removePendingAttack(attack);
-      addLog(`${target.name} won Rock, Paper, Scissors and survived.`);
-      completeNightTurn();
-    }));
-    $('nightActionArea').appendChild(actionButton('I lost','lost',()=>{
-      if(!state.night.busy) setNightBusy(true);
-      removePendingAttack(attack);
-      target.alive=false;
-      addLog(`${target.name} lost Rock, Paper, Scissors and was killed.`);
-      completeNightTurn();
-    }));
-    return;
-  }
+      if (action === 'rps') {
+        $('nightPrompt').innerHTML = `<strong>You were targeted by ${escapeHtml(attackerName)}.</strong> Play best-of-3 Rock, Paper, Scissors now.`;
+        $('nightActionArea').appendChild(actionButton('I won', 'won', () => {
+          if (!state.night.busy) setNightBusy(true);
+          removePendingAttack(attack);
+          addLog(`${target.name} won Rock, Paper, Scissors and survived.`);
+          completeNightTurn();
+        }));
+        $('nightActionArea').appendChild(actionButton('I lost', 'lost', () => {
+          if (!state.night.busy) setNightBusy(true);
+          removePendingAttack(attack);
+          target.alive = false;
+          addLog(`${target.name} lost Rock, Paper, Scissors and was killed.`);
+          completeNightTurn();
+        }));
+        return;
+      }
 
-  if(action==='monkey'){
-    $('nightPrompt').innerHTML=`<strong>You were targeted by ${escapeHtml(attackerName)}.</strong> Go to that attacker and make a loud sound or otherwise openly confront them, then return to the device.`;
-    $('nightActionArea').appendChild(actionButton('Reaction complete','done',()=>{
-      if(!state.night.busy) setNightBusy(true);
-      removePendingAttack(attack);
-      target.alive=false;
-      addLog(`${target.name} completed the confrontation and was killed.`);
-      completeNightTurn();
-    }));
-  }
-}
+      if (action === 'monkey') {
+        $('nightPrompt').innerHTML = `<strong>You were targeted by ${escapeHtml(attackerName)}.</strong> Go to that attacker and make a loud sound or otherwise openly confront them, then return to the device.`;
+        $('nightActionArea').appendChild(actionButton('Reaction complete', 'done', () => {
+          if (!state.night.busy) setNightBusy(true);
+          removePendingAttack(attack);
+          target.alive = false;
+          addLog(`${target.name} completed the confrontation and was killed.`);
+          completeNightTurn();
+        }));
+      }
+    }
 
-function renderScapegoatReaction(target,attack){
-  const adjacent=adjacentLiving(target);
-  adjacent.filter(p=>p.id!==target.id).forEach(victim=>{
-    $('nightActionArea').appendChild(actionButton(`Redirect to ${victim.name}`,victim.id,()=>{
-      if(!state.night.busy) setNightBusy(true);
-      removePendingAttack(attack);
-      target.used.scapegoat=true;
-      state.night.pendingAttacks.push({
-        attackerId:attack.attackerId,
-        targetId:victim.id,
-        sourceAction:attack.sourceAction,
-        redirectedFrom:target.id
+    function renderScapegoatReaction(target, attack) {
+      const adjacent = adjacentLiving(target);
+      adjacent.filter(p => p.id !== target.id).forEach(victim => {
+        $('nightActionArea').appendChild(actionButton(`Redirect to ${victim.name}`, victim.id, () => {
+          if (!state.night.busy) setNightBusy(true);
+          removePendingAttack(attack);
+          target.used.scapegoat = true;
+          state.night.pendingAttacks.push({
+            attackerId: attack.attackerId,
+            targetId: victim.id,
+            sourceAction: attack.sourceAction,
+            redirectedFrom: target.id
+          });
+          ensureReactionQueued(victim);
+          addLog(`${target.name} redirected a night attack to ${victim.name}.`);
+          completeNightTurn();
+        }));
       });
-      ensureReactionQueued(victim);
-      addLog(`${target.name} redirected a night attack to ${victim.name}.`);
-      completeNightTurn();
-    }));
-  });
 
-  $('nightActionArea').appendChild(actionButton('Do not redirect','noRedirect',()=>{
-    if(!state.night.busy) setNightBusy(true);
-    removePendingAttack(attack);
-    target.used.scapegoat=true;
-    target.alive=false;
-    addLog(`${target.name} chose not to redirect the night attack and was killed.`);
-    completeNightTurn();
-  }));
-}
+      $('nightActionArea').appendChild(actionButton('Do not redirect', 'noRedirect', () => {
+        if (!state.night.busy) setNightBusy(true);
+        removePendingAttack(attack);
+        target.used.scapegoat = true;
+        target.alive = false;
+        addLog(`${target.name} chose not to redirect the night attack and was killed.`);
+        completeNightTurn();
+      }));
+    }
 
-function adjacentLiving(target){
-  const living=playersAlive();
-  const i=living.findIndex(p=>p.id===target.id);
-  if(i<0 || living.length<2) return [];
-  const left=living[(i-1+living.length)%living.length];
-  const right=living[(i+1)%living.length];
-  return [left,right].filter((p,idx,arr)=>p && p.id!==target.id && arr.findIndex(x=>x.id===p.id)===idx);
-}
+    function adjacentLiving(target) {
+      const living = playersAlive();
+      const i = living.findIndex(p => p.id === target.id);
+      if (i < 0 || living.length < 2) return [];
+      const left = living[(i - 1 + living.length) % living.length];
+      const right = living[(i + 1) % living.length];
+      return [left, right].filter((p, idx, arr) => p && p.id !== target.id && arr.findIndex(x => x.id === p.id) === idx);
+    }
 
-function killTarget(target,outcomes,next,customText){
-  if(target.alive){
-    target.alive=false;
-    if(outcomes) outcomes.push(customText||`${target.name} was killed during the night.`);
-  }
-  if(next) next();
-}
+    function killTarget(target, outcomes, next, customText) {
+      if (target.alive) {
+        target.alive = false;
+        if (outcomes) outcomes.push(customText || `${target.name} was killed during the night.`);
+      }
+      if (next) next();
+    }
 
-function finishNight(){
-  if(state.phase!=='night') return;
-  $('nightPrompt').textContent='Night is resolving…';
-  $('nightActionArea').innerHTML='';
-  $('nightResult').innerHTML='';
-  const result=checkWin();
-  renderGameLog();
-  if(result.done){ endGame(result); return; }
-  state.round++; $('roundPill').textContent=`Round ${state.round}`;
-  setTimeout(startDay,0);
-}
+    function finishNight() {
+      if (state.phase !== 'night') return;
+      $('nightPrompt').textContent = 'Night is resolving…';
+      $('nightActionArea').innerHTML = '';
+      $('nightResult').innerHTML = '';
+      const result = checkWin();
+      renderGameLog();
+      if (result.done) {endGame(result); return;}
+      state.round++; $('roundPill').textContent = `Round ${state.round}`;
+      setTimeout(startDay, 0);
+    }
 
-function resolveNight(){
-  // Kept as a compatibility entry point for any existing UI references.
-  finishNight();
-}
+    function resolveNight() {
+      // Kept as a compatibility entry point for any existing UI references.
+      finishNight();
+    }
 
-// ---- Win / game end ------------------------------------------------------
-function checkWin(){
-  const living=playersAlive();
-  const evil=living.filter(p=>roleOf(p)?.orientation==='evil').length;
-  const nonEvil=living.filter(p=>roleOf(p)?.orientation!=='evil').length;
-  const jester=state.players.find(p=>!p.alive && p.eliminatedByVote && p.roleId==='jester');
-  if(jester) return {done:true,winner:'Jester',reason:`${jester.name} was voted out, completing the Jester's win condition.`};
-  if(evil===0) return {done:true,winner:'Good',reason:'All evil players have been eliminated.'};
-  if(evil>=nonEvil) return {done:true,winner:'Evil',reason:'Evil now equals or outnumbers the living non-evil players.'};
-  return {done:false};
-}
-function endGame(result){
-  state.phase='gameover';
-  hide('dayCard','nightCard','handoffCard'); show('winCard');
-  setPhase('Game over',result.winner);
-  $('winnerTitle').textContent=`${result.winner} wins`;
-  $('winnerText').textContent=result.reason;
-  $('finalRoles').innerHTML=state.players.map(player=>{
-    const role=roleOf(player);
-    return `<div class="result ${player.alive?'':'eliminated'}"><strong>${escapeHtml(player.name)}</strong><div class="muted tiny" style="margin-top:6px">${player.alive?'Alive':'Eliminated'}</div><div style="margin-top:6px">${escapeHtml(role?.title||'Unknown')} ${rolePill(role)}</div></div>`;
-  }).join('');
-  addLog(result.reason);
-  renderGameLog();
-}
-function endGameEarly(){
-  if(state.phase==='gameover') return;
-  if(!confirm('End the game now and reveal everyone’s roles? This cannot be undone.')) return;
-  endGame({done:true,winner:'Game ended early',reason:"The game was ended early. Everyone's roles are revealed below."});
-}
+    // ---- Win / game end ------------------------------------------------------
+    function checkWin() {
+      const living = playersAlive();
+      const evil = living.filter(p => roleOf(p)?.orientation === 'evil').length;
+      const nonEvil = living.filter(p => roleOf(p)?.orientation !== 'evil').length;
+      const jester = state.players.find(p => !p.alive && p.eliminatedByVote && p.roleId === 'jester');
+      if (jester) return {done: true, winner: 'Jester', reason: `${jester.name} was voted out, completing the Jester's win condition.`};
+      if (evil === 0) return {done: true, winner: 'Good', reason: 'All evil players have been eliminated.'};
+      if (evil >= nonEvil) return {done: true, winner: 'Evil', reason: 'Evil now equals or outnumbers the living non-evil players.'};
+      return {done: false};
+    }
+    function endGame(result) {
+      state.phase = 'gameover';
+      hide('dayCard', 'nightCard', 'handoffCard'); show('winCard');
+      setPhase('Game over', result.winner);
+      $('winnerTitle').textContent = `${result.winner} wins`;
+      $('winnerText').textContent = result.reason;
+      $('finalRoles').innerHTML = state.players.map(player => {
+        const role = roleOf(player);
+        return `<div class="result ${player.alive ? '' : 'eliminated'}"><strong>${escapeHtml(player.name)}</strong><div class="muted tiny" style="margin-top:6px">${player.alive ? 'Alive' : 'Eliminated'}</div><div style="margin-top:6px">${escapeHtml(role?.title || 'Unknown')} ${rolePill(role)}</div></div>`;
+      }).join('');
+      addLog(result.reason);
+      renderGameLog();
+    }
+    function endGameEarly() {
+      if (state.phase === 'gameover') return;
+      if (!confirm('End the game now and reveal everyone’s roles? This cannot be undone.')) return;
+      endGame({done: true, winner: 'Game ended early', reason: "The game was ended early. Everyone's roles are revealed below."});
+    }
 
-// ---- Events --------------------------------------------------------------
-$('addPlayerBtn').addEventListener('click',()=>{
-  const id=state.players.length;
-  state.players.push(createPlayer(id,`Player ${id+1}`)); renderSetup();
-});
-$('roundMode').addEventListener('change',e=>{state.mode=e.target.value;renderSetup();});
-$('newRoleBtn').addEventListener('click',()=>openRoleEditor());
-$('cancelRoleBtn').addEventListener('click',closeRoleEditor);
-$('saveRoleBtn').addEventListener('click',()=>{
-  const title=$('roleTitle').value.trim(), description=$('roleDescription').value.trim();
-  if(!title||!description){ alert('Give the role a title and player-facing description.'); return; }
-  const orientation=$('roleOrientation').value, visibility=$('roleVisibility').value, nightAction=$('roleNightAction').value;
-  if(state.editingRoleId){
-    const role=state.roles.find(r=>r.id===state.editingRoleId);
-    Object.assign(role,{title,orientation,description,visibility,nightAction});
-  } else {
-    state.roles.push({id:`custom_${Date.now()}`,title,orientation,description,visibility,nightAction,randomCount:0});
-  }
-  closeRoleEditor(); renderSetup();
-});
-$('startBtn').addEventListener('click',()=>{
-  if(state.players.length<2){ alert('Need at least 2 players.'); return; }
-  assignRoles(); state.logs=[]; $('gameLog').innerHTML=''; state.round=1; addLog('Game started. Roles are being handed out privately.'); renderGameLog(); beginHandoff();
-});
-$('revealRoleBtn').addEventListener('click',()=>{state.handoffRevealed=true;updateHandoff();});
-$('handoffNextBtn').addEventListener('click',()=>{
-  if(!state.handoffRevealed) return;
-  if(state.handoffIndex===state.players.length-1){ startDay(); return; }
-  state.handoffIndex++; state.handoffRevealed=false; updateHandoff();
-});
-$('skipDayBtn').addEventListener('click',skipDay);
-$('nextNightBtn').addEventListener('click',()=>{
-  if($('nextNightBtn').disabled) return;
-  if(state.phase==='day'){
-    if(state.day.secondBallot || $('nextNightBtn').textContent==='Resolve vote' || $('nextNightBtn').textContent==='Resolve tie') resolveDay();
-    else startNight();
-  }
-});
-$('resolveNightBtn').addEventListener('click',()=>{
-  if(state.phase!=='night' || state.night.busy) return;
-  if(!state.night.queue[state.night.index]) return;
-  advanceNightActor();
-});
-$('endGameEarlyBtn').addEventListener('click',endGameEarly);
-$('backSetupBtn').addEventListener('click',()=>{state.phase='setup';hide('gameScreen');show('setupScreen');renderSetup();});
+    // ---- Events --------------------------------------------------------------
+    $('addPlayerBtn').addEventListener('click', () => {
+      const id = state.players.length;
+      state.players.push(createPlayer(id, `Player ${id + 1}`)); renderSetup();
+    });
+    $('roundMode').addEventListener('change', e => {state.mode = e.target.value; renderSetup();});
+    $('newRoleBtn').addEventListener('click', () => openRoleEditor());
+    $('cancelRoleBtn').addEventListener('click', closeRoleEditor);
+    $('saveRoleBtn').addEventListener('click', () => {
+      const title = $('roleTitle').value.trim(), description = $('roleDescription').value.trim();
+      if (!title || !description) {alert('Give the role a title and player-facing description.'); return;}
+      const orientation = $('roleOrientation').value, visibility = $('roleVisibility').value, nightAction = $('roleNightAction').value;
+      if (state.editingRoleId) {
+        const role = state.roles.find(r => r.id === state.editingRoleId);
+        Object.assign(role, {title, orientation, description, visibility, nightAction});
+      } else {
+        state.roles.push({id: `custom_${Date.now()}`, title, orientation, description, visibility, nightAction, randomCount: 0});
+      }
+      closeRoleEditor(); renderSetup();
+    });
+    $('startBtn').addEventListener('click', () => {
+      if (online.mode === 'host') {startOnlineGameAsHost(); return;}
+      if (state.players.length < 2) {alert('Need at least 2 players.'); return;}
+      assignRoles(); state.logs = []; $('gameLog').innerHTML = ''; state.round = 1; addLog('Game started. Roles are being handed out privately.'); renderGameLog(); beginHandoff();
+    });
+    $('revealRoleBtn').addEventListener('click', () => {state.handoffRevealed = true; updateHandoff();});
+    $('handoffNextBtn').addEventListener('click', () => {
+      if (!state.handoffRevealed) return;
+      if (state.handoffIndex === state.players.length - 1) {startDay(); return;}
+      state.handoffIndex++; state.handoffRevealed = false; updateHandoff();
+    });
+    $('skipDayBtn').addEventListener('click', skipDay);
+    $('nextNightBtn').addEventListener('click', () => {
+      if ($('nextNightBtn').disabled) return;
+      if (state.phase === 'day') {
+        if (state.day.secondBallot || $('nextNightBtn').textContent === 'Resolve vote' || $('nextNightBtn').textContent === 'Resolve tie') resolveDay();
+        else startNight();
+      }
+    });
+    $('resolveNightBtn').addEventListener('click', () => {
+      if (state.phase !== 'night' || state.night.busy) return;
+      if (!state.night.queue[state.night.index]) return;
+      advanceNightActor();
+    });
+    $('endGameEarlyBtn').addEventListener('click', endGameEarly);
+    $('backSetupBtn').addEventListener('click', () => {state.phase = 'setup'; hide('gameScreen'); show('setupScreen'); renderSetup();});
 
-state.roles.forEach((role,index)=>{
-  role.randomCount=role.id==='citizen' ? 0 : (role.randomCount ?? (role.orientation==='evil' ? 1 : 0));
-});
-renderSetup();
-</script>
+    state.roles.forEach((role, index) => {
+      role.randomCount = role.id === 'citizen' ? 0 : (role.randomCount ?? (role.orientation === 'evil' ? 1 : 0));
+    });
+    renderSetup();
+
+
+    // ---- Online multiplayer (Firebase Realtime Database) -----------------------
+    // Paste the Firebase web-app config from Firebase Console into this object.
+    // The Firebase config is safe to ship in a GitHub Pages site; Security Rules
+    // control access to the Realtime Database.
+    const FIREBASE_CONFIG = {
+      apiKey: "AIzaSyAtZa88NzIx21MwKU0foPy5Gh9HSQRMrsI",
+      authDomain: "mafia-92075.firebaseapp.com",
+      databaseURL: "https://mafia-92075-default-rtdb.europe-west1.firebasedatabase.app",
+      projectId: "mafia-92075",
+      storageBucket: "mafia-92075.firebasestorage.app",
+      messagingSenderId: '782072900669',
+      appId: "1:782072900669:web:ff2bd7288e7e7da0f58e54",
+    };
+
+    const online = {
+      mode: 'offline', uid: null, roomCode: null, seatId: null, isHost: false,
+      app: null, auth: null, db: null, api: null, roomUnsub: null, playersUnsub: null,
+      publicUnsub: null, privateUnsub: null, commandUnsub: null, playersCache: {}, public: null, private: null,
+      processingCommand: false
+    };
+
+    function firebaseConfigured() {
+      return !!FIREBASE_CONFIG.apiKey && !String(FIREBASE_CONFIG.apiKey).startsWith('PASTE_') &&
+        !!FIREBASE_CONFIG.databaseURL && !String(FIREBASE_CONFIG.databaseURL).startsWith('PASTE_');
+    }
+
+    async function loadFirebase() {
+      if (online.api) return online.api;
+      const [appMod, authMod, dbMod] = await Promise.all([
+        import('https://www.gstatic.com/firebasejs/12.18.0/firebase-app.js'),
+        import('https://www.gstatic.com/firebasejs/12.18.0/firebase-auth.js'),
+        import('https://www.gstatic.com/firebasejs/12.18.0/firebase-database.js')
+      ]);
+      online.api = {appMod, authMod, dbMod};
+      return online.api;
+    }
+
+    function setOnlineStatus(text, error = false) {
+      const el = $('onlineStatus');
+      el.textContent = text; el.classList.remove('hidden');
+      el.style.borderColor = error ? '#6f1f28' : '';
+    }
+
+    function roomCode() {
+      const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+      let out = ''; for (let i = 0; i < 6; i++) out += chars[Math.floor(Math.random() * chars.length)];
+      return out;
+    }
+
+    function getDisplayName() {
+      const value = $('onlineName')?.value.trim();
+      return value || `Player ${Math.floor(Math.random() * 900) + 100}`;
+    }
+
+    function cleanupOnlineListeners() {
+      [online.roomUnsub, online.playersUnsub, online.publicUnsub, online.privateUnsub, online.commandUnsub].forEach(fn => {try {fn && fn()} catch { } });
+      online.roomUnsub = online.playersUnsub = online.publicUnsub = online.privateUnsub = online.commandUnsub = null;
+    }
+
+    let authInitPromise = null;
+
+    async function ensureAnonymousAuth() {
+      if (!firebaseConfigured()) throw new Error('Firebase is not configured yet. Paste your Firebase web config into FIREBASE_CONFIG in this file.');
+
+      // Serialize authentication initialization. Without this guard, rapidly
+      // clicking Join can start several signInAnonymously() calls at once,
+      // which creates several anonymous UIDs in the same tab.
+      if (authInitPromise) return authInitPromise;
+
+      authInitPromise = (async () => {
+        const {appMod, authMod} = await loadFirebase();
+        if (!online.app) online.app = appMod.initializeApp(FIREBASE_CONFIG);
+        if (!online.auth) {
+          online.auth = authMod.getAuth(online.app);
+          // NONE/in-memory persistence keeps each browser tab independent.
+          // Once a tab has a UID, reuse it for subsequent room operations.
+          await authMod.setPersistence(online.auth, authMod.inMemoryPersistence);
+        }
+
+        if (!online.auth.currentUser) {
+          await authMod.signInAnonymously(online.auth);
+        }
+
+        online.uid = online.auth.currentUser.uid;
+        $('onlineAuthPill').textContent = 'Connected';
+      })();
+
+      try {
+        await authInitPromise;
+      } catch (err) {
+        authInitPromise = null;
+        throw err;
+      }
+    }
+
+    async function createRoom() {
+      if (online.roomCode || online.joining) return;
+      online.joining = true;
+      $('createRoomBtn').disabled = true;
+      $('joinRoomBtn').disabled = true;
+      try {
+        await ensureAnonymousAuth();
+
+        const {dbMod} = await loadFirebase();
+        online.db = dbMod.getDatabase(online.app);
+
+        let code = roomCode();
+
+        async function roomExists(testCode) {
+          const metaRef = dbMod.ref(
+            online.db,
+            `rooms/${testCode}/meta`
+          );
+          const snap = await dbMod.get(metaRef);
+          return snap.exists();
+        }
+
+        let exists = await roomExists(code);
+
+        for (let tries = 0; exists && tries < 8; tries++) {
+          code = roomCode();
+          exists = await roomExists(code);
+        }
+
+        if (exists) {
+          throw new Error('Could not find an unused room code. Try again.');
+        }
+
+        online.mode = 'host';
+        online.isHost = true;
+        online.roomCode = code;
+        online.seatId = 0;
+
+        const name = getDisplayName();
+
+        const roomRef = dbMod.ref(
+          online.db,
+          `rooms/${code}`
+        );
+
+        await dbMod.set(roomRef, {
+          meta: {
+            hostUid: online.uid,
+            status: 'lobby',
+            createdAt: Date.now()
+          },
+
+          players: {
+            [online.uid]: {
+              uid: online.uid,
+              name,
+              seatId: 0,
+              host: true,
+              joinedAt: Date.now()
+            }
+          },
+
+          public: {
+            phase: 'lobby',
+            round: 1
+          },
+
+          state: null
+        });
+
+        await dbMod.onDisconnect(
+          dbMod.ref(
+            online.db,
+            `rooms/${code}/players/${online.uid}`
+          )
+        ).remove();
+
+        subscribeToRoom(code);
+        enterHostLobby();
+
+      } catch (err) {
+        console.error(err);
+        setOnlineStatus(
+          err?.message || String(err),
+          true
+        );
+      } finally {
+        online.joining = false;
+        $('createRoomBtn').disabled = false;
+        $('joinRoomBtn').disabled = false;
+      }
+    }
+
+    async function joinRoom() {
+      if (online.roomCode || online.joining) return;
+      const code = String($('onlineJoinCode').value || '').trim().toUpperCase().replace(/[^A-Z0-9]/g, '');
+      if (code.length !== 6) {setOnlineStatus('Enter the six-character room code.', true); return;}
+      online.joining = true;
+      $('createRoomBtn').disabled = true;
+      $('joinRoomBtn').disabled = true;
+      try {
+        await ensureAnonymousAuth();
+        const {dbMod} = await loadFirebase();
+        online.db = dbMod.getDatabase(online.app);
+        const metaSnap = await dbMod.get(dbMod.ref(online.db, `rooms/${code}/meta`));
+        if (!metaSnap.exists()) throw new Error('That room does not exist or has already ended.');
+        const meta = metaSnap.val() || {};
+        if (meta.status !== 'lobby') throw new Error('That game has already started.');
+        online.mode = 'guest'; online.isHost = false; online.roomCode = code; online.seatId = null;
+        await dbMod.set(dbMod.ref(online.db, `rooms/${code}/players/${online.uid}`), {
+          uid: online.uid, name: getDisplayName(), seatId: null, host: false, joinedAt: Date.now()
+        });
+        await dbMod.onDisconnect(dbMod.ref(online.db, `rooms/${code}/players/${online.uid}`)).remove();
+        subscribeToRoom(code);
+        enterGuestLobby();
+      } catch (err) {
+        console.error(err); setOnlineStatus(err?.message || String(err), true);
+      } finally {
+        online.joining = false;
+        $('createRoomBtn').disabled = false;
+        $('joinRoomBtn').disabled = false;
+      }
+    }
+
+    function subscribeToRoom(code) {
+      cleanupOnlineListeners();
+      const {dbMod} = online.api;
+      const roomRef = dbMod.ref(online.db, `rooms/${code}`);
+      online.roomUnsub = dbMod.onValue(dbMod.ref(online.db, `rooms/${code}/meta`), snap => {
+        const meta = snap.val();
+        if (!meta) {
+          leaveOnlineRoom(false); return;
+        }
+        online.isHost = meta.hostUid === online.uid; online.mode = online.isHost ? 'host' : 'guest';
+        if (meta.status === 'started' && !online.privateUnsub) startGuestSubscriptions();
+        if (meta.status === 'lobby') {
+          $('onlineLobbyPhase').textContent = 'Room lobby';
+          $('onlineLobbyTitle').textContent = online.isHost ? 'Configure the game' : 'Waiting for the host';
+          show('onlineLobby'); hide('onlineGame');
+          if (online.isHost) {show('hostRoomControls'); hide('guestLobbyNotice');} else {hide('hostRoomControls'); show('guestLobbyNotice');}
+        }
+      });
+      online.playersUnsub = dbMod.onValue(dbMod.ref(online.db, `rooms/${code}/players`), snap => {
+        online.playersCache = snap.val() || {};
+        if (online.isHost) reconcileHostPlayers();
+        renderOnlineLobbyPlayers(); renderOnlinePublicPlayers();
+        const me = online.playersCache[online.uid];
+        if (me && Number.isInteger(me.seatId)) {
+          online.seatId = me.seatId;
+        } else {
+          const inferredSeat = resolveLocalSeatId();
+          if (Number.isInteger(inferredSeat)) online.seatId = inferredSeat;
+        }
+      });
+      online.publicUnsub = dbMod.onValue(dbMod.ref(online.db, `rooms/${code}/public`), snap => {
+        online.public = snap.val() || null;
+        renderOnlinePublic();
+        if (online.public?.phase === 'gameover') renderOnlineGameOver(online.public);
+        else if (online.public?.phase && online.public.phase !== 'lobby') {hide('onlineLobby'); show('onlineGame');}
+      });
+      online.privateUnsub = dbMod.onValue(dbMod.ref(online.db, `rooms/${code}/private/${online.uid}`), snap => {
+        online.private = snap.val() || null; renderOnlinePrivate();
+      });
+      online.commandUnsub = dbMod.onChildAdded(dbMod.ref(online.db, `rooms/${code}/commands`), async snap => {
+        if (!online.isHost || online.processingCommand) return;
+        const cmd = snap.val();
+        online.processingCommand = true;
+        try {
+          await handleOnlineCommand(cmd);
+        } catch (err) {
+          console.error('Command error', err);
+        }
+        try {
+          await dbMod.remove(snap.ref);
+        } catch (err) {
+          // Processing has already happened; cleanup failing must not break
+          // the game. The command can be cleaned up by the host later.
+          console.error('Command cleanup error:', err);
+        }
+        online.processingCommand = false;
+      });
+      renderOnlineLobbyPlayers();
+    }
+
+    function resolveLocalSeatId() {
+      if (!online.uid) return null;
+      const entries = Object.values(online.playersCache || {})
+        .filter(p => p && p.uid)
+        .sort((a, b) => {
+          if (a.host !== b.host) return a.host ? -1 : 1;
+          return Number(a.joinedAt || 0) - Number(b.joinedAt || 0);
+        });
+      const index = entries.findIndex(p => p.uid === online.uid);
+      return index >= 0 ? index : null;
+    }
+
+    function renderOnlineLobbyPlayers() {
+      const entries = Object.values(online.playersCache || {}).sort((a, b) => (Number(a.seatId ?? 999) - Number(b.seatId ?? 999)) || String(a.name).localeCompare(String(b.name)));
+      $('onlineLobbyPlayers').innerHTML = entries.map(p => `<div class="online-player"><span class="pill ${p.host ? 'good' : ''}">${p.host ? 'HOST' : 'PLAYER'}</span><span class="name">${escapeHtml(p.name || 'Unnamed')}</span><div class="spacer"></div><span class="muted tiny">${Number.isInteger(p.seatId) ? `Seat ${p.seatId + 1}` : 'Joining…'}</span></div>`).join('') || '<div class="muted">Waiting for players…</div>';
+      if (online.isHost) {
+        $('onlineLobbyStatus').textContent = `${entries.length} player${entries.length === 1 ? '' : 's'} connected. The setup panel below is your start screen.`;
+      } else {
+        $('onlineLobbyStatus').textContent = 'You are in the room. Wait for the host to start the game.';
+      }
+    }
+
+    function reconcileHostPlayers() {
+      if (!online.isHost || !online.roomCode) return;
+      const entries = Object.entries(online.playersCache || {}).filter(([, p]) => p && p.uid);
+      entries.sort(([, a], [, b]) => {
+        if (a.uid === online.uid) return -1; if (b.uid === online.uid) return 1;
+        return Number(a.joinedAt || 0) - Number(b.joinedAt || 0);
+      });
+      const used = new Set();
+      entries.forEach(([uid, p]) => {
+        const n = Number(p.seatId); if (Number.isInteger(n) && n >= 0 && !used.has(n)) used.add(n); else p.seatId = null;
+      });
+      let next = 0;
+      entries.forEach(([uid, p]) => {
+        if (!Number.isInteger(p.seatId)) {while (used.has(next)) next++; p.seatId = next; used.add(next); next++;}
+      });
+      entries.forEach(([uid, p]) => {
+        if (!online.playersCache[uid] || online.playersCache[uid].seatId !== p.seatId) {
+          online.api.dbMod.update(online.api.dbMod.ref(online.db, `rooms/${online.roomCode}/players/${uid}`), {seatId: p.seatId}).catch(console.error);
+        }
+      });
+      // During lobby, mirror the room roster into the existing setup state so the host can use all of the existing controls.
+      if (state.phase === 'setup') {
+        const sorted = entries.map(([, p]) => p).sort((a, b) => a.seatId - b.seatId);
+        state.players = sorted.map((p) => createPlayer(p.seatId, p.name || `Player ${p.seatId + 1}`));
+        renderSetup();
+      }
+    }
+
+    function enterHostLobby() {
+      $('hostRoomCode').textContent = online.roomCode;
+      show('onlineLobby'); show('hostRoomControls'); hide('guestLobbyNotice'); show('setupScreen'); hide('onlineGame');
+      $('setupOnlineBadge').classList.remove('hidden');
+      $('startBtn').disabled = false;
+      setOnlineStatus(`Room ${online.roomCode} created.`, false);
+      renderOnlineLobbyPlayers();
+    }
+
+    function enterGuestLobby() {
+      hide('setupScreen'); show('onlineLobby'); hide('onlineGame'); hide('hostRoomControls'); show('guestLobbyNotice');
+      $('onlineLobbyPhase').textContent = 'Room lobby'; $('onlineLobbyTitle').textContent = 'Waiting for host';
+      setOnlineStatus(`Joined room ${online.roomCode}.`, false);
+    }
+
+    async function leaveOnlineRoom(showEntry = true) {
+      const code = online.roomCode, wasHost = online.isHost;
+      try {
+        if (code && online.db && online.api?.dbMod) {
+          const {dbMod} = online.api;
+          if (wasHost) await dbMod.remove(dbMod.ref(online.db, `rooms/${code}`));
+          else if (online.uid) await dbMod.remove(dbMod.ref(online.db, `rooms/${code}/players/${online.uid}`));
+        }
+      } catch (err) {console.error(err);}
+      cleanupOnlineListeners();
+      online.mode = 'offline'; online.isHost = false; online.roomCode = null; online.seatId = null; online.playersCache = {}; online.public = null; online.private = null;
+      $('setupOnlineBadge').classList.add('hidden');
+      hide('onlineLobby', 'onlineGame', 'onlineGameOver'); show('onlineEntry');
+      if (showEntry) {show('setupScreen'); setOnlineStatus('You left the room.', false); renderSetup();}
+    }
+
+    function publicOnlinePlayers() {
+      return Object.values(online.playersCache || {}).sort((a, b) => Number(a.seatId) - Number(b.seatId));
+    }
+
+    function onlinePublicSnapshot() {
+      const players = state.players.map(p => ({id: p.id, name: p.name, alive: p.alive, eliminatedByVote: !!p.eliminatedByVote, role: state.phase === 'gameover' ? (roleOf(p) ? {title: roleOf(p).title, orientation: roleOf(p).orientation} : null) : null}));
+      const base = {phase: state.phase, round: state.round, players};
+      if (state.phase === 'day') {
+        base.day = {
+          secondBallot: !!state.day.secondBallot,
+          tiedCandidates: state.day.tiedCandidates || [],
+          votesSubmitted: Object.fromEntries(state.players.filter(p => p.alive).map(p => [p.id, isChosen(state.day.votes[p.id])])),
+          votes: Object.fromEntries(state.players.filter(p => p.alive && isChosen(state.day.votes[p.id])).map(p => [p.id, state.day.votes[p.id]]))
+        };
+      }
+      if (state.phase === 'night') {
+        const actor = onlineCurrentNightActor();
+        base.night = {round: state.night.round, currentActorId: actor?.id ?? null};
+      }
+      return base;
+    }
+
+    function onlineCurrentNightActor() {
+      const n = state.night, queue = n.round === 1 ? n.queue : n.reactionQueue; return queue?.[n.index] || null;
+    }
+
+    function onlineKnownRolesFor(viewer) {
+      if (!viewer) return [];
+      return state.players.filter(t => visibleTo(viewer, t)).map(t => ({id: t.id, name: t.name, role: roleOf(t)?.title || 'Unknown', orientation: roleOf(t)?.orientation || 'neutral'}));
+    }
+
+    function onlinePrivatePayloadFor(player) {
+      const r = roleOf(player);
+      const payload = {role: r ? {title: r.title, orientation: r.orientation, description: r.description, nightAction: r.nightAction} : null, knownRoles: onlineKnownRolesFor(player), turn: null, result: null};
+      if (!r || !player) return payload;
+      if (state.phase === 'day') {
+        if (isChosen(state.day.votes[player.id])) {
+          const vote = state.day.votes[player.id];
+          const target = vote === 'skip' ? null : playerOf(vote);
+          payload.turn = {
+            type: 'ack',
+            prompt: vote === 'skip'
+              ? 'You voted to skip. Wait for the other players.'
+              : `You voted for ${target?.name || 'a player'}. Wait for the other players.`
+          };
+        } else {
+          payload.turn = {
+            type: 'dayVote',
+            prompt: 'Choose one living player to vote out, or skip. You cannot vote for yourself.',
+            options: [
+              ...playersAlive().filter(t => t.id !== player.id).map(t => ({id: t.id, name: t.name})),
+              {id: 'skip', name: 'Skip voting'}
+            ]
+          };
+        }
+      } else if (state.phase === 'night') {
+        const actor = onlineCurrentNightActor();
+        if (!actor || actor.id !== player.id) return payload;
+        const night = state.night;
+        if (night.onlineAckNeeded) {
+          payload.turn = {type: 'ack', prompt: 'Action resolved. Acknowledge to continue.'};
+          return payload;
+        }
+        if (night.round === 1) {
+          if (!player.alive) payload.turn = {type: 'ack', prompt: 'You were eliminated before your night turn. Acknowledge to continue.'};
+          else if (['teamKill', 'kill'].includes(r.nightAction)) {
+            const teamUsed = r.nightAction === 'teamKill' && night.usedTeamKillRoleIds.includes(r.id);
+            payload.turn = {type: teamUsed ? 'ack' : 'nightTarget', action: r.nightAction, prompt: teamUsed ? `Your ${r.title} team already used its shared kill tonight.` : 'Choose a living player to target.', options: teamUsed ? [] : playersAlive().filter(t => t.id !== player.id).map(t => ({id: t.id, name: t.name}))};
+          } else if (r.nightAction === 'inspectOrientation') payload.turn = {type: 'nightTarget', action: 'inspectOrientation', prompt: 'Choose a living player to inspect.', options: playersAlive().filter(t => t.id !== player.id).map(t => ({id: t.id, name: t.name}))};
+          else if (r.nightAction === 'seer') {
+            const target = randomChoice(playersAlive().filter(t => t.id !== player.id));
+            night.onlineSeerTargetId = target?.id ?? null;
+            payload.turn = {type: target ? 'nightTarget' : 'ack', action: 'seer', prompt: target ? `A random player has been selected: ${target.name}. Confirm to reveal their exact role.` : 'No valid target exists.', options: target ? [{id: target.id, name: `Reveal ${target.name}`}] : []};
+          } else payload.turn = {type: 'ack', prompt: 'No active night action. Acknowledge to continue.'};
+        } else {
+          const attacks = findPendingAttacksFor(player.id);
+          if (!player.alive) payload.turn = {type: 'ack', prompt: 'You were killed during the night. Acknowledge to continue.'};
+          else if (!attacks.length) payload.turn = {type: 'ack', prompt: 'Nothing happened to you during the night. Acknowledge to continue.'};
+          else {
+            const attack = attacks[0], action = r.nightAction;
+            if (['traitor', 'escape', 'monkey', 'rps', 'scapegoat'].includes(action)) {
+              let options = [];
+              if (action === 'traitor') options = [{id: 'traitorSurvive', name: 'Join the Mafia & survive'}];
+              else if (action === 'escape') options = [{id: 'escaped', name: 'I escaped'}, {id: 'caught', name: 'I was caught'}];
+              else if (action === 'rps') options = [{id: 'won', name: 'I won'}, {id: 'lost', name: 'I lost'}];
+              else if (action === 'monkey') options = [{id: 'done', name: 'Reaction complete'}];
+              else if (action === 'scapegoat') options = adjacentLiving(player).filter(p => p.id !== player.id).map(p => ({id: p.id, name: `Redirect to ${p.name}`})).concat([{id: 'noRedirect', name: 'Do not redirect'}]);
+              payload.turn = {type: 'reaction', action, prompt: action === 'scapegoat' ? 'You were targeted. Choose whether to redirect the attack.' : `You were targeted by ${playerOf(attack.attackerId)?.name || 'the attacker'}. Resolve your role ability.`, options};
+            } else payload.turn = {type: 'ack', prompt: 'You were targeted during the night and have been killed. Acknowledge to continue.'};
+          }
+        }
+      }
+      return payload;
+    }
+
+    async function publishOnlineLobbyPlayers() {
+      if (!online.isHost || !online.roomCode) return;
+      // The player records themselves are already public and are the source for setup.
+      const {dbMod} = online.api;
+      const updates = {};
+      state.players.forEach(p => {
+        const m = publicOnlinePlayers().find(x => Number(x.seatId) === p.id);
+        if (m) updates[`rooms/${online.roomCode}/players/${m.uid}/name`] = p.name;
+      });
+      await dbMod.update(dbMod.ref(online.db), updates);
+    }
+
+    function renderOnlinePublicPlayers() {
+      const pubPlayers = online.public?.players;
+      const players = Array.isArray(pubPlayers) && pubPlayers.length
+        ? pubPlayers
+        : publicOnlinePlayers();
+      const el = $('onlinePlayersList');
+      if (!el) return;
+      el.innerHTML = players.map(p => {
+        const isMe = Number(p.id) === Number(online.seatId);
+        const alive = p.alive !== false;
+        return `<div class="online-player ${isMe ? 'online-turn' : ''} ${alive ? '' : 'eliminated'}">` +
+          `<span class="name">${escapeHtml(p.name || 'Unnamed')}</span>` +
+          `<div class="spacer"></div>` +
+          `<span class="pill ${alive ? 'good' : ''}">${alive ? 'Alive' : 'Out'}</span>` +
+          `${p.role ? `<span class="tiny muted">${escapeHtml(p.role.title || 'Unknown')} · ${escapeHtml(labelOrientation(p.role.orientation || 'neutral'))}</span>` : ''}` +
+          `</div>`;
+      }).join('');
+    }
+
+    function renderOnlinePublic() {
+      const pub = online.public; if (!pub) return;
+      if (pub.phase === 'lobby') return;
+      show('onlineGame'); hide('onlineLobby');
+      const phaseNames = {handoff: 'Private roles', day: 'Day', night: 'Night', gameover: 'Game over'};
+      $('onlinePhaseLabel').textContent = phaseNames[pub.phase] || pub.phase;
+      $('onlinePhaseTitle').textContent = pub.phase === 'day' ? 'Discuss & vote' : pub.phase === 'night' ? (pub.night?.round === 1 ? 'Night actions' : 'Night reactions') : pub.phase === 'gameover' ? 'Finished' : 'Mafia';
+      $('onlineRoundPill').textContent = `Round ${pub.round || 1}`;
+      const me = pub.players?.find(p => Number(p.id) === Number(online.seatId));
+      $('onlinePublicStatus').innerHTML = pub.phase === 'day'
+        ? `<strong>Day:</strong> ${Object.values(pub.day?.votesSubmitted || {}).filter(Boolean).length}/${pub.players?.filter(p => p.alive).length || 0} votes submitted. ${pub.day?.secondBallot ? 'Second ballot between the tied players.' : ''}`
+        : pub.phase === 'night'
+          ? `<strong>Night:</strong> ${pub.night?.currentActorId == null ? 'Finishing…' : `It is ${escapeHtml(pub.players?.find(p => p.id === pub.night.currentActorId)?.name || 'a player')}'s turn.`}`
+          : '';
+      if (pub.phase === 'day') {
+        const voteEntries = Object.entries(pub.day?.votes || {});
+        const voteText = voteEntries.map(([voterId, vote]) => {
+          const voter = (pub.players || []).find(p => Number(p.id) === Number(voterId));
+          const target = vote === 'skip' ? null : (pub.players || []).find(p => Number(p.id) === Number(vote));
+          return `${escapeHtml(voter?.name || 'Player')} → ${escapeHtml(target?.name || 'Skip')}`;
+        });
+        $('onlinePublicStatus').innerHTML += voteText.length
+          ? `<div class="tiny" style="margin-top:8px"><strong>Votes:</strong> ${voteText.join(' · ')}</div>`
+          : '';
+      }
+      // Public state is the authoritative trigger for day voting. Re-render the action area
+      // immediately even if the private listener has not fired yet.
+      renderOnlinePrivate();
+      $('onlinePlayersList').innerHTML = (pub.players || []).map(p => `<div class="online-player ${p.id === online.seatId ? 'online-turn' : ''} ${p.alive ? '' : 'eliminated'}"><span class="name">${escapeHtml(p.name)}</span><div class="spacer"></div><span class="pill ${p.alive ? 'good' : ''}">${p.alive ? 'Alive' : 'Out'}</span>${p.role ? `<span class="tiny muted">${escapeHtml(p.role.title)} · ${escapeHtml(labelOrientation(p.role.orientation))}</span>` : ''}</div>`).join('');
+      if (me && !me.alive) $('onlineActionPrompt').textContent = 'You are eliminated. You can still watch the public game.';
+    }
+
+    function renderOnlinePrivate() {
+      const priv = online.private;
+      const area = $('onlineActionArea');
+      area.innerHTML = '';
+      $('onlineActionResult').innerHTML = '';
+
+      if (priv?.role) {
+        $('onlineRoleBox').innerHTML = `<div class="phase">${escapeHtml(labelOrientation(priv.role.orientation))}</div><div class="secret">${escapeHtml(priv.role.title)}</div><div class="desc">${escapeHtml(priv.role.description)}</div>`;
+      }
+
+      $('onlineKnownRoles').innerHTML = (priv?.knownRoles || []).length
+        ? `<div class="known-roles"><strong>Roles you know</strong><div class="known-role-list">${(priv?.knownRoles || []).map(x => `<div class="known-role"><strong>${escapeHtml(x.name)}</strong><div class="tiny muted" style="margin-top:4px">${escapeHtml(x.role)} · ${escapeHtml(labelOrientation(x.orientation))}</div></div>`).join('')}</div></div>`
+        : '';
+
+      // Day voting is driven by public game state, not by asynchronous seat/private state.
+      if (online.public?.phase === 'day') {
+        let mySeat = Number.isInteger(online.seatId) ? online.seatId : resolveLocalSeatId();
+        if (Number.isInteger(mySeat)) online.seatId = mySeat;
+        const me = (online.public.players || []).find(p => Number(p.id) === Number(mySeat));
+        const alreadyVoted = !!(me && online.public.day?.votesSubmitted?.[me.id]);
+        const alive = !!me && me.alive !== false;
+        const candidates = (online.public.players || []).filter(p => p.alive !== false && Number(p.id) !== Number(mySeat));
+        const myVote = me ? online.public.day?.votes?.[me.id] : null;
+        const myVoteTarget = myVote === 'skip' ? null : (myVote != null ? (online.public.players || []).find(p => Number(p.id) === Number(myVote)) : null);
+
+        if (!me) {
+          $('onlineActionTitle').textContent = 'Getting your seat';
+          $('onlineActionPrompt').textContent = 'Your player seat is being assigned. This should only take a moment.';
+        } else if (!alive) {
+          $('onlineActionTitle').textContent = 'Eliminated';
+          $('onlineActionPrompt').textContent = 'You are eliminated. You can still watch the vote.';
+        } else if (alreadyVoted) {
+          $('onlineActionTitle').textContent = 'Vote submitted';
+          $('onlineActionPrompt').textContent = myVote === 'skip'
+            ? 'You voted to skip. Wait for the other players.'
+            : `You voted for ${myVoteTarget?.name || 'a player'}. Wait for the other players.`;
+          const b = actionButton(myVote === 'skip' ? 'Skip voting' : `Voted for ${myVoteTarget?.name || 'player'}`, 'noop', () => {});
+          b.disabled = true;
+          area.appendChild(b);
+        } else {
+          $('onlineActionTitle').textContent = 'Vote';
+          $('onlineActionPrompt').textContent = 'Choose one living player to vote out, or skip. You cannot vote for yourself.';
+          candidates.forEach(p => {
+            area.appendChild(actionButton(p.name, p.id, () => sendOnlineAction({type:'dayVote'}, p.id)));
+          });
+          area.appendChild(actionButton('Skip voting', 'skip', () => sendOnlineAction({type:'dayVote'}, 'skip')));
+        }
+      } else {
+        const turn = priv?.turn;
+        if (!turn) {
+          $('onlineActionTitle').textContent = 'Waiting';
+          $('onlineActionPrompt').textContent = 'Waiting for the game to advance.';
+        } else {
+          $('onlineActionTitle').textContent = turn.type === 'reaction' ? 'Resolve your reaction' : turn.type === 'nightTarget' ? 'Night action' : 'Acknowledge';
+          $('onlineActionPrompt').innerHTML = escapeHtml(turn.prompt || '');
+          (turn.options || []).forEach(opt => area.appendChild(actionButton(opt.name, opt.id, () => sendOnlineAction(turn, opt.id))));
+          if ((turn.options || []).length === 0 && turn.type === 'ack') area.appendChild(actionButton('Acknowledge & continue', 'ack', () => sendOnlineAction(turn, 'ack')));
+        }
+      }
+
+      if (priv?.result) $('onlineActionResult').innerHTML = `<div class="result">${escapeHtml(priv.result)}</div>`;
+    }
+
+    function renderOnlineGameOver(pub) {
+      hide('onlineActionCard'); show('onlineGameOver');
+      $('onlineWinnerTitle').textContent = `${escapeHtml(pub.winner || 'Winner')} wins`;
+      $('onlineWinnerText').textContent = pub.reason || '';
+      $('onlineFinalRoles').innerHTML = (pub.players || []).map(p => `<div class="result"><strong>${escapeHtml(p.name)}</strong><div class="tiny muted" style="margin-top:6px">${p.alive ? 'Alive' : 'Eliminated'}</div><div style="margin-top:6px">${escapeHtml(p.role?.title || 'Unknown')} ${p.role ? `<span class="pill ${p.role.orientation || 'neutral'}">${escapeHtml(labelOrientation(p.role.orientation))}</span>` : ''}</div></div>`).join('');
+    }
+
+    async function sendOnlineAction(turn, value) {
+      if (!online.roomCode || online.mode === 'offline' || !online.uid || !online.db || !online.api?.dbMod) {
+        $('onlineActionResult').innerHTML = '<div class="result">You are not connected to the room yet.</div>';
+        return;
+      }
+
+      const {dbMod} = online.api;
+      const isVote = turn?.type === 'dayVote';
+
+      // The Firebase UID is the real player identity. A seat number is only a
+      // host-side convenience, so votes/actions no longer wait for the async
+      // seat assignment to propagate back to the player's browser.
+      let resolvedSeat = Number.isInteger(online.seatId) ? online.seatId : resolveLocalSeatId();
+      const me = online.playersCache?.[online.uid];
+      if (!Number.isInteger(resolvedSeat) && Number.isInteger(me?.seatId)) resolvedSeat = me.seatId;
+      if (Number.isInteger(resolvedSeat)) online.seatId = resolvedSeat;
+
+      if (isVote) {
+        $('onlineActionPrompt').textContent = 'Vote sending…';
+      } else {
+        $('onlineActionPrompt').textContent = 'Sending action…';
+      }
+
+      const payload = {
+        value,
+        turnType: turn.type,
+        actionType: isVote ? 'dayVote' : turn.type
+      };
+
+      try {
+        await dbMod.push(
+          dbMod.ref(online.db, `rooms/${online.roomCode}/commands`),
+          {
+            uid: online.uid,
+            // Include the seat when known, but never require it on the client.
+            ...(Number.isInteger(resolvedSeat) ? {seatId: resolvedSeat} : {}),
+            type: 'action',
+            payload,
+            createdAt: Date.now()
+          }
+        );
+
+        if (isVote) {
+          $('onlineActionPrompt').textContent = 'Vote sent. Waiting for the other players…';
+          $('onlineActionResult').innerHTML = '<div class="result">Your vote was sent to the host.</div>';
+        }
+      } catch (err) {
+        console.error('Online action failed:', err);
+        $('onlineActionPrompt').textContent = isVote ? 'Could not send your vote.' : 'Could not send your action.';
+        $('onlineActionResult').innerHTML = `<div class="result">${escapeHtml(err?.message || String(err))}</div>`;
+      }
+    }
+
+    async function handleOnlineCommand(cmd) {
+      if (!online.isHost || !cmd || !cmd.payload) return;
+
+      // Authorize the command by authenticated Firebase UID. Seat IDs are only
+      // used to address the host's local game state after membership is found.
+      const membership = Object.values(online.playersCache || {}).find(p => p && p.uid === cmd.uid);
+      if (!membership) return;
+      // Resolve the actor primarily from the authenticated Firebase UID.
+      // This makes commands work even while a guest is still waiting for a seat
+      // number to propagate to their browser.
+      const actorSeat = Number.isInteger(membership.seatId)
+        ? membership.seatId
+        : Number(cmd.seatId);
+      let actor = Number.isInteger(actorSeat) ? playerOf(actorSeat) : null;
+      if (!actor) {
+        const ordered = Object.values(online.playersCache || {})
+          .filter(p => p && p.uid)
+          .sort((a,b) => {
+            if (a.host !== b.host) return a.host ? -1 : 1;
+            return Number(a.joinedAt || 0) - Number(b.joinedAt || 0);
+          });
+        const inferred = ordered.findIndex(p => p.uid === cmd.uid);
+        if (inferred >= 0) actor = playerOf(inferred);
+      }
+      if (!actor) return;
+
+      const value = cmd.payload.value;
+      if (state.phase === 'day' && (cmd.payload.turnType === 'dayVote' || cmd.payload.actionType === 'dayVote')) {
+        if (!actor.alive) return;
+        if (isChosen(state.day.votes[actor.id])) return;
+        if (value === 'skip') {
+          state.day.votes[actor.id] = 'skip';
+        } else {
+          const target = playerOf(Number(value));
+          if (!target || !validDayTarget(actor, Number(value))) return;
+          state.day.votes[actor.id] = target.id;
+        }
+        const living = playersAlive();
+        if (living.every(v => isChosen(state.day.votes[v.id]) && (state.day.votes[v.id] === 'skip' || validDayTarget(v, state.day.votes[v.id])))) {
+          await resolveOnlineDay();
+        } else {
+          await publishOnlineRoom();
+        }
+        return;
+      }
+
+      if (state.phase !== 'night') return;
+      const n = state.night;
+      const current = onlineCurrentNightActor(); if (!current || current.id !== actor.id) return;
+      if (n.round === 1) {
+        await handleOnlineNightRound1(actor, String(value));
+      } else {
+        await handleOnlineNightReaction(actor, String(value));
+      }
+    }
+
+    async function handleOnlineNightRound1(actor, value) {
+      const role = roleOf(actor), n = state.night;
+      if (!actor.alive) {n.onlineAckNeeded = true; await advanceOnlineNightAfterAck(); return;}
+      if (value === 'ack') {await advanceOnlineNightAfterAck(); return;}
+      if (role?.nightAction === 'teamKill' || role?.nightAction === 'kill') {
+        const target = playerOf(Number(value)); if (!target || !target.alive || target.id === actor.id) return;
+        if (role.nightAction === 'teamKill' && n.usedTeamKillRoleIds.includes(role.id)) {await publishOnlineRoom(); return;}
+        if (role.nightAction === 'teamKill') n.usedTeamKillRoleIds.push(role.id);
+        n.pendingAttacks.push({attackerId: actor.id, targetId: target.id, sourceAction: role.nightAction});
+        setPrivateResult(actor.id, `Target recorded: ${target.name}. Acknowledge to continue.`);
+        n.onlineAckNeeded = true; await publishOnlineRoom(); return;
+      }
+      if (role?.nightAction === 'inspectOrientation') {
+        const target = playerOf(Number(value)); if (!target || !target.alive || target.id === actor.id) return;
+        const orientation = labelOrientation(roleOf(target)?.orientation || 'unknown');
+        setPrivateResult(actor.id, `${target.name} is ${orientation}.`); n.onlineAckNeeded = true; await publishOnlineRoom(); return;
+      }
+      if (role?.nightAction === 'seer') {
+        const target = playerOf(n.onlineSeerTargetId); if (!target || !target.alive) {n.onlineAckNeeded = true; await publishOnlineRoom(); return;}
+        setPrivateResult(actor.id, `${target.name} is ${roleOf(target)?.title || 'Unknown'}.`); n.onlineAckNeeded = true; await publishOnlineRoom(); return;
+      }
+      await advanceOnlineNightAfterAck();
+    }
+
+    async function handleOnlineNightReaction(actor, value) {
+      const n = state.night, role = roleOf(actor), attacks = findPendingAttacksFor(actor.id);
+      if (value === 'ack' && n.onlineAckNeeded) {await advanceOnlineNightAfterAck(); return;}
+      if (!actor.alive) {await advanceOnlineNightAfterAck(); return;}
+      if (!attacks.length) {await advanceOnlineNightAfterAck(); return;}
+      const attack = attacks[0];
+      if (!['traitor', 'escape', 'monkey', 'rps', 'scapegoat'].includes(role?.nightAction)) {
+        removePendingAttack(attack); actor.alive = false; addLog(`${actor.name} was killed during the night.`); setPrivateResult(actor.id, `You were killed during the night.`); n.onlineAckNeeded = true; await publishOnlineRoom(); return;
+      }
+      if (role.nightAction === 'traitor' && value === 'traitorSurvive') {
+        removePendingAttack(attack); actor.roleId = 'mafia'; addLog(`${actor.name} survived a night attack and joined the Mafia.`); setPrivateResult(actor.id, 'You survived and joined the Mafia.'); n.onlineAckNeeded = true; await publishOnlineRoom(); return;
+      }
+      if (role.nightAction === 'escape') {
+        removePendingAttack(attack); actor.escaped = value === 'escaped'; if (value !== 'escaped') {actor.alive = false; addLog(`${actor.name} failed the escape challenge and was killed.`);} else addLog(`${actor.name} escaped the night attack.`); setPrivateResult(actor.id, value === 'escaped' ? 'You escaped.' : 'You were caught and killed.'); n.onlineAckNeeded = true; await publishOnlineRoom(); return;
+      }
+      if (role.nightAction === 'rps') {
+        removePendingAttack(attack); if (value === 'lost') actor.alive = false; addLog(`${actor.name} ${value === 'won' ? 'won' : 'lost'} Rock, Paper, Scissors.`); setPrivateResult(actor.id, value === 'won' ? 'You survived.' : 'You lost and were killed.'); n.onlineAckNeeded = true; await publishOnlineRoom(); return;
+      }
+      if (role.nightAction === 'monkey' && value === 'done') {
+        removePendingAttack(attack); actor.alive = false; addLog(`${actor.name} completed the confrontation and was killed.`); setPrivateResult(actor.id, 'You confronted the attacker and were killed.'); n.onlineAckNeeded = true; await publishOnlineRoom(); return;
+      }
+      if (role.nightAction === 'scapegoat') {
+        if (value === 'noRedirect') {
+          removePendingAttack(attack); actor.alive = false; actor.used.scapegoat = true; addLog(`${actor.name} chose not to redirect the night attack and was killed.`); setPrivateResult(actor.id, 'You were killed.'); n.onlineAckNeeded = true; await publishOnlineRoom(); return;
+        }
+        const victim = playerOf(Number(value));
+        const adjacent = adjacentLiving(actor);
+        if (!victim || !adjacent.some(p => p.id === victim.id)) return;
+        removePendingAttack(attack); actor.used.scapegoat = true;
+        n.pendingAttacks.push({attackerId: attack.attackerId, targetId: victim.id, sourceAction: attack.sourceAction, redirectedFrom: actor.id});
+        ensureReactionQueued(victim); addLog(`${actor.name} redirected a night attack to ${victim.name}.`); setPrivateResult(actor.id, `The attack was redirected to ${victim.name}.`); n.onlineAckNeeded = true; await publishOnlineRoom(); return;
+      }
+    }
+
+    function setPrivateResult(seatId, text) {
+      const p = state.players.find(x => x.id === seatId); if (!p) return;
+      if (!state.night.onlineResults) state.night.onlineResults = {}; state.night.onlineResults[seatId] = text;
+    }
+
+    async function publishOnlineRoom() {
+      if (!online.isHost || !online.roomCode) return;
+      const {dbMod} = online.api, updates = {};
+      const pub = onlinePublicSnapshot();
+      if (pub.phase === 'gameover') {updates[`rooms/${online.roomCode}/public`] = {...pub, winner: online._winner?.winner, reason: online._winner?.reason}; updates[`rooms/${online.roomCode}/meta/status`] = 'gameover';}
+      else updates[`rooms/${online.roomCode}/public`] = pub;
+      for (const p of state.players) {
+        const uid = Object.values(online.playersCache || {}).find(x => Number(x.seatId) === p.id)?.uid; if (!uid) continue;
+        const payload = onlinePrivatePayloadFor(p);
+        const result = state.night?.onlineResults?.[p.id]; if (result) payload.result = result;
+        updates[`rooms/${online.roomCode}/private/${uid}`] = payload;
+      }
+      await dbMod.update(dbMod.ref(online.db), updates);
+    }
+
+    async function advanceOnlineNightAfterAck() {
+      const n = state.night;
+      n.onlineAckNeeded = false;
+      n.onlineResults = {};
+      // Check a win after any reaction or kill before advancing.
+      const result = checkWin(); if (result.done) {finishOnlineGame(result); return;}
+      n.index++;
+      n.onlineSeerTargetId = null;
+      if (n.index >= (n.round === 1 ? n.queue : n.reactionQueue).length) {
+        if (n.round === 1) {
+          beginOnlineReactionRound(); return;
+        }
+        finishOnlineNightOnline(); return;
+      }
+      await publishOnlineRoom();
+    }
+
+    async function resolveOnlineDay() {
+      const living = playersAlive(), counts = new Map();
+      living.forEach(voter => {
+        const target = state.day.votes[voter.id];
+        if (target === 'skip') return;
+        if (validDayTarget(voter, target)) counts.set(target, (counts.get(target) || 0) + 1);
+      });
+      const top = Math.max(-1, ...counts.values());
+      const winners = [...counts.entries()].filter(([, c]) => c === top).map(([id]) => id);
+      if (!winners.length) {
+        addLog('Day voting was skipped; nobody was eliminated.');
+        startOnlineNight();
+        return;
+      }
+      if (winners.length > 1 && !state.day.secondBallot) {state.day.secondBallot = true; state.day.tiedCandidates = winners; state.day.votes = {}; addLog(`Day vote tied between ${winners.map(id => playerOf(id)?.name || id).join(', ')}.`); await publishOnlineRoom(); return;}
+      if (winners.length > 1) {state.day.secondBallot = false; state.day.tiedCandidates = []; state.day.votes = {}; addLog('Second day vote tied; nobody was eliminated.'); startOnlineNight(); return;}
+      const out = playerOf(winners[0]); out.alive = false; out.eliminatedByVote = true; addLog(`${out.name} was voted out during the day.`);
+      const result = checkWin(); if (result.done) {finishOnlineGame(result); return;}
+      startOnlineNight();
+    }
+
+    function startOnlineNight() {
+      state.phase = 'night';
+      const nightPlayers = playersAlive().slice();
+      state.night = {round: 1, queue: nightPlayers, index: 0, busy: false, usedTeamKillRoleIds: [], pendingAttacks: [], reactionQueue: [], reactionCompleted: [], round1Players: nightPlayers, onlineAckNeeded: false, onlineResults: {}, onlineSeerTargetId: null};
+      publishOnlineRoom().catch(console.error);
+    }
+
+    function beginOnlineReactionRound() {
+      state.night.round = 2; state.night.reactionQueue = buildNightReactionQueue(); state.night.index = 0; state.night.onlineAckNeeded = false; state.night.onlineResults = {};
+      publishOnlineRoom().catch(console.error);
+    }
+
+    function finishOnlineNightOnline() {
+      const result = checkWin(); if (result.done) {finishOnlineGame(result); return;}
+      state.round++; state.phase = 'day'; state.day = {secondBallot: false, votes: {}, tiedCandidates: []};
+      publishOnlineRoom().catch(console.error);
+    }
+
+    function finishOnlineGame(result) {
+      online._winner = result; state.phase = 'gameover';
+      publishOnlineRoom().catch(console.error);
+    }
+
+    function startOnlineGameAsHost() {
+      if (!online.isHost) {alert('Only the host can start the online game.'); return;}
+      if (state.players.length < 2) {alert('Need at least 2 connected players.'); return;}
+      state.players.forEach((p, i) => {p.id = i;});
+      assignRoles(); state.logs = []; state.round = 1; state.phase = 'day'; state.day = {secondBallot: false, votes: {}, tiedCandidates: []}; state.night = {};
+      hide('setupScreen', 'onlineLobby'); show('onlineGame'); hide('onlineGameOver'); show('onlineActionCard');
+      publishOnlineRoom().then(() => {
+        // Give everyone a private role immediately; multiplayer doesn't use device handoff.
+        $('onlineActionPrompt').textContent = 'The host started the game. Check your private role above.';
+      }).catch(err => {console.error(err); alert(err?.message || err);});
+    }
+
+    async function startGuestSubscriptions() {
+      // Listeners are attached by subscribeToRoom; this function exists to make the state transition explicit.
+      hide('setupScreen'); show('onlineGame');
+    }
+
+    // When a host-created room is open, reflect the host's edits to the online roster.
+    if ($('onlineName')) $('onlineName').addEventListener('input', () => {
+      if (online.roomCode && online.uid && online.db && online.api?.dbMod) {
+        online.api.dbMod.update(online.api.dbMod.ref(online.db, `rooms/${online.roomCode}/players/${online.uid}`), {name: $('onlineName').value.trim() || getDisplayName()}).catch(console.error);
+      }
+    });
+
+    $('createRoomBtn').addEventListener('click', createRoom);
+    $('joinRoomBtn').addEventListener('click', joinRoom);
+    $('leaveRoomBtn').addEventListener('click', () => leaveOnlineRoom(true));
+    $('copyRoomBtn').addEventListener('click', async () => {
+      try {await navigator.clipboard.writeText(online.roomCode || ''); setOnlineStatus('Room code copied.', false);} catch {setOnlineStatus(`Room code: ${online.roomCode}`, false);}
+    });
+    $('onlineBackToLobbyBtn').addEventListener('click', async () => {
+      if (!online.isHost) {hide('onlineGame'); show('onlineLobby'); return;}
+      state.phase = 'setup'; online._winner = null; hide('onlineGame'); hide('onlineGameOver'); show('onlineLobby'); show('setupScreen'); state.players = publicOnlinePlayers().sort((a, b) => a.seatId - b.seatId).map(p => createPlayer(p.seatId, p.name)); renderSetup();
+      if (online.roomCode && online.db && online.api?.dbMod) await online.api.dbMod.update(online.api.dbMod.ref(online.db, `rooms/${online.roomCode}/meta`), {status: 'lobby'});
+    });
+    $('offlineContinueBtn').addEventListener('click', () => {online.mode = 'offline'; hide('onlineEntry', 'onlineLobby', 'onlineGame'); show('setupScreen'); renderSetup();});
+
+    // Make online mode visually distinct in the setup panel and keep the host roster in sync.
+    const _originalRenderSetup = renderSetup;
+    renderSetup = function () {
+      _originalRenderSetup();
+      if (online.isHost && online.roomCode) {
+        $('setupOnlineBadge').classList.remove('hidden');
+        $('startBtn').textContent = 'Start online game';
+        $('addPlayerBtn').disabled = true;
+        $('players').querySelectorAll('input[type=text]').forEach((input, index) => input.addEventListener('change', () => {
+          const p = state.players[index]; if (!p) return;
+          publishOnlineLobbyPlayers().catch(console.error);
+        }));
+      } else {
+        $('setupOnlineBadge').classList.add('hidden');
+        $('startBtn').textContent = 'Start game';
+        $('addPlayerBtn').disabled = false;
+      }
+    };
+
+    (async () => {
+      if (!firebaseConfigured()) {
+        $('onlineAuthPill').textContent = 'Setup needed';
+        setOnlineStatus('Multiplayer is ready, but Firebase is not configured yet. Add your Firebase web config to FIREBASE_CONFIG in this file.', true);
+        return;
+      }
+      try {await ensureAnonymousAuth();} catch (err) {console.error(err); $('onlineAuthPill').textContent = 'Offline'; setOnlineStatus(err?.message || String(err), true);}
+    })();
+  </script>
 </body>
+
 </html>
