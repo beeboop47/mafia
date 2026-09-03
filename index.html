@@ -2135,8 +2135,34 @@
       renderReactionTurn(actor);
     }
 
+    function resolveNightBeforeReactions() {
+      // Round 1 collects every player's choice. Before the first reaction turn
+      // begins, resolve every outcome that does not require a reactive player's
+      // input. This freezes the night's deterministic state for Doctors, Trackers,
+      // Watchers, Detectives, Seers, and the public game state.
+      const reactiveActions = new Set(['traitor', 'scapegoat', 'escape', 'monkey', 'rps']);
+      const attacks = [...state.night.pendingAttacks];
+      attacks.forEach(attack => {
+        const target = playerOf(attack.targetId);
+        const role = roleOf(target);
+        if (!target || !target.alive) {
+          removePendingAttack(attack);
+          return;
+        }
+        if (!reactiveActions.has(role?.nightAction)) {
+          removePendingAttack(attack);
+          killTarget(target, [], () => {});
+          addLog(`${target.name} was killed during the night.`);
+        }
+      });
+    }
+
     function beginReactionRound() {
       if (state.phase !== 'night') return;
+      // All deterministic night effects are resolved before the very first
+      // reaction turn. Reaction-only abilities (Trait​or/Escape/Monkey/RPS/
+      // Scapegoat) remain pending because their target must make a choice.
+      resolveNightBeforeReactions();
       state.night.round = 2;
       state.night.reactionQueue = buildNightReactionQueue();
       state.night.index = 0;
@@ -2392,13 +2418,21 @@
           if (!state.night.busy) setNightBusy(true);
           removePendingAttack(attack);
           target.used.scapegoat = true;
-          state.night.pendingAttacks.push({
+          const victimRole = roleOf(victim);
+          const redirectedAttack = {
             attackerId: attack.attackerId,
             targetId: victim.id,
             sourceAction: attack.sourceAction,
             redirectedFrom: target.id
-          });
-          ensureReactionQueued(victim);
+          };
+          const reactiveActions = new Set(['traitor', 'scapegoat', 'escape', 'monkey', 'rps']);
+          if (reactiveActions.has(victimRole?.nightAction)) {
+            state.night.pendingAttacks.push(redirectedAttack);
+            ensureReactionQueued(victim);
+          } else {
+            killTarget(victim, [], () => {});
+            addLog(`${victim.name} was killed during the night.`);
+          }
           addLog(`${target.name} redirected a night attack to ${victim.name}.`);
           completeNightTurn();
         }));
@@ -3561,16 +3595,19 @@
           sourceAction: attack.sourceAction,
           redirectedFrom: actor.id
         };
-        n.pendingAttacks.push(redirectedAttack);
-
-        // The redirected victim must get a reaction even when their original
-        // position in the reaction queue has already passed. Re-queueing here
-        // makes the redirected attack resolve for both normal victims and
-        // reactive roles (Trait​or/Escape/Monkey/RPS/Scapegoat).
-        if (n.reactionCompleted?.includes(victim.id)) {
-          n.reactionCompleted = n.reactionCompleted.filter(id => id !== victim.id);
+        const victimRole = roleOf(victim);
+        const reactiveActions = new Set(['traitor','scapegoat','escape','monkey','rps']);
+        if (reactiveActions.has(victimRole?.nightAction)) {
+          n.pendingAttacks.push(redirectedAttack);
+          // Re-queue a redirected reactive target if their original turn passed.
+          if (n.reactionCompleted?.includes(victim.id)) {
+            n.reactionCompleted = n.reactionCompleted.filter(id => id !== victim.id);
+          }
+          ensureReactionQueued(victim);
+        } else {
+          victim.alive = false;
+          addLog(`${victim.name} was killed during the night.`);
         }
-        ensureReactionQueued(victim);
 
         addLog(`${actor.name} redirected a night attack to ${victim.name}.`);
         setPrivateResult(actor.id, `The attack was redirected to ${victim.name}.`);
@@ -3646,7 +3683,25 @@
       await publishOnlineRoom();
     }
 
+    function resolveOnlineNightBeforeReactions() {
+      // Match pass-and-play: finish all deterministic Round 1 outcomes before
+      // any player receives a Round 2 reaction turn.
+      const reactiveActions = new Set(['traitor','scapegoat','escape','monkey','rps']);
+      const attacks = [...(state.night.pendingAttacks || [])];
+      attacks.forEach(attack => {
+        const target = playerOf(attack.targetId);
+        const role = roleOf(target);
+        if (!target || !target.alive) { removePendingAttack(attack); return; }
+        if (!reactiveActions.has(role?.nightAction)) {
+          removePendingAttack(attack);
+          target.alive = false;
+          addLog(`${target.name} was killed during the night.`);
+        }
+      });
+    }
+
     function beginOnlineReactionRound() {
+      resolveOnlineNightBeforeReactions();
       state.night.round=2;
       const base = state.night.round1Players ? state.night.round1Players : playersAlive();
       state.night.reactionQueue = getConfiguredNightOrder(base);
