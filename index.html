@@ -1666,14 +1666,10 @@
     }
 
     function buildNightActionQueue() {
-      // Pass-and-play night order never gives priority to a role or ability.
-      // Player mode preserves the current player-list order; random mode shuffles
-      // the complete eligible queue.
-      const activeActions = new Set(['teamKill', 'kill', 'inspectOrientation', 'seer', 'framer', 'hater', 'protect', 'roleblock', 'silence', 'track', 'watch']);
-      const queue = playersAlive().filter(player => {
-        const role = roleOf(player);
-        return !!role && activeActions.has(role.nightAction) && !(role.nightAction === 'hater' && state.round !== 1);
-      });
+      // Every living player gets exactly one Round 1 pass, regardless of role.
+      // Players with no night ability simply acknowledge their turn. Ordering is
+      // controlled only by the selected pass-and-play setting.
+      const queue = playersAlive().slice();
       return $('nightOrder').value === 'random' ? shuffle(queue) : queue;
     }
 
