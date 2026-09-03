@@ -2497,6 +2497,21 @@
         return {done: true, winner: 'Good', reason: 'All evil players have been eliminated and no neutral players remain.'};
       }
       if (evil >= nonEvil) return {done: true, winner: 'Evil', reason: 'Evil now equals or outnumbers the living non-evil players.'};
+
+      // A two-player game can leave exactly one survivor after a day vote.
+      // Once only one player remains, there is no longer a meaningful vote/night
+      // cycle to continue. Special win conditions above still take precedence;
+      // otherwise the sole survivor wins by being the last player standing.
+      if (living.length === 1) {
+        const last = living[0];
+        const lastRole = roleOf(last);
+        return {
+          done: true,
+          winner: lastRole?.orientation === 'evil' ? 'Evil' : (lastRole?.orientation === 'good' ? 'Good' : (lastRole?.title || 'Last survivor')),
+          reason: `${last.name} is the last player standing.`
+        };
+      }
+
       return {done: false};
     }
     function endGame(result) {
