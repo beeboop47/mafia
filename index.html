@@ -1348,6 +1348,10 @@
       const role = roleOf(target);
       if (!role || !viewer || viewer.id === target.id) return false;
 
+      // Eliminated players can see every other player's role.
+      // Living players continue to follow each role's normal visibility rules.
+      if (!viewer.alive) return true;
+
       const viewerRole = roleOf(viewer);
       if (role.visibility === 'everyone') return true;
       if (role.visibility === 'nobody') return false;
@@ -3017,7 +3021,10 @@
 
     function onlinePrivatePayloadFor(player) {
       const r = roleOf(player);
-      const payload = {role:r ? {title:r.title, orientation:r.orientation, description:r.description, nightAction:r.nightAction}:null, knownRoles:onlineKnownRolesFor(player), turn:null, result:null};
+      const knownRoles = !player?.alive
+        ? state.players.map(t => ({id: t.id, name: t.name, role: roleOf(t)?.title || 'Unknown', orientation: roleOf(t)?.orientation || 'neutral'}))
+        : onlineKnownRolesFor(player);
+      const payload = {role:r ? {title:r.title, orientation:r.orientation, description:r.description, nightAction:r.nightAction}:null, knownRoles, turn:null, result:null};
       if (!r || !player) return payload;
       if (state.phase === 'day') {
         if (player.silenced) {
