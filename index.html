@@ -1006,6 +1006,15 @@
             <option value="evil">Evil players</option>
           </select>
         </div>
+        <div style="margin-top:10px">
+          <label>Win condition</label>
+          <select id="roleWinCondition">
+            <option value="none">No special win condition</option>
+            <option value="votedOut">Wins when voted out</option>
+            <option value="sideWhenTargetVotedOut">Your side wins when your target is voted out</option>
+          </select>
+          <div class="muted tiny" style="margin-top:5px">Special win conditions are checked independently of the side's normal win condition.</div>
+        </div>
         <div class="row" style="margin-top:10px;justify-content:flex-end">
           <button id="cancelRoleBtn" class="ghost" type="button">Cancel</button>
           <button id="saveRoleBtn" type="button">Save role</button>
@@ -1016,7 +1025,7 @@
 
       <div class="notice">
         <strong>Win logic:</strong> Evil wins when the number of living evil players is at least the number of living
-        non-evil players. Good wins when no evil players remain. Neutral roles remain in play after evil is eliminated; their own win conditions are checked when applicable. If evil is eliminated while a Jester is still alive, the Jester becomes a Serial Killer instead of the game ending.
+        non-evil players. Good wins when no evil players remain. Neutral roles remain in play after evil is eliminated; their own win conditions are checked when applicable. A role with the 'Wins when voted out' condition ends the game when that player is voted out. If evil is eliminated while a Jester is still alive, the Jester becomes a Serial Killer instead of the game ending.
       </div>
 
       <div class="row" style="justify-content:flex-end;margin-top:14px">
@@ -1168,7 +1177,7 @@
       {
         id: 'jester', title: 'Jester', orientation: 'neutral',
         description: 'Try to get voted out by the Citizens during the day. You win immediately when the town votes you out.',
-        visibility: 'nobody', nightAction: 'none'
+        visibility: 'nobody', nightAction: 'none', winCondition: 'votedOut'
       },
       {
         id: 'doctor', title: 'Doctor', orientation: 'good',
@@ -1179,6 +1188,11 @@
         id: 'framer', title: 'Framer', orientation: 'neutral',
         description: 'At the beginning of the night, choose any player, including yourself. That player chooses any role for the night. Detectives and Seers will treat that player as their chosen role.',
         visibility: 'nobody', nightAction: 'framer'
+      },
+      {
+        id: 'hater', title: 'Hater', orientation: 'evil',
+        description: 'At the beginning of the first night, you are assigned a random player as your target for the entire game. If that target is voted out during the day, the evil side immediately wins.',
+        visibility: 'evil', nightAction: 'hater', winCondition: 'sideWhenTargetVotedOut'
       },
       {
         id: 'mafia', title: 'Mafia', orientation: 'evil',
@@ -1215,6 +1229,7 @@
       rps: {label: 'Rock, Paper, Scissors'},
       doctor: {label: 'Doctor revive'},
       framer: {label: 'Frame a player'},
+      hater: {label: 'Reveal your assigned target'},
     });
 
     const $ = id => document.getElementById(id);
@@ -1224,7 +1239,7 @@
       .replaceAll('"', '&quot;').replaceAll("'", '&#39;');
 
     function createPlayer(id, name) {
-      return {id, name, roleId: null, alive: true, used: {}, escaped: false, eliminatedByVote: false, framedRoleId: null};
+      return {id, name, roleId: null, alive: true, used: {}, escaped: false, eliminatedByVote: false, framedRoleId: null, haterTargetId: null};
     }
     function playersAlive() {return state.players.filter(p => p.alive);}
     function roleOf(player) {return player ? state.roles.find(r => r.id === player.roleId) : null;}
@@ -1266,6 +1281,13 @@
       return ({
         nobody: 'Nobody', everyone: 'Everyone', sameOrientation: 'Same orientation',
         good: 'Good players', neutral: 'Neutral players', evil: 'Evil players'
+      })[value] || value;
+    }
+    function winConditionText(value) {
+      return ({
+        none: 'No special win condition',
+        votedOut: 'Wins when voted out',
+        sideWhenTargetVotedOut: 'Your side wins when your target is voted out'
       })[value] || value;
     }
     function visibleTo(viewer, target) {
@@ -1372,7 +1394,7 @@
         <button class="ghost" data-edit type="button">Edit</button>
         <button class="danger" data-delete type="button">Remove</button></div>
       <div class="role-desc">${escapeHtml(role.description)}</div>
-      <div class="muted tiny" style="margin-top:8px">Night ability: ${escapeHtml(NIGHT_ACTIONS[role.nightAction]?.label || role.nightAction || 'None')} · Seen by: ${escapeHtml(visibilityText(role.visibility))}</div>`;
+      <div class="muted tiny" style="margin-top:8px">Night ability: ${escapeHtml(NIGHT_ACTIONS[role.nightAction]?.label || role.nightAction || 'None')} · Seen by: ${escapeHtml(visibilityText(role.visibility))} · Win condition: ${escapeHtml(winConditionText(role.winCondition || 'none'))}</div>`;
         card.querySelector('[data-edit]').addEventListener('click', () => openRoleEditor(role.id));
         card.querySelector('[data-delete]').addEventListener('click', () => removeRole(role.id));
         el.appendChild(card);
@@ -1391,6 +1413,7 @@
       $('roleDescription').value = role?.description || '';
       $('roleNightAction').value = role?.nightAction || 'none';
       $('roleVisibility').value = role?.visibility || 'nobody';
+      $('roleWinCondition').value = role?.winCondition || 'none';
       $('roleEditor').classList.remove('hidden'); $('roleTitle').focus();
     }
     function closeRoleEditor() {state.editingRoleId = null; $('roleEditor').classList.add('hidden');}
@@ -1456,7 +1479,7 @@
         const shuffledAssigned = shuffle(assigned);
         state.players.forEach((p, i) => {p.roleId = shuffledAssigned[i] || null;});
       }
-      state.players.forEach(p => {p.alive = true; p.used = {}; p.escaped = false; p.eliminatedByVote = false; p.framedRoleId = null;});
+      state.players.forEach(p => {p.alive = true; p.used = {}; p.escaped = false; p.eliminatedByVote = false; p.framedRoleId = null; p.haterTargetId = null;});
     }
 
     // ---- Handoff / day --------------------------------------------------------
@@ -1581,7 +1604,7 @@
 
     function buildNightActionQueue() {
       const queue = [];
-      const activeActions = new Set(['teamKill', 'kill', 'inspectOrientation', 'seer', 'framer']);
+      const activeActions = new Set(['teamKill', 'kill', 'inspectOrientation', 'seer', 'framer', 'hater']);
 
       playersAlive().forEach(player => {
         const role = roleOf(player);
@@ -1621,6 +1644,7 @@
         inspectTargets: {},
         seerTargets: {},
         framerTargetId: null,
+        haterTargets: {},
         handoffReady: false,
         pendingAttacks: [],
         reactionQueue: [],
@@ -1636,6 +1660,18 @@
           state.night.seerTargets[player.id] = randomChoice(possible)?.id ?? null;
         }
       });
+      if (state.round === 1) {
+        nightPlayers.forEach(player => {
+          if (roleOf(player)?.nightAction !== 'hater') return;
+          const possible = nightPlayers.filter(t => t.id !== player.id);
+          player.haterTargetId = randomChoice(possible)?.id ?? null;
+          state.night.haterTargets[player.id] = player.haterTargetId;
+        });
+      } else {
+        nightPlayers.forEach(player => {
+          if (roleOf(player)?.nightAction === 'hater') state.night.haterTargets[player.id] = player.haterTargetId;
+        });
+      }
       // A team-kill role shares one kill per night with players who have the exact same role.
       // Everyone still gets a private turn and sees the other exact-role members.
       hide('dayCard', 'handoffCard'); show('nightCard');
@@ -1886,6 +1922,14 @@
           $('nightPrompt').textContent = 'Choose any player, including yourself. They will choose any role for the night.';
           playersAlive().forEach(choose);
           break;
+        case 'hater': {
+          const target = playerOf(actor.haterTargetId);
+          $('nightPrompt').textContent = target
+            ? `Your target for the game is ${target.name}. If they are voted out, the evil side wins immediately.`
+            : 'No valid target was assigned.';
+          area.appendChild(actionButton('Acknowledge & continue', 'haterAcknowledge', () => setChoiceAndContinue(actor, 'skip')));
+          break;
+        }
         default:
           $('nightPrompt').textContent = 'No active action in this round. Acknowledge your turn, then pass the device.';
           area.appendChild(actionButton('Acknowledge & continue', 'skip', () => setChoiceAndContinue(actor, 'skip')));
@@ -2280,10 +2324,22 @@
       const living = playersAlive();
       const evil = living.filter(p => roleOf(p)?.orientation === 'evil').length;
       const nonEvil = living.filter(p => roleOf(p)?.orientation !== 'evil').length;
-      const neutrals = living.filter(p => roleOf(p)?.orientation === 'neutral');
-      const jester = state.players.find(p => !p.alive && p.eliminatedByVote && p.roleId === 'jester');
-      if (jester) return {done: true, winner: 'Jester', reason: `${jester.name} was voted out, completing the Jester's win condition.`};
 
+      for (const player of state.players) {
+        const role = roleOf(player);
+        if (!role || role.winCondition === 'none') continue;
+        if (role.winCondition === 'votedOut' && !player.alive && player.eliminatedByVote) {
+          return {done: true, winner: role.title, reason: `${player.name} was voted out, completing the ${role.title} win condition.`};
+        }
+        if (role.winCondition === 'sideWhenTargetVotedOut') {
+          const target = playerOf(player.haterTargetId);
+          if (target && !target.alive && target.eliminatedByVote) {
+            return {done: true, winner: role.orientation === 'evil' ? 'Evil' : role.title, reason: `${target.name} was voted out, completing ${role.title}'s target win condition.`};
+          }
+        }
+      }
+
+      const neutrals = living.filter(p => roleOf(p)?.orientation === 'neutral');
       if (evil === 0) {
         const livingJester = living.find(p => p.roleId === 'jester');
         if (livingJester) {
@@ -2331,12 +2387,12 @@
     $('saveRoleBtn').addEventListener('click', () => {
       const title = $('roleTitle').value.trim(), description = $('roleDescription').value.trim();
       if (!title || !description) {alert('Give the role a title and player-facing description.'); return;}
-      const orientation = $('roleOrientation').value, visibility = $('roleVisibility').value, nightAction = $('roleNightAction').value;
+      const orientation = $('roleOrientation').value, visibility = $('roleVisibility').value, nightAction = $('roleNightAction').value, winCondition = $('roleWinCondition').value;
       if (state.editingRoleId) {
         const role = state.roles.find(r => r.id === state.editingRoleId);
-        Object.assign(role, {title, orientation, description, visibility, nightAction});
+        Object.assign(role, {title, orientation, description, visibility, nightAction, winCondition});
       } else {
-        state.roles.push({id: `custom_${Date.now()}`, title, orientation, description, visibility, nightAction, randomCount: 0});
+        state.roles.push({id: `custom_${Date.now()}`, title, orientation, description, visibility, nightAction, winCondition, randomCount: 0});
       }
       closeRoleEditor(); renderSetup();
     });
@@ -2792,6 +2848,9 @@
           } else if (r.nightAction === 'seer') {
             const target = playerOf(night.round1SeerTargets?.[player.id]);
             payload.turn = {type:'nightRound1',action:'seer',prompt:target ? `A random player was selected: ${target.name}. Confirm the target; their exact role appears during night reactions.` : 'No valid target exists. Press Done.',options:target ? [{id:target.id,name:`Confirm ${target.name}`}] : [{id:'ack',name:'Done'}]};
+          } else if (r.nightAction === 'hater') {
+            const target = playerOf(night.haterTargets?.[player.id] ?? player.haterTargetId);
+            payload.turn = {type:'nightRound1',action:'hater',prompt:target ? `Your target for the game is ${target.name}. If they are voted out, the evil side wins immediately.` : 'No target was assigned. Press Done.',options:[{id:'ack',name:'Acknowledge'}]};
           } else if (night.framerTargetId === player.id && !player.framedRoleId) {
             payload.turn = {type:'nightRound1',action:'framedRoleChoice',prompt:'A Framer selected you. Choose any role for this night. Detectives and Seers will treat you as that role.',options:state.roles.map(role => ({id:role.id,name:role.title}))};
           } else if (r.nightAction === 'framer') {
@@ -3076,6 +3135,12 @@
         n.round1Submitted[actor.id]=true;
         setPrivateResult(actor.id,`${target.name} was selected. They must choose a role for the night.`); await publishOnlineRoom(); await maybeFinishOnlineRound1(); return;
       }
+      if (role?.nightAction==='hater') {
+        n.round1Submitted[actor.id]=true;
+        const target=playerOf(actor.haterTargetId);
+        setPrivateResult(actor.id,target ? `Your target is ${target.name}. If they are voted out, the evil side wins.` : 'No target was assigned.');
+        await publishOnlineRoom(); await maybeFinishOnlineRound1(); return;
+      }
       if (role?.nightAction==='inspectOrientation') {
         const target=playerOf(Number(value)); if (!target || !target.alive || target.id===actor.id) return;
         n.round1InspectTargets=n.round1InspectTargets||{}; n.round1InspectTargets[actor.id]=target.id;
@@ -3190,7 +3255,8 @@
     function startOnlineNight() {
       state.phase='night'; const nightPlayers=playersAlive().slice(); const round1SeerTargets={};
       nightPlayers.forEach(p=>{if(roleOf(p)?.nightAction==='seer'){const choices=nightPlayers.filter(t=>t.id!==p.id);round1SeerTargets[p.id]=randomChoice(choices)?.id??null;}});
-      state.night={round:1,queue:nightPlayers.slice().sort((a,b)=>(roleOf(a)?.nightAction==='framer'?-1:0)-(roleOf(b)?.nightAction==='framer'?-1:0)),index:0,busy:false,usedTeamKillRoleIds:[],pendingAttacks:[],reactionQueue:[],reactionCompleted:[],round1Players:nightPlayers,round1Submitted:{},round1SeerTargets,round1InspectTargets:{},framerTargetId:null,onlineAckNeeded:false,onlineResults:{},onlineSeerTargetId:null};
+      state.night={round:1,queue:nightPlayers.slice().sort((a,b)=>(roleOf(a)?.nightAction==='framer'?-1:0)-(roleOf(b)?.nightAction==='framer'?-1:0)),index:0,busy:false,usedTeamKillRoleIds:[],pendingAttacks:[],reactionQueue:[],reactionCompleted:[],round1Players:nightPlayers,round1Submitted:{},round1SeerTargets,round1InspectTargets:{},framerTargetId:null,haterTargets:{},onlineAckNeeded:false,onlineResults:{},onlineSeerTargetId:null};
+      nightPlayers.forEach(player=>{if(roleOf(player)?.nightAction==='hater'){const possible=nightPlayers.filter(t=>t.id!==player.id);player.haterTargetId=randomChoice(possible)?.id??null;state.night.haterTargets[player.id]=player.haterTargetId;}});
       publishOnlineRoom().catch(console.error);
     }
 
