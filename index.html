@@ -3416,13 +3416,39 @@
       if (n.blockedIds?.includes(actor.id)) { n.round1Submitted=n.round1Submitted||{}; n.round1Submitted[actor.id]=true; setPrivateResult(actor.id,'Your night ability was blocked.'); await publishOnlineRoom(); await maybeFinishOnlineRound1(); return; }
       n.round1Submitted = n.round1Submitted || {}; if (n.round1Submitted[actor.id]) return;
       if (!actor.alive || value === 'ack') { n.round1Submitted[actor.id]=true; await publishOnlineRoom(); await maybeFinishOnlineRound1(); return; }
-      if (role?.nightAction === 'teamKill' || role?.nightAction === 'kill') {
-        const target=playerOf(Number(value)); if (!target || !target.alive || target.id===actor.id) return;
-        if (role.nightAction==='teamKill' && n.usedTeamKillRoleIds.includes(role.id)) { n.round1Submitted[actor.id]=true; await publishOnlineRoom(); await maybeFinishOnlineRound1(); return; }
-        if (role.nightAction==='teamKill') n.usedTeamKillRoleIds.push(role.id);
-        if (n.protectedIds?.includes(target.id)) { n.round1Submitted[actor.id]=true; setPrivateResult(actor.id,`Your attack was blocked because ${target.name} was protected.`); await publishOnlineRoom(); await maybeFinishOnlineRound1(); return; }
-        n.pendingAttacks.push({attackerId:actor.id,targetId:target.id,sourceAction:role.nightAction}); n.round1Submitted[actor.id]=true;
-        setPrivateResult(actor.id,`Target recorded: ${target.name}. Your night ability is submitted.`); await publishOnlineRoom(); await maybeFinishOnlineRound1(); return;
+      // Resolve both standalone Kill roles and shared Team Kill roles through
+      // the same authoritative attack-recording path. Keep the source action
+      // explicit so later reaction handling cannot confuse a normal kill with
+      // a team kill.
+      const nightAction = String(role?.nightAction || '');
+      if (nightAction === 'kill' || nightAction === 'teamKill') {
+        const target = playerOf(Number(value));
+        if (!target || !target.alive || target.id === actor.id) return;
+
+        if (nightAction === 'teamKill' && n.usedTeamKillRoleIds.includes(role.id)) {
+          n.round1Submitted[actor.id] = true;
+          setPrivateResult(actor.id, 'Your team kill has already been used tonight.');
+          await publishOnlineRoom();
+          await maybeFinishOnlineRound1();
+          return;
+        }
+
+        if (nightAction === 'teamKill') n.usedTeamKillRoleIds.push(role.id);
+
+        n.round1Submitted[actor.id] = true;
+        if (n.protectedIds?.includes(target.id)) {
+          setPrivateResult(actor.id, `Your attack was blocked because ${target.name} was protected.`);
+        } else {
+          n.pendingAttacks.push({
+            attackerId: actor.id,
+            targetId: target.id,
+            sourceAction: nightAction
+          });
+          setPrivateResult(actor.id, `Target recorded: ${target.name}. Your ${nightAction === 'teamKill' ? 'team kill' : 'kill'} is submitted.`);
+        }
+        await publishOnlineRoom();
+        await maybeFinishOnlineRound1();
+        return;
       }
       // The Framer chooses the target first, then chooses the role that target
       // will appear as. Keep this entirely on the Framer's private turn; the
@@ -3530,10 +3556,31 @@
         }
         const victim = playerOf(Number(value));
         const adjacent = adjacentLiving(actor);
-        if (!victim || !adjacent.some(p => p.id === victim.id)) return;
-        removePendingAttack(attack); actor.used.scapegoat = true;
-        n.pendingAttacks.push({attackerId: attack.attackerId, targetId: victim.id, sourceAction: attack.sourceAction, redirectedFrom: actor.id});
-        ensureReactionQueued(victim); addLog(`${actor.name} redirected a night attack to ${victim.name}.`); setPrivateResult(actor.id, `The attack was redirected to ${victim.name}.`); n.onlineAckNeeded = true; await publishOnlineRoom(); return;
+        if (!victim || !victim.alive || !adjacent.some(p => p.id === victim.id)) return;
+        removePendingAttack(attack);
+        actor.used.scapegoat = true;
+        const redirectedAttack = {
+          attackerId: attack.attackerId,
+          targetId: victim.id,
+          sourceAction: attack.sourceAction,
+          redirectedFrom: actor.id
+        };
+        n.pendingAttacks.push(redirectedAttack);
+
+        // The redirected victim must get a reaction even when their original
+        // position in the reaction queue has already passed. Re-queueing here
+        // makes the redirected attack resolve for both normal victims and
+        // reactive roles (Trait​or/Escape/Monkey/RPS/Scapegoat).
+        if (n.reactionCompleted?.includes(victim.id)) {
+          n.reactionCompleted = n.reactionCompleted.filter(id => id !== victim.id);
+        }
+        ensureReactionQueued(victim);
+
+        addLog(`${actor.name} redirected a night attack to ${victim.name}.`);
+        setPrivateResult(actor.id, `The attack was redirected to ${victim.name}.`);
+        n.onlineAckNeeded = true;
+        await publishOnlineRoom();
+        return;
       }
     }
 
