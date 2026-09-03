@@ -888,6 +888,43 @@
         <div id="onlinePlayersList" class="online-players"></div>
       </div>
 
+      <div id="onlineAdminPanel" class="card hidden">
+        <div class="section-title">
+          <div>
+            <div class="phase">Host only</div>
+            <h2>Admin panel</h2>
+          </div>
+          <div class="spacer"></div>
+          <span class="pill danger-text">Troll controls</span>
+        </div>
+        <div class="notice">These controls change the authoritative game state immediately. Use them only when you want to interfere with the normal game.</div>
+        <div class="grid2" style="margin-top:12px">
+          <div>
+            <label>Player</label>
+            <select id="adminPlayerSelect"></select>
+          </div>
+          <div>
+            <label>New role</label>
+            <select id="adminRoleSelect"></select>
+          </div>
+        </div>
+        <div class="row" style="margin-top:10px">
+          <button id="adminChangeRoleBtn" type="button">Change role</button>
+          <button id="adminKillBtn" class="danger" type="button">Kill player</button>
+          <button id="adminReviveBtn" class="good" type="button">Revive player</button>
+          <button id="adminSilenceBtn" class="ghost" type="button">Toggle silence</button>
+        </div>
+        <div class="divider"></div>
+        <div class="grid2">
+          <button id="adminForceVoteBtn" class="danger" type="button">Force vote player out</button>
+          <button id="adminNoElimVoteBtn" class="ghost" type="button">Force no elimination</button>
+        </div>
+        <div class="row" style="margin-top:10px">
+          <button id="adminEndGameBtn" class="danger" type="button">End game & reveal roles</button>
+        </div>
+        <div id="adminStatus" class="notice hidden"></div>
+      </div>
+
       <div id="onlineGameOver" class="card hidden">
         <div class="section-title">
           <div>
@@ -2561,7 +2598,7 @@
       mode: 'offline', uid: null, roomCode: null, seatId: null, isHost: false,
       app: null, auth: null, db: null, api: null, roomUnsub: null, playersUnsub: null,
       publicUnsub: null, privateUnsub: null, commandUnsub: null, playersCache: {}, public: null, private: null,
-      processingCommand: false, commandQueue: [], commandWorkerRunning: false
+      processingCommand: false, commandQueue: [], commandWorkerRunning: false, publishChain: Promise.resolve()
     };
 
     function firebaseConfigured() {
@@ -2600,6 +2637,7 @@
     function cleanupOnlineListeners() {
       [online.roomUnsub, online.playersUnsub, online.publicUnsub, online.privateUnsub, online.commandUnsub].forEach(fn => {try {fn && fn()} catch { } });
       online.roomUnsub = online.playersUnsub = online.publicUnsub = online.privateUnsub = online.commandUnsub = null;
+      online.publishChain = Promise.resolve();
     }
 
     let authInitPromise = null;
@@ -2765,31 +2803,30 @@
     function syncOnlineShell() {
       const metaStatus = online.roomStatus || null;
       const publicPhase = online.public?.phase || null;
+      const inGame = metaStatus === 'started' || (publicPhase && publicPhase !== 'lobby' && publicPhase !== 'gameover');
+      const inLobby = metaStatus === 'lobby' && (!publicPhase || publicPhase === 'lobby');
+      const gameOver = metaStatus === 'gameover' || publicPhase === 'gameover';
 
-      // The room meta status is authoritative for the broad shell state;
-      // public.phase provides the finer-grained in-game phase. Keeping this in
-      // one function prevents guest browsers from getting stuck showing the
-      // lobby or game after the host advances a round.
-      if (metaStatus === 'lobby' || publicPhase === 'lobby') {
+      if (inLobby) {
         $('onlineLobbyPhase').textContent = 'Room lobby';
         $('onlineLobbyTitle').textContent = online.isHost ? 'Configure the game' : 'Waiting for the host';
         show('onlineLobby');
-        hide('onlineGame', 'onlineGameOver');
+        hide('onlineGame', 'onlineGameOver', 'onlineAdminPanel');
         if (online.isHost) {show('hostRoomControls'); hide('guestLobbyNotice'); show('setupScreen');}
         else {hide('hostRoomControls'); show('guestLobbyNotice'); hide('setupScreen');}
         return;
       }
 
-      if (metaStatus === 'started' || (publicPhase && publicPhase !== 'lobby' && publicPhase !== 'gameover')) {
-        hide('onlineLobby', 'setupScreen', 'onlineGameOver');
-        show('onlineGame');
+      if (gameOver) {
+        hide('onlineLobby', 'setupScreen', 'onlineActionCard', 'onlineAdminPanel');
+        show('onlineGame', 'onlineGameOver');
         return;
       }
 
-      if (metaStatus === 'gameover' || publicPhase === 'gameover') {
-        hide('onlineLobby', 'setupScreen', 'onlineActionCard');
-        show('onlineGame', 'onlineGameOver');
-        return;
+      if (inGame) {
+        hide('onlineLobby', 'setupScreen', 'onlineGameOver');
+        show('onlineGame', 'onlineActionCard');
+        if (online.isHost) show('onlineAdminPanel'); else hide('onlineAdminPanel');
       }
     }
 
@@ -2837,6 +2874,7 @@
         syncOnlineShell();
         if (online.public?.phase !== 'lobby') renderOnlinePublic();
         if (online.public?.phase === 'gameover') renderOnlineGameOver(online.public);
+        renderAdminPanel();
       });
       online.privateUnsub = dbMod.onValue(dbMod.ref(online.db, `rooms/${code}/private/${online.uid}`), snap => {
         online.private = snap.val() || null; renderOnlinePrivate();
@@ -3117,6 +3155,82 @@
       if (me && !me.alive) $('onlineActionPrompt').textContent = 'You are eliminated. You can still watch the public game.';
     }
 
+    function adminSetStatus(text, isError=false) {
+      const el=$('adminStatus'); if(!el) return;
+      el.textContent=text; el.classList.remove('hidden'); el.classList.toggle('danger-text', !!isError);
+    }
+
+    function renderAdminPanel() {
+      const panel=$('onlineAdminPanel');
+      if(!panel) return;
+      if(!online.isHost || !online.roomCode || online.roomStatus!=='started' || online.public?.phase==='gameover') {
+        hide('onlineAdminPanel'); return;
+      }
+      show('onlineAdminPanel');
+      const ps=$('adminPlayerSelect'), rs=$('adminRoleSelect');
+      if(!ps || !rs) return;
+      const current=Number(ps.value);
+      ps.innerHTML=(state.players||[]).filter(Boolean).map(p=>`<option value="${p.id}">${escapeHtml(p.name)}${p.alive?'':' (out)'}</option>`).join('');
+      if((state.players||[]).some(p=>p.id===current)) ps.value=String(current);
+      rs.innerHTML=state.roles.map(r=>`<option value="${escapeHtml(r.id)}">${escapeHtml(r.title)}</option>`).join('');
+      const selected=playerOf(Number(ps.value));
+      if(selected) rs.value=selected.roleId||state.roles[0]?.id||'';
+    }
+
+    async function adminPublishAndRefresh(message) {
+      adminSetStatus(message);
+      await publishOnlineRoom();
+      renderOnlinePublic();
+      renderAdminPanel();
+    }
+
+    function adminSelectedPlayer() { return playerOf(Number($('adminPlayerSelect')?.value)); }
+
+    async function adminChangeRole() {
+      if(!online.isHost || online.roomStatus!=='started') return;
+      const p=adminSelectedPlayer(), role=state.roles.find(r=>r.id===$('adminRoleSelect')?.value);
+      if(!p || !role) return;
+      p.roleId=role.id; p.framedRoleId=null;
+      addLog(`Host changed ${p.name}'s role to ${role.title}.`);
+      await adminPublishAndRefresh(`${p.name} is now ${role.title}.`);
+    }
+
+    async function adminToggleAlive(makeAlive) {
+      const p=adminSelectedPlayer(); if(!p) return;
+      p.alive=makeAlive; if(makeAlive) p.eliminatedByVote=false;
+      addLog(`Host ${makeAlive?'revived':'killed'} ${p.name}.`);
+      await adminPublishAndRefresh(`${p.name} is ${makeAlive?'alive':'dead'}.`);
+    }
+
+    async function adminToggleSilence() {
+      const p=adminSelectedPlayer(); if(!p) return;
+      p.silenced=!p.silenced; addLog(`Host ${p.silenced?'silenced':'unsilenced'} ${p.name}.`);
+      await adminPublishAndRefresh(`${p.name} is ${p.silenced?'silenced':'unsilenced'}.`);
+    }
+
+    async function adminForceVote() {
+      const p=adminSelectedPlayer(); if(!p || !p.alive) return;
+      p.alive=false; p.eliminatedByVote=true;
+      state.day={secondBallot:false,votes:{},tiedCandidates:[]};
+      const result=checkWin();
+      if(result.done){ await finishOnlineGame(result); adminSetStatus(result.reason); return; }
+      await startOnlineNight();
+      adminSetStatus(`${p.name} was forced out and the next night began.`);
+    }
+
+    async function adminForceNoElimination() {
+      if(state.phase!=='day') return;
+      state.day={secondBallot:false,votes:{},tiedCandidates:[]};
+      await startOnlineNight();
+      adminSetStatus('Forced a no-elimination result and started the night.');
+    }
+
+    async function adminEndGame() {
+      if(!online.isHost || !online.roomCode) return;
+      const result={done:true,winner:'Game ended by host',reason:'The host ended the game and revealed all roles.'};
+      await finishOnlineGame(result);
+    }
+
     function renderOnlinePrivate() {
       const priv = online.private;
       const area = $('onlineActionArea');
@@ -3133,6 +3247,7 @@
 
       // Day voting is driven by public game state, not by asynchronous seat/private state.
       if (online.public?.phase === 'day') {
+        $('onlineActionResult').innerHTML = '';
         let mySeat = Number.isInteger(online.seatId) ? online.seatId : resolveLocalSeatId();
         if (Number.isInteger(mySeat)) online.seatId = mySeat;
         const me = (online.public.players || []).find(p => Number(p.id) === Number(mySeat));
@@ -3391,19 +3506,30 @@
       if (!state.night.onlineResults) state.night.onlineResults = {}; state.night.onlineResults[seatId] = text;
     }
 
-    async function publishOnlineRoom() {
-      if (!online.isHost || !online.roomCode) return;
-      const {dbMod} = online.api, updates = {};
-      const pub = onlinePublicSnapshot();
-      if (pub.phase === 'gameover') {updates[`rooms/${online.roomCode}/public`] = {...pub, winner: online._winner?.winner, reason: online._winner?.reason}; updates[`rooms/${online.roomCode}/meta/status`] = 'gameover';}
-      else updates[`rooms/${online.roomCode}/public`] = pub;
-      for (const p of state.players) {
-        const uid = Object.values(online.playersCache || {}).find(x => Number(x.seatId) === p.id)?.uid; if (!uid) continue;
-        const payload = onlinePrivatePayloadFor(p);
-        const result = state.night?.onlineResults?.[p.id]; if (result) payload.result = result;
-        updates[`rooms/${online.roomCode}/private/${uid}`] = payload;
-      }
-      await dbMod.update(dbMod.ref(online.db), updates);
+    function publishOnlineRoom() {
+      if (!online.isHost || !online.roomCode) return Promise.resolve();
+      online.publishChain = online.publishChain
+        .catch(() => {})
+        .then(async () => {
+          if (!online.isHost || !online.roomCode) return;
+          const {dbMod} = online.api;
+          const updates = {};
+          const pub = onlinePublicSnapshot();
+          updates[`rooms/${online.roomCode}/public`] = pub.phase === 'gameover'
+            ? {...pub, winner: online._winner?.winner, reason: online._winner?.reason}
+            : pub;
+          updates[`rooms/${online.roomCode}/meta/status`] = pub.phase === 'gameover' ? 'gameover' : 'started';
+          for (const pl of state.players) {
+            const uid = Object.values(online.playersCache || {}).find(x => Number(x.seatId) === pl.id)?.uid;
+            if (!uid) continue;
+            const payload = onlinePrivatePayloadFor(pl);
+            const result = state.night?.onlineResults?.[pl.id];
+            if (result) payload.result = result;
+            updates[`rooms/${online.roomCode}/private/${uid}`] = payload;
+          }
+          await dbMod.update(dbMod.ref(online.db), updates);
+        });
+      return online.publishChain;
     }
 
     async function advanceOnlineNightAfterAck() {
@@ -3427,17 +3553,17 @@
       const living=playersAlive(), playerCounts=new Map(); let skipCount=0;
       living.forEach(voter=>{if(voter.silenced) return; const vote=state.day.votes[voter.id]; if(vote==='skip'){skipCount++;return;} if(validDayTarget(voter,vote)) playerCounts.set(vote,(playerCounts.get(vote)||0)+1);});
       const top=Math.max(0,...playerCounts.values()); const winners=[...playerCounts.entries()].filter(([,c])=>c===top&&top>0).map(([id])=>id);
-      if(skipCount>=top || winners.length===0){state.day.secondBallot=false;state.day.tiedCandidates=[];state.day.votes={};addLog('Day vote skipped; nobody was eliminated.');startOnlineNight();return;}
+      if(skipCount>=top || winners.length===0){state.day.secondBallot=false;state.day.tiedCandidates=[];state.day.votes={};addLog('Day vote skipped; nobody was eliminated.');await startOnlineNight();return;}
       if(winners.length>1 && !state.day.secondBallot){state.day.secondBallot=true;state.day.tiedCandidates=winners;state.day.votes={};addLog(`Day vote tied between ${winners.map(id=>playerOf(id)?.name||id).join(', ')}.`);await publishOnlineRoom();return;}
-      if(winners.length>1){state.day.secondBallot=false;state.day.tiedCandidates=[];state.day.votes={};addLog('Second day vote tied; nobody was eliminated.');startOnlineNight();return;}
-      const out=playerOf(winners[0]);out.alive=false;out.eliminatedByVote=true;addLog(`${out.name} was voted out during the day.`);const result=checkWin();if(result.done){finishOnlineGame(result);return;}startOnlineNight();
+      if(winners.length>1){state.day.secondBallot=false;state.day.tiedCandidates=[];state.day.votes={};addLog('Second day vote tied; nobody was eliminated.');await startOnlineNight();return;}
+      const out=playerOf(winners[0]);out.alive=false;out.eliminatedByVote=true;addLog(`${out.name} was voted out during the day.`);const result=checkWin();if(result.done){await finishOnlineGame(result);return;}await startOnlineNight();return;
     }
 
-    function startOnlineNight() {
+    async function startOnlineNight() {
       state.phase='night'; const nightPlayers=playersAlive().slice(); const round1SeerTargets={};
       nightPlayers.forEach(p=>{if(roleOf(p)?.nightAction==='seer'){const choices=nightPlayers.filter(t=>t.id!==p.id);round1SeerTargets[p.id]=randomChoice(choices)?.id??null;}});
       state.night={round:1,queue:nightPlayers.slice().sort((a,b)=>(roleOf(a)?.nightAction==='framer'?-1:0)-(roleOf(b)?.nightAction==='framer'?-1:0)),index:0,busy:false,usedTeamKillRoleIds:[],pendingAttacks:[],reactionQueue:[],reactionCompleted:[],round1Players:nightPlayers,round1Submitted:{},round1SeerTargets,round1InspectTargets:{},framerTargetId:null,haterTargets:{},protectedIds:[],blockedIds:[],trackTargets:{},watchTargets:{},onlineAckNeeded:false,onlineResults:{},onlineSeerTargetId:null};
-      publishOnlineRoom().catch(console.error);
+      await publishOnlineRoom();
     }
 
     function beginOnlineReactionRound() {
@@ -3463,7 +3589,8 @@
       if (state.players.length < 2) {alert('Need at least 2 connected players.'); return;}
       state.players.forEach((p, i) => {p.id = i;});
       assignRoles(); state.logs = []; state.round = 1; state.phase = 'day'; state.day = {secondBallot: false, votes: {}, tiedCandidates: []}; state.night = {};
-      hide('setupScreen', 'onlineLobby'); show('onlineGame'); hide('onlineGameOver'); show('onlineActionCard');
+      online.roomStatus = 'started';
+      hide('setupScreen', 'onlineLobby'); show('onlineGame'); hide('onlineGameOver'); show('onlineActionCard'); show('onlineAdminPanel');
       if (online.roomCode && online.db && online.api?.dbMod) {
         await online.api.dbMod.update(online.api.dbMod.ref(online.db, `rooms/${online.roomCode}/meta`), {status: 'started'});
       }
@@ -3491,6 +3618,15 @@
     $('copyRoomBtn').addEventListener('click', async () => {
       try {await navigator.clipboard.writeText(online.roomCode || ''); setOnlineStatus('Room code copied.', false);} catch {setOnlineStatus(`Room code: ${online.roomCode}`, false);}
     });
+    $('adminPlayerSelect')?.addEventListener('change', renderAdminPanel);
+    $('adminChangeRoleBtn')?.addEventListener('click', () => adminChangeRole().catch(console.error));
+    $('adminKillBtn')?.addEventListener('click', () => adminToggleAlive(false).catch(console.error));
+    $('adminReviveBtn')?.addEventListener('click', () => adminToggleAlive(true).catch(console.error));
+    $('adminSilenceBtn')?.addEventListener('click', () => adminToggleSilence().catch(console.error));
+    $('adminForceVoteBtn')?.addEventListener('click', () => adminForceVote().catch(console.error));
+    $('adminNoElimVoteBtn')?.addEventListener('click', () => adminForceNoElimination().catch(console.error));
+    $('adminEndGameBtn')?.addEventListener('click', () => adminEndGame().catch(console.error));
+
     $('onlineBackToLobbyBtn').addEventListener('click', async () => {
       if (!online.isHost) {hide('onlineGame'); show('onlineLobby'); return;}
       state.phase = 'setup'; online._winner = null; hide('onlineGame'); hide('onlineGameOver'); show('onlineLobby'); show('setupScreen'); state.players = publicOnlinePlayers().sort((a, b) => a.seatId - b.seatId).map(p => createPlayer(p.seatId, p.name)); renderSetup();
