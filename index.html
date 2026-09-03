@@ -5,7 +5,7 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>Mafia — Pass & Play</title>
+  <title>Mafia — Pass & Play (Framer fix)</title>
   <style>
     :root {
       --bg: #090a0f;
@@ -2128,9 +2128,7 @@
             target.framedRoleId = candidate.id;
             state.night.framerRoleChooserId = null;
             showNightResult(`<strong>Frame recorded.</strong><br>${escapeHtml(target.name)} will be treated as <strong>${escapeHtml(candidate.title)}</strong> for Detective and Seer checks tonight.`);
-            $('nightPrompt').textContent = 'Framed role is recorded. Acknowledge to finish this turn.';
-            area.innerHTML = '';
-            area.appendChild(actionButton('Acknowledge & continue', 'framerAcknowledge', () => completeNightTurn()));
+            completeNightTurn();
           })));
           return;
         }
