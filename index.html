@@ -2561,7 +2561,7 @@
       mode: 'offline', uid: null, roomCode: null, seatId: null, isHost: false,
       app: null, auth: null, db: null, api: null, roomUnsub: null, playersUnsub: null,
       publicUnsub: null, privateUnsub: null, commandUnsub: null, playersCache: {}, public: null, private: null,
-      processingCommand: false, commandQueue: [], commandWorkerRunning: false, publishChain: Promise.resolve()
+      processingCommand: false, commandQueue: [], commandWorkerRunning: false
     };
 
     function firebaseConfigured() {
@@ -2762,23 +2762,50 @@
       }
     }
 
+    function syncOnlineShell() {
+      const metaStatus = online.roomStatus || null;
+      const publicPhase = online.public?.phase || null;
+
+      // The room meta status is authoritative for the broad shell state;
+      // public.phase provides the finer-grained in-game phase. Keeping this in
+      // one function prevents guest browsers from getting stuck showing the
+      // lobby or game after the host advances a round.
+      if (metaStatus === 'lobby' || publicPhase === 'lobby') {
+        $('onlineLobbyPhase').textContent = 'Room lobby';
+        $('onlineLobbyTitle').textContent = online.isHost ? 'Configure the game' : 'Waiting for the host';
+        show('onlineLobby');
+        hide('onlineGame', 'onlineGameOver');
+        if (online.isHost) {show('hostRoomControls'); hide('guestLobbyNotice'); show('setupScreen');}
+        else {hide('hostRoomControls'); show('guestLobbyNotice'); hide('setupScreen');}
+        return;
+      }
+
+      if (metaStatus === 'started' || (publicPhase && publicPhase !== 'lobby' && publicPhase !== 'gameover')) {
+        hide('onlineLobby', 'setupScreen', 'onlineGameOver');
+        show('onlineGame');
+        return;
+      }
+
+      if (metaStatus === 'gameover' || publicPhase === 'gameover') {
+        hide('onlineLobby', 'setupScreen', 'onlineActionCard');
+        show('onlineGame', 'onlineGameOver');
+        return;
+      }
+    }
+
     function subscribeToRoom(code) {
       cleanupOnlineListeners();
       const {dbMod} = online.api;
       const roomRef = dbMod.ref(online.db, `rooms/${code}`);
+      online.roomStatus = null;
       online.roomUnsub = dbMod.onValue(dbMod.ref(online.db, `rooms/${code}/meta`), snap => {
         const meta = snap.val();
         if (!meta) {
           leaveOnlineRoom(false); return;
         }
+        online.roomStatus = meta.status || null;
         online.isHost = meta.hostUid === online.uid; online.mode = online.isHost ? 'host' : 'guest';
-        if (meta.status === 'started' && !online.privateUnsub) startGuestSubscriptions();
-        if (meta.status === 'lobby') {
-          $('onlineLobbyPhase').textContent = 'Room lobby';
-          $('onlineLobbyTitle').textContent = online.isHost ? 'Configure the game' : 'Waiting for the host';
-          show('onlineLobby'); hide('onlineGame');
-          if (online.isHost) {show('hostRoomControls'); hide('guestLobbyNotice');} else {hide('hostRoomControls'); show('guestLobbyNotice');}
-        }
+        syncOnlineShell();
       });
       online.playersUnsub = dbMod.onValue(dbMod.ref(online.db, `rooms/${code}/players`), snap => {
         online.playersCache = snap.val() || {};
@@ -2794,9 +2821,22 @@
       });
       online.publicUnsub = dbMod.onValue(dbMod.ref(online.db, `rooms/${code}/public`), snap => {
         online.public = snap.val() || null;
-        renderOnlinePublic();
+        // Keep the guest's lightweight local roster aligned with the host's authoritative public state.
+        // Private payloads still carry the true role/ability information.
+        if (Array.isArray(online.public?.players) && online.public.players.length) {
+          state.players = online.public.players.map(p => {
+            const existing = state.players.find(x => Number(x.id) === Number(p.id));
+            const next = existing || createPlayer(Number(p.id), p.name || `Player ${Number(p.id) + 1}`);
+            next.id = Number(p.id);
+            next.name = p.name || next.name;
+            next.alive = p.alive !== false;
+            next.eliminatedByVote = !!p.eliminatedByVote;
+            return next;
+          });
+        }
+        syncOnlineShell();
+        if (online.public?.phase !== 'lobby') renderOnlinePublic();
         if (online.public?.phase === 'gameover') renderOnlineGameOver(online.public);
-        else if (online.public?.phase && online.public.phase !== 'lobby') {hide('onlineLobby'); show('onlineGame');}
       });
       online.privateUnsub = dbMod.onValue(dbMod.ref(online.db, `rooms/${code}/private/${online.uid}`), snap => {
         online.private = snap.val() || null; renderOnlinePrivate();
@@ -2862,6 +2902,7 @@
     }
 
     function enterHostLobby() {
+      online.roomStatus = 'lobby';
       $('hostRoomCode').textContent = online.roomCode;
       show('onlineLobby'); show('hostRoomControls'); hide('guestLobbyNotice'); show('setupScreen'); hide('onlineGame');
       $('setupOnlineBadge').classList.remove('hidden');
@@ -2871,6 +2912,7 @@
     }
 
     function enterGuestLobby() {
+      online.roomStatus = 'lobby';
       hide('setupScreen'); show('onlineLobby'); hide('onlineGame'); hide('hostRoomControls'); show('guestLobbyNotice');
       $('onlineLobbyPhase').textContent = 'Room lobby'; $('onlineLobbyTitle').textContent = 'Waiting for host';
       setOnlineStatus(`Joined room ${online.roomCode}.`, false);
@@ -2886,7 +2928,7 @@
         }
       } catch (err) {console.error(err);}
       cleanupOnlineListeners();
-      online.mode = 'offline'; online.isHost = false; online.roomCode = null; online.seatId = null; online.playersCache = {}; online.public = null; online.private = null;
+      online.mode = 'offline'; online.isHost = false; online.roomCode = null; online.seatId = null; online.playersCache = {}; online.public = null; online.private = null; online.roomStatus = null;
       $('setupOnlineBadge').classList.add('hidden');
       hide('onlineLobby', 'onlineGame', 'onlineGameOver'); show('onlineEntry');
       if (showEntry) {show('setupScreen'); setOnlineStatus('You left the room.', false); renderSetup();}
@@ -2898,8 +2940,7 @@
 
     function onlinePublicSnapshot() {
       const players = state.players.map(p => ({id: p.id, name: p.name, alive: p.alive, eliminatedByVote: !!p.eliminatedByVote, role: state.phase === 'gameover' ? (roleOf(p) ? {title: roleOf(p).title, orientation: roleOf(p).orientation} : null) : null}));
-      const syncKey = `${state.phase}:${state.round}:${state.night?.round || 0}:${state.night?.index || 0}`;
-      const base = {phase: state.phase, round: state.round, syncKey, players};
+      const base = {phase: state.phase, round: state.round, players};
       if (state.phase === 'day') {
         const submittedVotes = {};
         state.players.filter(p => p.alive).forEach(p => {
@@ -2935,8 +2976,7 @@
 
     function onlinePrivatePayloadFor(player) {
       const r = roleOf(player);
-      const syncKey = `${state.phase}:${state.round}:${state.night?.round || 0}:${state.night?.index || 0}`;
-      const payload = {phase:state.phase, round:state.round, syncKey, role:r ? {title:r.title, orientation:r.orientation, description:r.description, nightAction:r.nightAction}:null, knownRoles:onlineKnownRolesFor(player), turn:null, result:null};
+      const payload = {role:r ? {title:r.title, orientation:r.orientation, description:r.description, nightAction:r.nightAction}:null, knownRoles:onlineKnownRolesFor(player), turn:null, result:null};
       if (!r || !player) return payload;
       if (state.phase === 'day') {
         if (player.silenced) {
@@ -3119,9 +3159,7 @@
           area.appendChild(actionButton('Skip voting','skip',()=>sendOnlineAction({type:'dayVote'},'skip')));
         }
       } else {
-        const currentSyncKey = online.public?.syncKey || null;
-        const privateIsCurrent = !!priv && (!currentSyncKey || priv.syncKey === currentSyncKey);
-        const turn = privateIsCurrent ? priv?.turn : null;
+        const turn = priv?.turn;
         if (!turn) {
           $('onlineActionTitle').textContent = 'Waiting';
           $('onlineActionPrompt').textContent = 'Waiting for the game to advance.';
@@ -3353,7 +3391,7 @@
       if (!state.night.onlineResults) state.night.onlineResults = {}; state.night.onlineResults[seatId] = text;
     }
 
-    async function _publishOnlineRoomNow() {
+    async function publishOnlineRoom() {
       if (!online.isHost || !online.roomCode) return;
       const {dbMod} = online.api, updates = {};
       const pub = onlinePublicSnapshot();
@@ -3366,16 +3404,6 @@
         updates[`rooms/${online.roomCode}/private/${uid}`] = payload;
       }
       await dbMod.update(dbMod.ref(online.db), updates);
-    }
-
-    function publishOnlineRoom() {
-      if (!online.isHost || !online.roomCode) return Promise.resolve();
-      // Serialize room publications so a slower write from the previous phase
-      // can never arrive after a newer day/night state and overwrite it.
-      online.publishChain = online.publishChain
-        .catch(() => {})
-        .then(() => _publishOnlineRoomNow());
-      return online.publishChain;
     }
 
     async function advanceOnlineNightAfterAck() {
@@ -3416,23 +3444,29 @@
       state.night.round=2;state.night.reactionQueue=buildNightReactionQueue();state.night.index=0;state.night.onlineAckNeeded=false;state.night.onlineResults={};publishOnlineRoom().catch(console.error);
     }
 
-    function finishOnlineNightOnline() {
-      const result = checkWin(); if (result.done) {finishOnlineGame(result); return;}
-      state.round++; state.phase = 'day'; state.day = {secondBallot: false, votes: {}, tiedCandidates: []};
-      publishOnlineRoom().catch(console.error);
+    async function finishOnlineNightOnline() {
+      const result = checkWin(); if (result.done) {await finishOnlineGame(result); return;}
+      state.round++;
+      state.phase = 'day';
+      state.day = {secondBallot: false, votes: {}, tiedCandidates: []};
+      // Publish the new phase only after the host state is fully reset for the new day.
+      await publishOnlineRoom();
     }
 
-    function finishOnlineGame(result) {
+    async function finishOnlineGame(result) {
       online._winner = result; state.phase = 'gameover';
-      publishOnlineRoom().catch(console.error);
+      await publishOnlineRoom();
     }
 
-    function startOnlineGameAsHost() {
+    async function startOnlineGameAsHost() {
       if (!online.isHost) {alert('Only the host can start the online game.'); return;}
       if (state.players.length < 2) {alert('Need at least 2 connected players.'); return;}
       state.players.forEach((p, i) => {p.id = i;});
       assignRoles(); state.logs = []; state.round = 1; state.phase = 'day'; state.day = {secondBallot: false, votes: {}, tiedCandidates: []}; state.night = {};
       hide('setupScreen', 'onlineLobby'); show('onlineGame'); hide('onlineGameOver'); show('onlineActionCard');
+      if (online.roomCode && online.db && online.api?.dbMod) {
+        await online.api.dbMod.update(online.api.dbMod.ref(online.db, `rooms/${online.roomCode}/meta`), {status: 'started'});
+      }
       publishOnlineRoom().then(() => {
         // Give everyone a private role immediately; multiplayer doesn't use device handoff.
         $('onlineActionPrompt').textContent = 'The host started the game. Check your private role above.';
