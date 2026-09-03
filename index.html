@@ -3332,7 +3332,9 @@
       const payload = {
         value,
         turnType: turn.type,
-        actionType: isVote ? 'dayVote' : turn.type
+        // For multi-step night abilities such as the Framer, the selected
+        // option's action name carries the specific command type.
+        actionType: isVote ? 'dayVote' : (turn.action || turn.type)
       };
 
       try {
@@ -3351,6 +3353,9 @@
         if (isVote) {
           $('onlineActionPrompt').textContent = 'Vote sent. Waiting for the other players…';
           $('onlineActionResult').innerHTML = '<div class="result">Your vote was sent to the host.</div>';
+        } else {
+          $('onlineActionPrompt').textContent = 'Action submitted. Waiting for the game to advance…';
+          $('onlineActionResult').innerHTML = '<div class="result">Your night action was sent to the host.</div>';
         }
       } catch (err) {
         console.error('Online action failed:', err);
@@ -3414,13 +3419,28 @@
         n.pendingAttacks.push({attackerId:actor.id,targetId:target.id,sourceAction:role.nightAction}); n.round1Submitted[actor.id]=true;
         setPrivateResult(actor.id,`Target recorded: ${target.name}. Your night ability is submitted.`); await publishOnlineRoom(); await maybeFinishOnlineRound1(); return;
       }
-      if (role?.nightAction==='framer' && n.framerRoleChooserId === actor.id && n.framerTargetId && state.roles.some(r=>r.id===String(value))) {
+      // The Framer chooses the target first, then chooses the role that target
+      // will appear as. Keep this entirely on the Framer's private turn; the
+      // framed player never receives a role-choice prompt.
+      if (cmd.payload.actionType === 'framerRoleChoice' && role?.nightAction==='framer') {
+        if (n.framerRoleChooserId !== actor.id || !n.framerTargetId) return;
+        if (!state.roles.some(r => r.id === String(value))) return;
         const target = playerOf(n.framerTargetId);
-        if (!target || !target.alive) return;
+        if (!target || !target.alive) {
+          n.framerRoleChooserId = null;
+          n.round1Submitted[actor.id] = true;
+          setPrivateResult(actor.id,'The framing target is no longer available. Your night ability is submitted.');
+          await publishOnlineRoom();
+          await maybeFinishOnlineRound1();
+          return;
+        }
         target.framedRoleId = String(value);
         n.framerRoleChooserId = null;
-        n.round1Submitted[actor.id]=true;
-        setPrivateResult(actor.id,`${target.name} will be treated as ${effectiveRoleOf(target)?.title || 'Unknown'} for Detective and Seer checks tonight.`); await publishOnlineRoom(); await maybeFinishOnlineRound1(); return;
+        n.round1Submitted[actor.id] = true;
+        setPrivateResult(actor.id,`${target.name} will be treated as ${effectiveRoleOf(target)?.title || 'Unknown'} for Detective and Seer checks tonight.`);
+        await publishOnlineRoom();
+        await maybeFinishOnlineRound1();
+        return;
       }
       if (role?.nightAction==='framer') {
         const target=playerOf(Number(value)); if (!target || !target.alive) return;
