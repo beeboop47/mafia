@@ -1665,19 +1665,24 @@
       return playersAlive().filter(player => roleOf(player)?.id === role.id);
     }
 
+    function getConfiguredNightOrder(players) {
+      // Night order is the only ordering rule. Role type, ability, and role
+      // priority never change the turn sequence.
+      const base = players.slice();
+      return $('nightOrder').value === 'random' ? shuffle(base) : base;
+    }
+
     function buildNightActionQueue() {
       // Every living player gets exactly one Round 1 pass, regardless of role.
-      // Players with no night ability simply acknowledge their turn. Ordering is
-      // controlled only by the selected pass-and-play setting.
-      const queue = playersAlive().slice();
-      return $('nightOrder').value === 'random' ? shuffle(queue) : queue;
+      // The configured Night Order is the sole source of turn order.
+      return getConfiguredNightOrder(playersAlive());
     }
 
     function buildNightReactionQueue() {
-      // Reaction turns use the same selected ordering rule; no role is moved
-      // earlier or later because of its ability.
-      const queue = state.night.round1Players ? state.night.round1Players.slice() : playersAlive().slice();
-      return $('nightOrder').value === 'random' ? shuffle(queue) : queue;
+      // Round 2 uses the exact same configured Night Order. The Doctor and every
+      // other role stay in their normal position; no role priority is applied.
+      const players = state.night.round1Players ? state.night.round1Players : playersAlive();
+      return getConfiguredNightOrder(players);
     }
 
     function startNight() {
@@ -2214,33 +2219,37 @@
         const deadThisNight = state.night.round1Players.filter(p => !p.alive);
         if (actor.used.doctor) {
           $('nightPrompt').innerHTML = '<strong>You already used your revival.</strong> You cannot revive again.';
-          showNightResult('No revival available this game.');
+          showNightResult('Your one-time revival has already been used.');
           $('nightActionArea').appendChild(actionButton('Acknowledge & continue', 'doctorUsed', () => completeNightTurn()));
           return;
         }
         if (!deadThisNight.length) {
-          $('nightPrompt').innerHTML = '<strong>No one was killed this night.</strong> You cannot revive anyone.';
-          showNightResult('Choose to leave everyone as they are.');
-          $('nightActionArea').appendChild(actionButton('Do not revive anyone', 'doctorSkip', () => { completeNightTurn(); }));
+          $('nightPrompt').innerHTML = '<strong>No one died tonight.</strong>';
+          showNightResult('No one is available to revive. Your one-time revival is still saved.');
+          $('nightActionArea').appendChild(actionButton('Acknowledge & continue', 'doctorNoDeath', () => completeNightTurn()));
           return;
         }
-        $('nightPrompt').innerHTML = '<strong>Doctor reaction:</strong> Choose one player killed tonight to revive, or do not revive anyone. You can revive only once per game.';
-        deadThisNight.forEach(victim => $('nightActionArea').appendChild(actionButton(victim.name, victim.id, () => {
+        const names = deadThisNight.map(victim => `<strong>${escapeHtml(victim.name)}</strong>`).join(', ');
+        $('nightPrompt').innerHTML = `<strong>Doctor:</strong> ${deadThisNight.length === 1 ? 'this player died tonight' : 'these players died tonight'}: ${names}. You may use your one-time revive or save it.`;
+        deadThisNight.forEach(victim => $('nightActionArea').appendChild(actionButton(`Revive ${victim.name}`, victim.id, () => {
           if (state.night.busy) return;
           setNightBusy(true);
           victim.alive = true;
           actor.used.doctor = true;
           addLog(`${actor.name} revived ${victim.name}.`);
-          showNightResult(`<strong>${escapeHtml(victim.name)}</strong> was revived.`);
+          showNightResult(`<strong>${escapeHtml(victim.name)}</strong> was revived. Your one-time revival is now used.`);
           $('nightPrompt').textContent = 'Revival complete. Acknowledge to continue.';
           $('nightActionArea').innerHTML = '';
           $('nightActionArea').appendChild(actionButton('Acknowledge & continue', 'doctorAcknowledge', () => completeNightTurn()));
         })));
-        $('nightActionArea').appendChild(actionButton('Do not revive anyone', 'doctorSkip', () => {
+        $('nightActionArea').appendChild(actionButton('Save my revive', 'doctorSkip', () => {
           if (state.night.busy) return;
           setNightBusy(true);
-          addLog(`${actor.name} chose not to revive anyone tonight.`);
-          completeNightTurn();
+          addLog(`${actor.name} saved their one-time revive.`);
+          showNightResult('You chose not to revive anyone. Your one-time revival remains available.');
+          $('nightPrompt').textContent = 'Your revival was saved. Acknowledge to continue.';
+          $('nightActionArea').innerHTML = '';
+          $('nightActionArea').appendChild(actionButton('Acknowledge & continue', 'doctorSaveAcknowledge', () => completeNightTurn()));
         }));
         return;
       }
@@ -3515,7 +3524,8 @@
       if (role?.nightAction === 'doctor') {
         if (actor.used?.doctor) {n.onlineAckNeeded=true; setPrivateResult(actor.id,'You already used your one revival.'); await publishOnlineRoom(); return;}
         const deadThisNight=(n.round1Players||[]).filter(p=>!p.alive);
-        if (value === 'skip' || !deadThisNight.length) {setPrivateResult(actor.id,'You chose not to revive anyone tonight.'); addLog(`${actor.name} chose not to revive anyone tonight.`); n.onlineAckNeeded=true; await publishOnlineRoom(); return;}
+        if (value === 'skip' && deadThisNight.length) {setPrivateResult(actor.id,'You chose to save your one-time revive.'); addLog(`${actor.name} saved their one-time revive.`); n.onlineAckNeeded=true; await publishOnlineRoom(); return;}
+        if (!deadThisNight.length) {setPrivateResult(actor.id,'No one died tonight. Your one-time revival is still saved.'); n.onlineAckNeeded=true; await publishOnlineRoom(); return;}
         const victim=playerOf(Number(value)); if (!victim || !deadThisNight.some(p=>p.id===victim.id)) return;
         victim.alive=true; actor.used.doctor=true; addLog(`${actor.name} revived ${victim.name}.`); setPrivateResult(actor.id,`You revived ${victim.name}.`); n.onlineAckNeeded=true; await publishOnlineRoom(); return;
       }
@@ -3631,15 +3641,15 @@
     async function startOnlineNight() {
       state.phase='night'; const nightPlayers=playersAlive().slice(); const round1SeerTargets={};
       nightPlayers.forEach(p=>{p.framedRoleId=null; if(roleOf(p)?.nightAction==='seer'){const choices=nightPlayers.filter(t=>t.id!==p.id);round1SeerTargets[p.id]=randomChoice(choices)?.id??null;}});
-      const queue = $('nightOrder').value === 'random' ? shuffle(nightPlayers.slice()) : nightPlayers.slice();
+      const queue = getConfiguredNightOrder(nightPlayers);
       state.night={round:1,queue,index:0,busy:false,usedTeamKillRoleIds:[],pendingAttacks:[],reactionQueue:[],reactionCompleted:[],round1Players:nightPlayers,round1Submitted:{},round1SeerTargets,round1InspectTargets:{},framerTargetId:null,framerRoleChooserId:null,haterTargets:{},protectedIds:[],blockedIds:[],trackTargets:{},watchTargets:{},onlineAckNeeded:false,onlineResults:{},onlineSeerTargetId:null};
       await publishOnlineRoom();
     }
 
     function beginOnlineReactionRound() {
       state.night.round=2;
-      const base = state.night.round1Players ? state.night.round1Players.slice() : playersAlive().slice();
-      state.night.reactionQueue = $('nightOrder').value === 'random' ? shuffle(base) : base;
+      const base = state.night.round1Players ? state.night.round1Players : playersAlive();
+      state.night.reactionQueue = getConfiguredNightOrder(base);
       state.night.index=0;state.night.onlineAckNeeded=false;state.night.onlineResults={};publishOnlineRoom().catch(console.error);
     }
 
