@@ -1710,6 +1710,9 @@
         usedTeamKillRoleIds: [],
         protectedIds: [],
         blockedIds: [],
+        roleblockTargets: [],
+        protectActions: [],
+        silenceActions: [],
         trackTargets: {},
         watchTargets: {}
       };
@@ -1797,14 +1800,6 @@
 
       const role = roleOf(actor);
       if (!role) {completeNightTurn(); return;}
-      if (state.night.blockedIds?.includes(actor.id)) {
-        showNightResult('<strong>Your night ability was blocked.</strong> You cannot use it tonight.');
-        $('nightPrompt').textContent = 'Roleblock resolved. Acknowledge and continue.';
-        $('nightActionArea').innerHTML = '';
-        $('nightActionArea').appendChild(actionButton('Acknowledge & continue', 'blockedAcknowledge', () => completeNightTurn()));
-        return;
-      }
-
       if (role.nightAction === 'inspectOrientation') {
         const target = playerOf(choice);
         if (!target || !target.alive) {
@@ -1882,9 +1877,10 @@
           completeNightTurn();
           return;
         }
+        if (role.nightAction === 'protect') state.night.protectActions.push({actorId: actor.id, targetId: target.id});
+        if (role.nightAction === 'roleblock') state.night.roleblockTargets.push({actorId: actor.id, targetId: target.id});
+        if (role.nightAction === 'silence') state.night.silenceActions.push({actorId: actor.id, targetId: target.id});
         if (role.nightAction === 'protect') state.night.protectedIds.push(target.id);
-        if (role.nightAction === 'roleblock') state.night.blockedIds.push(target.id);
-        if (role.nightAction === 'silence') target.silenced = true;
         if (role.nightAction === 'track') state.night.trackTargets[actor.id] = target.id;
         if (role.nightAction === 'watch') state.night.watchTargets[actor.id] = target.id;
         const messages = {
@@ -2136,12 +2132,38 @@
     }
 
     function resolveNightBeforeReactions() {
-      // Round 1 collects every player's choice. Before the first reaction turn
-      // begins, resolve every outcome that does not require a reactive player's
-      // input. This freezes the night's deterministic state for Doctors, Trackers,
-      // Watchers, Detectives, Seers, and the public game state.
+      // Round 1 is only submission. Resolve roleblocks after every player has
+      // submitted so night order cannot make a roleblock miss an ability that
+      // happened earlier in the queue. All submitted effects are then filtered
+      // through the final blocked set before reactions begin.
+      const night = state.night;
+      night.blockedIds = [...new Set((night.roleblockTargets || []).map(x => x.targetId))];
+
+      // A blocked protector/silencer does not get to apply their effect.
+      const activeProtectActions = (night.protectActions || []).filter(x => !night.blockedIds.includes(x.actorId));
+      const activeSilenceActions = (night.silenceActions || []).filter(x => !night.blockedIds.includes(x.actorId));
+      night.protectedIds = [...new Set(activeProtectActions.map(x => x.targetId))];
+      // Silence is a persistent day-state effect, so rebuild it from the
+      // submitted actions instead of applying it immediately during Round 1.
+      state.players.forEach(p => { p.silenced = false; });
+      activeSilenceActions.forEach(x => { const target = playerOf(x.targetId); if (target) target.silenced = true; });
+
+      // Remove all target-based effects submitted by a roleblocked player.
+      night.pendingAttacks = night.pendingAttacks.filter(a => !night.blockedIds.includes(a.attackerId));
+      night.inspectTargets = Object.fromEntries(Object.entries(night.inspectTargets || {}).filter(([actorId]) => !night.blockedIds.includes(Number(actorId))));
+      night.seerTargets = Object.fromEntries(Object.entries(night.seerTargets || {}).filter(([actorId]) => !night.blockedIds.includes(Number(actorId))));
+      night.trackTargets = Object.fromEntries(Object.entries(night.trackTargets || {}).filter(([actorId]) => !night.blockedIds.includes(Number(actorId))));
+      night.watchTargets = Object.fromEntries(Object.entries(night.watchTargets || {}).filter(([actorId]) => !night.blockedIds.includes(Number(actorId))));
+      if (night.framerRoleChooserId != null && night.blockedIds.includes(night.framerRoleChooserId)) {
+        const target = playerOf(night.framerTargetId);
+        if (target) target.framedRoleId = null;
+        night.framerTargetId = null;
+        night.framerRoleChooserId = null;
+      }
+      night.haterTargets = Object.fromEntries(Object.entries(night.haterTargets || {}).filter(([actorId]) => !night.blockedIds.includes(Number(actorId))));
+
       const reactiveActions = new Set(['traitor', 'scapegoat', 'escape', 'monkey', 'rps']);
-      const attacks = [...state.night.pendingAttacks];
+      const attacks = [...night.pendingAttacks];
       attacks.forEach(attack => {
         const target = playerOf(attack.targetId);
         const role = roleOf(target);
@@ -2200,6 +2222,17 @@
       $('nightResult').innerHTML = '';
       $('resolveNightBtn').classList.add('hidden');
       $('resolveNightBtn').disabled = true;
+
+      if (state.night.blockedIds?.includes(actor.id)) {
+        state.night.pendingAttacks = state.night.pendingAttacks.filter(a => a.targetId !== actor.id);
+        $('nightPrompt').innerHTML = '<strong>Your night ability was blocked.</strong> You cannot use it tonight.';
+        showNightResult('Your roleblock was resolved before reactions began. Your night ability does not activate.');
+        $('nightActionArea').appendChild(actionButton('Acknowledge & continue', 'blockedReactionAcknowledge', () => {
+          if (!state.night.busy) setNightBusy(true);
+          completeNightTurn();
+        }));
+        return;
+      }
 
       if (!actor.alive) {
         state.night.pendingAttacks = state.night.pendingAttacks.filter(a => a.targetId !== actor.id);
@@ -3442,7 +3475,6 @@
     async function handleOnlineNightRound1(actor, value, actionType) {
       const role = roleOf(actor), n = state.night;
       if (!n.round1Players?.some(p => p.id === actor.id)) return;
-      if (n.blockedIds?.includes(actor.id)) { n.round1Submitted=n.round1Submitted||{}; n.round1Submitted[actor.id]=true; setPrivateResult(actor.id,'Your night ability was blocked.'); await publishOnlineRoom(); await maybeFinishOnlineRound1(); return; }
       n.round1Submitted = n.round1Submitted || {}; if (n.round1Submitted[actor.id]) return;
       if (!actor.alive || value === 'ack') { n.round1Submitted[actor.id]=true; await publishOnlineRoom(); await maybeFinishOnlineRound1(); return; }
       // Resolve both standalone Kill roles and shared Team Kill roles through
@@ -3521,9 +3553,9 @@
       }
       if (['protect','roleblock','silence','track','watch'].includes(role?.nightAction)) {
         const target=playerOf(Number(value)); if (!target || !target.alive || target.id===actor.id) return;
-        if(role.nightAction==='protect') n.protectedIds.push(target.id);
-        if(role.nightAction==='roleblock') n.blockedIds.push(target.id);
-        if(role.nightAction==='silence') target.silenced=true;
+        if(role.nightAction==='protect') n.protectActions.push({actorId:actor.id,targetId:target.id});
+        if(role.nightAction==='roleblock') n.roleblockTargets.push({actorId:actor.id,targetId:target.id});
+        if(role.nightAction==='silence') n.silenceActions.push({actorId:actor.id,targetId:target.id});
         if(role.nightAction==='track') n.trackTargets[actor.id]=target.id;
         if(role.nightAction==='watch') n.watchTargets[actor.id]=target.id;
         n.round1Submitted[actor.id]=true; setPrivateResult(actor.id,'Action recorded. Any information result will be shown during night reactions.'); await publishOnlineRoom(); await maybeFinishOnlineRound1(); return;
@@ -3548,6 +3580,10 @@
       const n = state.night, role = roleOf(actor), attacks = findPendingAttacksFor(actor.id);
       if (value === 'ack' && n.onlineAckNeeded) {await advanceOnlineNightAfterAck(); return;}
       if (!actor.alive) {await advanceOnlineNightAfterAck(); return;}
+      if (n.blockedIds?.includes(actor.id)) {
+        setPrivateResult(actor.id, 'Your night ability was blocked.');
+        n.onlineAckNeeded = true; await publishOnlineRoom(); return;
+      }
       if (role?.nightAction === 'inspectOrientation' || role?.nightAction === 'seer') {
         const targetId = role.nightAction === 'inspectOrientation' ? n.round1InspectTargets?.[actor.id] : n.round1SeerTargets?.[actor.id];
         const target = playerOf(targetId);
@@ -3679,23 +3715,37 @@
       state.phase='night'; const nightPlayers=playersAlive().slice(); const round1SeerTargets={};
       nightPlayers.forEach(p=>{p.framedRoleId=null; if(roleOf(p)?.nightAction==='seer'){const choices=nightPlayers.filter(t=>t.id!==p.id);round1SeerTargets[p.id]=randomChoice(choices)?.id??null;}});
       const queue = getConfiguredNightOrder(nightPlayers);
-      state.night={round:1,queue,index:0,busy:false,usedTeamKillRoleIds:[],pendingAttacks:[],reactionQueue:[],reactionCompleted:[],round1Players:nightPlayers,round1Submitted:{},round1SeerTargets,round1InspectTargets:{},framerTargetId:null,framerRoleChooserId:null,haterTargets:{},protectedIds:[],blockedIds:[],trackTargets:{},watchTargets:{},onlineAckNeeded:false,onlineResults:{},onlineSeerTargetId:null};
+      state.night={round:1,queue,index:0,busy:false,usedTeamKillRoleIds:[],pendingAttacks:[],reactionQueue:[],reactionCompleted:[],round1Players:nightPlayers,round1Submitted:{},round1SeerTargets,round1InspectTargets:{},framerTargetId:null,framerRoleChooserId:null,haterTargets:{},protectedIds:[],blockedIds:[],roleblockTargets:[],protectActions:[],silenceActions:[],trackTargets:{},watchTargets:{},onlineAckNeeded:false,onlineResults:{},onlineSeerTargetId:null};
       await publishOnlineRoom();
     }
 
     function resolveOnlineNightBeforeReactions() {
-      // Match pass-and-play: finish all deterministic Round 1 outcomes before
-      // any player receives a Round 2 reaction turn.
+      // Round 1 is simultaneous submission. Apply roleblocks only after every
+      // ability is submitted, then filter every submitted effect by the final
+      // blocked set. This makes roleblocks independent of night turn order.
+      const n = state.night;
+      n.blockedIds = [...new Set((n.roleblockTargets || []).map(x => x.targetId))];
+      n.protectedIds = [...new Set((n.protectActions || []).filter(x => !n.blockedIds.includes(x.actorId)).map(x => x.targetId))];
+      state.players.forEach(p => { p.silenced = false; });
+      (n.silenceActions || []).filter(x => !n.blockedIds.includes(x.actorId)).forEach(x => { const target=playerOf(x.targetId); if(target) target.silenced=true; });
+      n.pendingAttacks = (n.pendingAttacks || []).filter(a => !n.blockedIds.includes(a.attackerId));
+      n.round1InspectTargets = Object.fromEntries(Object.entries(n.round1InspectTargets || {}).filter(([id]) => !n.blockedIds.includes(Number(id))));
+      n.round1SeerTargets = Object.fromEntries(Object.entries(n.round1SeerTargets || {}).filter(([id]) => !n.blockedIds.includes(Number(id))));
+      n.trackTargets = Object.fromEntries(Object.entries(n.trackTargets || {}).filter(([id]) => !n.blockedIds.includes(Number(id))));
+      n.watchTargets = Object.fromEntries(Object.entries(n.watchTargets || {}).filter(([id]) => !n.blockedIds.includes(Number(id))));
+      n.haterTargets = Object.fromEntries(Object.entries(n.haterTargets || {}).filter(([id]) => !n.blockedIds.includes(Number(id))));
+      if (n.framerRoleChooserId != null && n.blockedIds.includes(n.framerRoleChooserId)) {
+        const target=playerOf(n.framerTargetId); if(target) target.framedRoleId=null;
+        n.framerTargetId=null; n.framerRoleChooserId=null;
+      }
+
       const reactiveActions = new Set(['traitor','scapegoat','escape','monkey','rps']);
-      const attacks = [...(state.night.pendingAttacks || [])];
+      const attacks = [...(n.pendingAttacks || [])];
       attacks.forEach(attack => {
-        const target = playerOf(attack.targetId);
-        const role = roleOf(target);
-        if (!target || !target.alive) { removePendingAttack(attack); return; }
-        if (!reactiveActions.has(role?.nightAction)) {
-          removePendingAttack(attack);
-          target.alive = false;
-          addLog(`${target.name} was killed during the night.`);
+        const target=playerOf(attack.targetId), role=roleOf(target);
+        if(!target || !target.alive){ removePendingAttack(attack); return; }
+        if(!reactiveActions.has(role?.nightAction)){
+          removePendingAttack(attack); target.alive=false; addLog(`${target.name} was killed during the night.`);
         }
       });
     }
