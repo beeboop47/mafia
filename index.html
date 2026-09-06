@@ -2887,7 +2887,7 @@
         for (let tries = 0; tries < 12 && !claimed; tries++) {
           const candidate = code;
           const metaRef = dbMod.ref(online.db, `rooms/${candidate}/meta`);
-          const result = await dbMod.runTransaction(metaRef, current => current === null ? {hostUid: online.uid, status:'lobby', createdAt: Date.now(), schemaVersion: 2} : undefined);
+          const result = await dbMod.runTransaction(metaRef, current => current === null ? {hostUid: online.uid, status:'lobby', joinable:true, createdAt: Date.now(), schemaVersion: 2} : undefined);
           claimed = !!result.committed;
           if (!claimed) code = roomCode();
         }
@@ -2896,12 +2896,14 @@
         localStorage.setItem('mafia:lastRoomCode', code);
         const now=Date.now(), name=getDisplayName();
         await dbMod.update(dbMod.ref(online.db), {
-          [`rooms/${code}/players/${online.uid}`]: {uid:online.uid,name,seatId:0,host:true,joinedAt:now},
+          [`rooms/${code}/players/${online.uid}`]: {uid:online.uid,name,seatId:0,host:true,joinedAt:now,connected:true,lastSeen:now},
           [`rooms/${code}/public`]: {phase:'lobby',round:1,version:0,players:[]},
           [`rooms/${code}/state`]: null,
           [`rooms/${code}/commands`]: null
         });
-        await dbMod.onDisconnect(dbMod.ref(online.db,`rooms/${code}/players/${online.uid}`)).remove();
+        const hostPlayerRef=dbMod.ref(online.db,`rooms/${code}/players/${online.uid}`);
+        await dbMod.onDisconnect(hostPlayerRef).update({connected:false,lastSeen:Date.now()});
+        await dbMod.update(hostPlayerRef,{connected:true,lastSeen:Date.now()});
         subscribeToRoom(code); enterHostLobby();
       } catch (err) {
         console.error(err); online.mode='offline'; online.isHost=false; online.roomCode=null; online.seatId=null;
@@ -2921,12 +2923,14 @@
         const {dbMod}=await loadFirebase(); online.db=dbMod.getDatabase(online.app);
         const metaRef=dbMod.ref(online.db,`rooms/${code}/meta`);
         const metaSnap=await dbMod.get(metaRef); if(!metaSnap.exists()) throw new Error('That room does not exist or has already ended.');
-        const meta=metaSnap.val()||{}; if(meta.status!=='lobby') throw new Error('That game has already started.');
+        const meta=metaSnap.val()||{}; if(meta.status!=='lobby' && meta.joinable!==true) throw new Error('That game is currently in progress. Join at the next round break.');
         const playerRef=dbMod.ref(online.db,`rooms/${code}/players/${online.uid}`);
-        const playerResult=await dbMod.runTransaction(playerRef,current=>current===null?{uid:online.uid,name:getDisplayName(),seatId:null,host:false,joinedAt:Date.now()}:current);
+        const playerResult=await dbMod.runTransaction(playerRef,current=>current===null?{uid:online.uid,name:getDisplayName(),seatId:null,host:false,joinedAt:Date.now(),connected:true,lastSeen:Date.now()}:current);
         if(!playerResult.committed) throw new Error('You are already connected to that room.');
         online.mode='guest'; online.isHost=false; online.roomCode=code; online.seatId=null; localStorage.setItem('mafia:lastRoomCode',code);
-        await dbMod.onDisconnect(playerRef).remove(); subscribeToRoom(code); enterGuestLobby();
+        await dbMod.onDisconnect(playerRef).update({connected:false,lastSeen:Date.now()});
+        await dbMod.update(playerRef,{connected:true,lastSeen:Date.now()});
+        subscribeToRoom(code); enterGuestLobby();
       } catch(err){
         console.error(err); online.mode='offline'; online.isHost=false; online.roomCode=null; online.seatId=null;
         setOnlineStatus(err?.message||String(err),true);
@@ -3057,24 +3061,35 @@
       if (!online.isHost || !online.roomCode) return;
       const entries=Object.entries(online.playersCache||{}).filter(([,p])=>p&&p.uid);
       const gameStarted=online.roomStatus==='started' || state.phase!=='setup';
-      if (gameStarted) {
-        const allowed=new Set((state.players||[]).map(p=>p.uid).filter(Boolean));
-        for(const [uid,p] of entries) if(uid!==online.uid && !allowed.has(uid)) {
-          online.api.dbMod.remove(online.api.dbMod.ref(online.db,`rooms/${online.roomCode}/players/${uid}`)).catch(console.error);
-        }
-        return;
-      }
       entries.sort(([,a],[,b])=>a.uid===online.uid?-1:b.uid===online.uid?1:Number(a.joinedAt||0)-Number(b.joinedAt||0));
-      const used=new Set();
-      entries.forEach(([,p])=>{const n=Number(p.seatId); if(Number.isInteger(n)&&n>=0&&!used.has(n)) used.add(n); else p.seatId=null;});
-      let next=0; entries.forEach(([,p])=>{if(!Number.isInteger(p.seatId)){while(used.has(next)) next++; p.seatId=next++; used.add(p.seatId);}});
-      for(const [uid,p] of entries){if(online.playersCache[uid]?.seatId!==p.seatId) online.api.dbMod.update(online.api.dbMod.ref(online.db,`rooms/${online.roomCode}/players/${uid}`),{seatId:p.seatId}).catch(console.error);}
-      if(state.phase==='setup'){
-        const oldByUid=new Map(state.players.filter(p=>p.uid).map(p=>[p.uid,p]));
-        const sorted=entries.map(([,p])=>p).sort((a,b)=>a.seatId-b.seatId);
-        state.players=sorted.map(p=>{const old=oldByUid.get(p.uid); return old ? {...old,id:p.seatId,uid:p.uid,name:p.name||old.name} : {...createPlayer(p.seatId,p.name||`Player ${p.seatId+1}`),uid:p.uid};});
-        renderSetup();
+      const used=new Set((state.players||[]).map(p=>Number(p.id)).filter(Number.isInteger));
+      entries.forEach(([,p])=>{const n=Number(p.seatId); if(Number.isInteger(n)&&n>=0) used.add(n);});
+      let next=0;
+      for(const [uid,p] of entries){
+        if(!Number.isInteger(Number(p.seatId)) || Number(p.seatId)<0){
+          while(used.has(next)) next++;
+          p.seatId=next++; used.add(p.seatId);
+          online.api.dbMod.update(online.api.dbMod.ref(online.db,`rooms/${online.roomCode}/players/${uid}`),{seatId:p.seatId}).catch(console.error);
+        }
       }
+      if(gameStarted) return;
+      const oldByUid=new Map(state.players.filter(p=>p.uid).map(p=>[p.uid,p]));
+      const sorted=entries.map(([,p])=>p).sort((a,b)=>a.seatId-b.seatId);
+      state.players=sorted.map(p=>{const old=oldByUid.get(p.uid); return old ? {...old,id:p.seatId,uid:p.uid,name:p.name||old.name} : {...createPlayer(p.seatId,p.name||`Player ${p.seatId+1}`),uid:p.uid};});
+      renderSetup();
+    }
+
+    function admitPendingOnlinePlayers(){
+      if(!online.isHost || !online.roomCode) return;
+      const members=Object.values(online.playersCache||{}).filter(p=>p&&p.uid&&Number.isInteger(Number(p.seatId)));
+      const known=new Set(state.players.map(p=>p.uid).filter(Boolean));
+      const pending=members.filter(p=>!known.has(p.uid));
+      pending.sort((a,b)=>a.seatId-b.seatId).forEach(member=>{
+        const id=Number(member.seatId);
+        const citizen=state.roles.find(r=>r.id==='citizen') || state.roles[0];
+        state.players.push({...createPlayer(id,member.name||`Player ${id+1}`),id,uid:member.uid,roleId:citizen?.id||null});
+      });
+      state.players.sort((a,b)=>a.id-b.id);
     }
 
     function enterHostLobby() {
@@ -3110,7 +3125,7 @@
 
     function onlinePublicSnapshot() {
       const players = state.players.map(p => ({id: p.id, name: p.name, alive: p.alive, eliminatedByVote: !!p.eliminatedByVote, silenced: !!p.silenced, role: state.phase === 'gameover' ? (roleOf(p) ? {title: roleOf(p).title, orientation: roleOf(p).orientation} : null) : null}));
-      const base = {phase: state.phase, round: state.round, version: state.onlineVersion, players};
+      const base = {phase: state.phase, round: state.round, version: state.onlineVersion, players, joinable: online.roomStatus==='lobby' || (online.roomStatus==='started' && state.phase==='day' && Object.keys(state.day?.votes||{}).length===0)};
       if (state.phase === 'day') {
         const submittedVotes = {};
         state.players.filter(p => p.alive).forEach(p => {
@@ -3899,6 +3914,12 @@
       if (!state.night.onlineResults) state.night.onlineResults = {}; state.night.onlineResults[seatId] = text;
     }
 
+    async function setOnlineJoinable(joinable){
+      if(!online.isHost || !online.roomCode || !online.db || !online.api?.dbMod) return;
+      const {dbMod}=online.api;
+      await dbMod.update(dbMod.ref(online.db,`rooms/${online.roomCode}/meta`),{joinable:!!joinable});
+    }
+
     function publishOnlineRoom() {
       if(!online.isHost || !online.roomCode) return Promise.resolve();
       const roomCode=online.roomCode;
@@ -3925,6 +3946,7 @@
       const {dbMod}=online.api;
       const updates={};
       updates[`rooms/${online.roomCode}/meta/status`]='lobby';
+      updates[`rooms/${online.roomCode}/meta/joinable`]=true;
       updates[`rooms/${online.roomCode}/public`]={phase:'lobby',round:1,version:state.onlineVersion,players:publicOnlinePlayers().map(p=>({id:p.seatId,name:p.name,alive:true,eliminatedByVote:false}))};
       updates[`rooms/${online.roomCode}/state`]=serializeAuthoritativeState();
       await dbMod.update(dbMod.ref(online.db),updates);
@@ -3962,6 +3984,7 @@
     async function startOnlineNight() {
       clearDaySilence();
       state.phase='night';
+      await setOnlineJoinable(false);
       bumpOnlineVersion(); const nightPlayers=playersAlive().slice(); const round1SeerTargets={}; const gamblerActions={};
       const gamblerPool=gamblerAbilityPool();
       nightPlayers.forEach(p=>{p.framedRoleId=null; if(roleOf(p)?.nightAction==='gambler') gamblerActions[p.id]=randomChoice(gamblerPool)||'none'; if((gamblerActions[p.id]||roleOf(p)?.nightAction)==='seer'){const choices=nightPlayers.filter(t=>t.id!==p.id);round1SeerTargets[p.id]=randomChoice(choices)?.id??null;}});
@@ -4001,7 +4024,8 @@
       state.round++;
       state.phase = 'day';
       state.day = {secondBallot: false, votes: {}, tiedCandidates: []};
-      // Publish the new phase only after the host state is fully reset for the new day.
+      admitPendingOnlinePlayers();
+      await setOnlineJoinable(true);
       await publishOnlineRoom();
     }
 
@@ -4026,6 +4050,7 @@
         const {dbMod}=online.api; const statusRef=dbMod.ref(online.db,`rooms/${online.roomCode}/meta/status`);
         const tx=await dbMod.runTransaction(statusRef,current=>current==='lobby'?'started':undefined);
         if(!tx.committed){online.roomStatus='lobby'; throw new Error('The room changed while the game was starting.');}
+        await setOnlineJoinable(true);
         await publishOnlineRoom();
         $('onlineActionPrompt').textContent='The host started the game. Check your private role above.';
       })().catch(err=>{console.error(err);alert(err?.message||String(err));}).finally(()=>{onlineStartPromise=null;});
@@ -4055,7 +4080,7 @@
     // When a host-created room is open, reflect the host's edits to the online roster.
     if ($('onlineName')) $('onlineName').addEventListener('input', () => {
       if (online.roomCode && online.uid && online.db && online.api?.dbMod) {
-        online.api.dbMod.update(online.api.dbMod.ref(online.db, `rooms/${online.roomCode}/players/${online.uid}`), {name: $('onlineName').value.trim() || getDisplayName()}).catch(console.error);
+        online.api.dbMod.update(online.api.dbMod.ref(online.db, `rooms/${online.roomCode}/players/${online.uid}`), {name: $('onlineName').value.trim() || getDisplayName(), connected:true, lastSeen:Date.now()}).catch(console.error);
       }
     });
 
