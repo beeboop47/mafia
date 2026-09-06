@@ -3013,6 +3013,7 @@
         if (online.public?.phase !== 'lobby') renderOnlinePublic();
         if (online.public?.phase === 'gameover') renderOnlineGameOver(online.public);
         renderAdminPanel();
+        if (online.isHost) maybeAutoAdvanceOnlinePhase().catch(console.error);
       });
       online.stateUnsub = dbMod.onValue(dbMod.ref(online.db, `rooms/${code}/state`), snap => {
         if (!online.isHost) return;
@@ -3125,7 +3126,7 @@
 
     function onlinePublicSnapshot() {
       const players = state.players.map(p => ({id: p.id, name: p.name, alive: p.alive, eliminatedByVote: !!p.eliminatedByVote, silenced: !!p.silenced, role: state.phase === 'gameover' ? (roleOf(p) ? {title: roleOf(p).title, orientation: roleOf(p).orientation} : null) : null}));
-      const base = {phase: state.phase, round: state.round, version: state.onlineVersion, players, joinable: online.roomStatus==='lobby' || (online.roomStatus==='started' && state.phase==='day' && Object.keys(state.day?.votes||{}).length===0)};
+      const base = {phase: state.phase, round: state.round, version: state.onlineVersion, players, joinable: online.roomStatus==='lobby' || (online.roomStatus==='started' && state.phase==='day' && !state.day.secondBallot && Object.keys(state.day?.votes||{}).length===0)};
       if (state.phase === 'day') {
         const submittedVotes = {};
         state.players.filter(p => p.alive).forEach(p => {
@@ -3599,9 +3600,8 @@
           ackOnlineCommand(cmd.uid, commandId, true, `Your vote for ${target.name} was recorded.`);
         }
 
-        const living = playersAlive();
-        if (living.every(v => v.silenced || isChosen(state.day.votes[v.id]))) await resolveOnlineDay();
-        else await publishOnlineRoom();
+        await maybeAutoAdvanceOnlinePhase();
+        if (state.phase === 'day') await publishOnlineRoom();
         return;
       }
 
@@ -3790,15 +3790,66 @@
       }
     }
 
+    let onlineAutoAdvanceRunning = false;
+
+    async function maybeAutoAdvanceOnlinePhase() {
+      if (!online.isHost || !online.roomCode || onlineAutoAdvanceRunning || state.phase === 'gameover') return;
+      onlineAutoAdvanceRunning = true;
+      try {
+        // Win conditions are authoritative in online mode too. Check them before
+        // waiting for another action so an already-reached majority/elimination
+        // ends the game immediately instead of starting another phase.
+        const winNow = checkWin();
+        if (winNow.done) {
+          await finishOnlineGame(winNow);
+          return;
+        }
+
+        if (state.phase === 'day') {
+          const living = playersAlive();
+          const complete = living.every(v => v.silenced || isChosen(state.day.votes[v.id]));
+          if (complete && living.length > 1) {
+            await resolveOnlineDay();
+            return;
+          }
+        }
+
+        if (state.phase === 'night' && state.night?.round === 1) {
+          const players = state.night.round1Players || [];
+          // Anyone who has become ineligible before submitting gets an automatic no-op.
+          for (const player of players) {
+            if (!player.alive && !state.night.round1Submitted?.[player.id]) {
+              state.night.round1Actions[player.id] = {action:'none'};
+              state.night.round1Submitted[player.id] = true;
+            }
+          }
+          const complete = players.length > 0 && players.every(p => state.night.round1Submitted?.[p.id]);
+          if (complete) {
+            await maybeFinishOnlineRound1();
+            return;
+          }
+        }
+      } finally {
+        onlineAutoAdvanceRunning = false;
+      }
+    }
+
     async function maybeFinishOnlineRound1() {
       const n=state.night, players=n.round1Players||[];
       if(!players.length || !players.every(p=>n.round1Submitted?.[p.id])) return;
+      if (n.resolvedRound1) return;
+      n.resolvedRound1 = true;
       await resolveOnlineRound1Intents();
       await beginOnlineReactionRound();
     }
 
-    function onlineCompleteReactiveOrAdvance(actor) {
+    async function onlineCompleteReactiveOrAdvance(actor) {
       const n=state.night;
+      const result = checkWin();
+      if (result.done) {
+        await finishOnlineGame(result);
+        return;
+      }
       if (n.pendingAttacks?.some(a=>a.targetId===actor.id) && actor.alive) {
         n.onlineAckNeeded=false; n.onlineResults={}; bumpOnlineVersion(); return publishOnlineRoom();
       }
@@ -3928,7 +3979,8 @@
         const {dbMod}=online.api; const updates={}; const pub=onlinePublicSnapshot();
         updates[`rooms/${roomCode}/public`]=pub.phase==='gameover'?{...pub,winner:online._winner?.winner,reason:online._winner?.reason}:pub;
         updates[`rooms/${roomCode}/meta/status`]=pub.phase==='gameover'?'gameover':(pub.phase==='setup'?'lobby':'started');
-        if(pub.phase==='gameover' || pub.phase==='setup') updates[`rooms/${roomCode}/state`]=serializeAuthoritativeState(); else updates[`rooms/${roomCode}/state`]=serializeAuthoritativeState();
+        updates[`rooms/${roomCode}/meta/joinable`] = !!pub.joinable;
+        updates[`rooms/${roomCode}/state`]=serializeAuthoritativeState();
         for(const pl of state.players){
           const uid=pl.uid || Object.values(online.playersCache||{}).find(x=>Number(x.seatId)===pl.id)?.uid;
           if(!uid) continue; pl.uid=uid;
@@ -3958,7 +4010,7 @@
       n.onlineAckNeeded = false;
       n.onlineResults = {};
       // Check a win after any reaction or kill before advancing.
-      const result = checkWin(); if (result.done) {finishOnlineGame(result); return;}
+      const result = checkWin(); if (result.done) {await finishOnlineGame(result); return;}
       n.index++;
       bumpOnlineVersion();
       n.onlineSeerTargetId = null;
@@ -3975,9 +4027,17 @@
       const living=playersAlive(), playerCounts=new Map(); let skipCount=0;
       living.forEach(voter=>{if(voter.silenced) return; const vote=state.day.votes[voter.id]; if(vote==='skip'){skipCount++;return;} if(validDayTarget(voter,vote)) playerCounts.set(vote,(playerCounts.get(vote)||0)+1);});
       const top=Math.max(0,...playerCounts.values()); const winners=[...playerCounts.entries()].filter(([,c])=>c===top&&top>0).map(([id])=>id);
-      if(skipCount>=top || winners.length===0){state.day.secondBallot=false;state.day.tiedCandidates=[];state.day.votes={};addLog('Day vote skipped; nobody was eliminated.');await startOnlineNight();return;}
+      if(skipCount>=top || winners.length===0){
+        state.day.secondBallot=false;state.day.tiedCandidates=[];state.day.votes={};addLog('Day vote skipped; nobody was eliminated.');
+        const result=checkWin(); if(result.done){await finishOnlineGame(result);return;}
+        await startOnlineNight();return;
+      }
       if(winners.length>1 && !state.day.secondBallot){state.day.secondBallot=true;state.day.tiedCandidates=winners;state.day.votes={};addLog(`Day vote tied between ${winners.map(id=>playerOf(id)?.name||id).join(', ')}.`);await publishOnlineRoom();return;}
-      if(winners.length>1){state.day.secondBallot=false;state.day.tiedCandidates=[];state.day.votes={};addLog('Second day vote tied; nobody was eliminated.');await startOnlineNight();return;}
+      if(winners.length>1){
+        state.day.secondBallot=false;state.day.tiedCandidates=[];state.day.votes={};addLog('Second day vote tied; nobody was eliminated.');
+        const result=checkWin(); if(result.done){await finishOnlineGame(result);return;}
+        await startOnlineNight();return;
+      }
       const out=playerOf(winners[0]);out.alive=false;out.eliminatedByVote=true;addLog(`${out.name} was voted out during the day.`);const result=checkWin();if(result.done){await finishOnlineGame(result);return;}await startOnlineNight();return;
     }
 
@@ -3989,7 +4049,7 @@
       const gamblerPool=gamblerAbilityPool();
       nightPlayers.forEach(p=>{p.framedRoleId=null; if(roleOf(p)?.nightAction==='gambler') gamblerActions[p.id]=randomChoice(gamblerPool)||'none'; if((gamblerActions[p.id]||roleOf(p)?.nightAction)==='seer'){const choices=nightPlayers.filter(t=>t.id!==p.id);round1SeerTargets[p.id]=randomChoice(choices)?.id??null;}});
       const queue = getConfiguredNightOrder(nightPlayers);
-      state.night={round:1,queue,index:0,busy:false,usedTeamKillRoleIds:[],pendingAttacks:[],reactionQueue:[],reactionCompleted:[],round1Players:nightPlayers,round1Submitted:{},round1SeerTargets,round1InspectTargets:{},framerTargetId:null,framerRoleChooserId:null,haterTargets:{},protectedIds:[],blockedIds:[],trackTargets:{},watchTargets:{},actionRecords:{},round1Actions:{},gamblerActions,onlineAckNeeded:false,onlineResults:{},onlineSeerTargetId:null};
+      state.night={round:1,queue,index:0,busy:false,usedTeamKillRoleIds:[],pendingAttacks:[],reactionQueue:[],reactionCompleted:[],round1Players:nightPlayers,round1Submitted:{},round1SeerTargets,round1InspectTargets:{},framerTargetId:null,framerRoleChooserId:null,haterTargets:{},protectedIds:[],blockedIds:[],trackTargets:{},watchTargets:{},actionRecords:{},round1Actions:{},gamblerActions,onlineAckNeeded:false,onlineResults:{},onlineSeerTargetId:null,resolvedRound1:false};
       await publishOnlineRoom();
     }
 
@@ -4012,6 +4072,16 @@
 
     async function beginOnlineReactionRound() {
       resolveOnlineNightBeforeReactions();
+
+      // Resolve win conditions immediately after deterministic night effects.
+      // Otherwise the game can incorrectly create another reaction turn after
+      // a kill has already ended the game.
+      const result = checkWin();
+      if (result.done) {
+        await finishOnlineGame(result);
+        return;
+      }
+
       state.night.round=2;
       bumpOnlineVersion();
       const base = state.night.round1Players ? state.night.round1Players : playersAlive();
@@ -4046,6 +4116,11 @@
         state.players=entries.map((p,i)=>{const existing=state.players.find(x=>x.uid===p.uid); return existing?{...existing,id:i,uid:p.uid,name:p.name}:{...createPlayer(i,p.name||`Player ${i+1}`),uid:p.uid};});
         assignRoles(); state.logs=[]; state.round=1; state.phase='day'; state.day={secondBallot:false,votes:{},tiedCandidates:[]}; state.night={}; state.processedCommandIds={}; state.onlineCommandAcks={}; state.onlineVersion=1;
         online.roomStatus='started';
+        const openingResult = checkWin();
+        if (openingResult.done) {
+          await finishOnlineGame(openingResult);
+          return;
+        }
         hide('setupScreen','onlineLobby');show('onlineGame');hide('onlineGameOver');show('onlineActionCard','onlineAdminPanel');
         const {dbMod}=online.api; const statusRef=dbMod.ref(online.db,`rooms/${online.roomCode}/meta/status`);
         const tx=await dbMod.runTransaction(statusRef,current=>current==='lobby'?'started':undefined);
