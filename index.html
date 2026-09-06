@@ -3707,9 +3707,21 @@
       }
 
       if (nightAction === 'inspectOrientation') {
-        const target=playerOf(Number(value)); if (!target || !target.alive || target.id===actor.id) return;
+        const target=playerOf(Number(value));
+        if (!target || !target.alive || target.id===actor.id) {
+          ackOnlineCommand(commandUid, commandId, false, 'That player is no longer available to inspect.');
+          await publishOnlineRoom();
+          return;
+        }
+        // Keep the Detective's selected target in the dedicated field used by
+        // the Round 2 reaction/result screen. The action record alone is not
+        // enough because the result renderer reads round1InspectTargets.
+        n.round1InspectTargets = n.round1InspectTargets || {};
+        n.round1InspectTargets[actor.id] = target.id;
         n.round1Actions[actor.id] = {action:'inspectOrientation',targetId:target.id};
-        n.round1Submitted[actor.id]=true; ackOnlineCommand(commandUid, commandId, true, 'Your action was recorded.'); await publishOnlineRoom(); await maybeFinishOnlineRound1(); return;
+        n.round1Submitted[actor.id]=true;
+        ackOnlineCommand(commandUid, commandId, true, `You are inspecting ${target.name}.`);
+        await publishOnlineRoom(); await maybeFinishOnlineRound1(); return;
       }
 
       if (nightAction === 'seer') {
