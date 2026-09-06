@@ -3103,18 +3103,40 @@
 
     function enterHostLobby() {
       online.roomStatus = 'lobby';
+      // Immediately reset every online screen. Do not wait for Firebase listeners to
+      // echo the new room state, because the previous room may have left stale game
+      // or game-over elements visible for a frame (or longer on a slow connection).
+      hide('onlineEntry','onlineGame','onlineGameOver','onlineAdminPanel');
+      show('onlineLobby','hostRoomControls','setupScreen');
+      hide('guestLobbyNotice');
       $('hostRoomCode').textContent = online.roomCode;
-      show('onlineLobby'); show('hostRoomControls'); hide('guestLobbyNotice'); show('setupScreen'); hide('onlineGame');
+      $('onlineLobbyPhase').textContent = 'Room lobby';
+      $('onlineLobbyTitle').textContent = 'Configure the game';
       $('setupOnlineBadge').classList.remove('hidden');
       $('startBtn').disabled = false;
+      $('onlineActionArea').innerHTML = '';
+      $('onlineActionResult').innerHTML = '';
+      $('onlineRoleBox').innerHTML = 'Waiting for the host to start…';
+      $('onlinePublicStatus').textContent = 'Room lobby.';
+      $('onlinePlayersList').innerHTML = '';
+      $('onlineGameOver').classList.add('hidden');
       setOnlineStatus(`Room ${online.roomCode} created.`, false);
       renderOnlineLobbyPlayers();
     }
 
     function enterGuestLobby() {
       online.roomStatus = 'lobby';
-      hide('setupScreen'); show('onlineLobby'); hide('onlineGame'); hide('hostRoomControls'); show('guestLobbyNotice');
-      $('onlineLobbyPhase').textContent = 'Room lobby'; $('onlineLobbyTitle').textContent = 'Waiting for host';
+      // Same hard reset for guests so a reused tab can never display the previous
+      // room's game-over state underneath the new lobby.
+      hide('onlineEntry','setupScreen','onlineGame','onlineGameOver','onlineAdminPanel','hostRoomControls');
+      show('onlineLobby','guestLobbyNotice');
+      $('onlineLobbyPhase').textContent = 'Room lobby';
+      $('onlineLobbyTitle').textContent = 'Waiting for host';
+      $('onlineActionArea').innerHTML = '';
+      $('onlineActionResult').innerHTML = '';
+      $('onlineRoleBox').innerHTML = 'Waiting for the host to start…';
+      $('onlinePublicStatus').textContent = 'Room lobby.';
+      $('onlinePlayersList').innerHTML = '';
       setOnlineStatus(`Joined room ${online.roomCode}.`, false);
     }
 
