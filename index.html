@@ -2102,7 +2102,9 @@
             ? `<strong>Team kill:</strong> ${team.map(p => escapeHtml(p.name)).join(', ')} share one kill tonight. If one of you uses it, the others cannot. Choose one target.`
             : `<strong>${escapeHtml(role.title)}</strong> — choose a living target for your team kill.`;
           living.forEach(choose);
-          area.appendChild(actionButton('Do not use the team kill', 'skip', () => setChoiceAndContinue(actor, 'skip')));
+          if (role.id !== 'peacemaker') {
+            area.appendChild(actionButton('Do not use the team kill', 'skip', () => setChoiceAndContinue(actor, 'skip')));
+          }
           break;
         }
         case 'kill': {
@@ -3219,7 +3221,11 @@
             const targetId = infoAction === 'inspectOrientation' ? night.round1InspectTargets?.[player.id] : night.round1SeerTargets?.[player.id];
             const target = playerOf(targetId);
             const effective = effectiveRoleOf(target);
-            payload.turn = {type:'reaction',action:infoAction,prompt:target ? (infoAction === 'inspectOrientation' ? `${target.name} is ${labelOrientation(effective?.orientation || 'unknown')}.` : `${target.name} is ${effective?.title || 'Unknown'}.`) : 'No valid result remains.',options:[{id:'ack',name:'Acknowledge & continue'}]};
+            const resultText = target
+              ? (infoAction === 'inspectOrientation' ? `Investigation result: ${target.name} is ${labelOrientation(effective?.orientation || 'unknown')}.` : `Seer result: ${target.name} is ${effective?.title || 'Unknown'}.`)
+              : 'No valid result remains.';
+            payload.result = resultText;
+            payload.turn = {type:'reaction',action:infoAction,prompt:'Your result is shown above. Acknowledge & continue.',options:[{id:'ack',name:'Acknowledge & continue'}]};
           } else if (infoAction === 'janitor') {
             const deadThisNight=(night.round1Players||[]).filter(p=>!p.alive);
             payload.turn=!deadThisNight.length
@@ -3644,8 +3650,17 @@
 
       const nightAction = String(nightActionFor(actor) || 'none');
       if (nightAction === 'kill' || nightAction === 'teamKill') {
+        const roleIsPeacemaker = role?.id === 'peacemaker';
         const target = playerOf(Number(value));
+        if (value === 'skip' && roleIsPeacemaker) {
+          ackOnlineCommand(commandUid, commandId, false, 'Peacemaker must use the team kill. Choose a living target.');
+          await publishOnlineRoom(); return;
+        }
         if (!target || !target.alive || target.id === actor.id) {
+          if (roleIsPeacemaker) {
+            ackOnlineCommand(commandUid, commandId, false, 'Peacemaker must use the team kill. That target is no longer available; choose another living target.');
+            await publishOnlineRoom(); return;
+          }
           n.round1Actions[actor.id] = {action:'none'};
           n.round1Submitted[actor.id] = true;
           ackOnlineCommand(commandUid, commandId, true, 'That target is no longer available, so the night action was recorded as no-op.');
