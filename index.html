@@ -3192,7 +3192,9 @@
           if (!player.alive) payload.turn = {type:'nightRound1',action:'none',prompt:'You are eliminated before the night abilities. Press Done.',options:[{id:'ack',name:'Done'}]};
           else if (['teamKill','kill'].includes(dynamicAction)) {
             const teamUsed = dynamicAction === 'teamKill' && night.usedTeamKillRoleIds.includes(teamKillGroupKey(r));
-            payload.turn = {type:'nightRound1',action:dynamicAction,prompt:teamUsed ? `Your ${r.title} team already has a kill submitted tonight.` : 'Choose a living player to target.',options:teamUsed ? [{id:'ack',name:'Done'}] : playersAlive().filter(t => t.id !== player.id).map(t => ({id:t.id,name:t.name}))};
+            const targetOptions = teamUsed ? [{id:'ack',name:'Done'}] : playersAlive().filter(t => t.id !== player.id).map(t => ({id:t.id,name:t.name}));
+            if (!teamUsed && dynamicAction === 'teamKill') targetOptions.push({id:'skip',name:'Do not use the team kill'});
+            payload.turn = {type:'nightRound1',action:dynamicAction,prompt:teamUsed ? `Your ${r.title} team already has a kill submitted tonight.` : (dynamicAction === 'teamKill' ? 'Choose a living player for your shared team kill, or choose not to use it tonight.' : 'Choose a living player to kill.'),options:targetOptions};
           } else if (dynamicAction === 'inspectOrientation') {
             payload.turn = {type:'nightRound1',action:'inspectOrientation',prompt:'Choose a living player to inspect. Their orientation will be shown during night reactions.',options:playersAlive().filter(t => t.id !== player.id).map(t => ({id:t.id,name:t.name}))};
           } else if (dynamicAction === 'seer') {
@@ -3462,7 +3464,9 @@
         online.pendingCommandId = null;
         online.pendingCommandPhase = null;
         $('onlineActionPrompt').textContent = ack.accepted ? 'Action confirmed.' : 'Action needs attention.';
-        $('onlineActionResult').innerHTML = `<div class="result">${escapeHtml(ack.message || '')}</div>`;
+        if (!priv?.result) {
+          $('onlineActionResult').innerHTML = `<div class="result">${escapeHtml(ack.message || '')}</div>`;
+        }
       }
     }
 
@@ -3636,6 +3640,19 @@
       if (!n.round1Players?.some(p => p.id === actor.id)) { ackOnlineCommand(commandUid, commandId, false, 'You are not eligible for this night action.'); await publishOnlineRoom(); return; }
       n.round1Submitted = n.round1Submitted || {};
       n.round1Actions = n.round1Actions || {};
+      if (nightActionFor(actor) === 'hater' && state.round === 1 && value === 'ack') {
+        if (!actor.haterTargetId) {
+          const possible = n.round1Players.filter(p => p.alive && p.id !== actor.id);
+          actor.haterTargetId = randomChoice(possible)?.id ?? null;
+        }
+        n.haterTargets = n.haterTargets || {};
+        n.haterTargets[actor.id] = actor.haterTargetId;
+        n.round1Actions[actor.id] = {action:'hater',targetId:actor.haterTargetId};
+        n.round1Submitted[actor.id] = true;
+        ackOnlineCommand(commandUid, commandId, true, 'Your Hater target was assigned.');
+        setPrivateResult(actor.id, 'Your random target has been assigned. The target will be revealed during night reactions.');
+        await publishOnlineRoom(); await maybeFinishOnlineRound1(); return;
+      }
       if (n.round1Submitted[actor.id]) {
         ackOnlineCommand(commandUid, commandId, true, 'Your night action was already recorded.');
         await publishOnlineRoom();
@@ -3751,6 +3768,7 @@
         n.round1Actions[actor.id] = {action:'inspectOrientation',targetId:target.id};
         n.round1Submitted[actor.id]=true;
         ackOnlineCommand(commandUid, commandId, true, `You are inspecting ${target.name}.`);
+        setPrivateResult(actor.id, `Inspection target recorded: ${target.name}. The orientation result will be shown during night reactions.`);
         await publishOnlineRoom(); await maybeFinishOnlineRound1(); return;
       }
 
