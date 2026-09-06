@@ -2794,7 +2794,7 @@
       mode: 'offline', uid: null, roomCode: null, seatId: null, isHost: false,
       app: null, auth: null, db: null, api: null, roomUnsub: null, playersUnsub: null,
       publicUnsub: null, privateUnsub: null, commandUnsub: null, playersCache: {}, public: null, private: null,
-      processingCommand: false, commandQueue: [], commandWorkerRunning: false, publishChain: Promise.resolve(), roomEpoch: 0
+      processingCommand: false, commandQueue: [], commandWorkerRunning: false, publishChain: Promise.resolve()
     };
 
     function firebaseConfigured() {
@@ -2838,10 +2838,6 @@
       online.publishChain = Promise.resolve();
     }
 
-    function onlineSessionValid(epoch, roomCode) {
-      return epoch === online.roomEpoch && !!roomCode && roomCode === online.roomCode && online.mode !== 'offline';
-    }
-
     let authInitPromise = null;
 
     async function ensureAnonymousAuth() {
@@ -2880,7 +2876,6 @@
 
     async function createRoom() {
       if (online.roomCode || online.joining) return;
-      const epoch = ++online.roomEpoch;
       online.joining = true;
       $('createRoomBtn').disabled = true; $('joinRoomBtn').disabled = true;
       try {
@@ -2897,13 +2892,7 @@
           if (!claimed) code = roomCode();
         }
         if (!claimed) throw new Error('Could not claim a room code. Try again.');
-        // Reset any stale client-side room/game state before subscribing to the new room.
-        // This prevents a late callback from a previous room/game-over screen from
-        // leaking into a freshly created lobby.
         online.mode='host'; online.isHost=true; online.roomCode=code; online.seatId=0;
-        online.roomStatus='lobby'; online.public=null; online.private=null; online.playersCache={};
-        online._winner=null; state.phase='setup'; state.round=1; state.night={};
-        state.day={secondBallot:false,votes:{},tiedCandidates:[]}; state.logs=[];
         localStorage.setItem('mafia:lastRoomCode', code);
         const now=Date.now(), name=getDisplayName();
         await dbMod.update(dbMod.ref(online.db), {
@@ -2915,10 +2904,8 @@
         const hostPlayerRef=dbMod.ref(online.db,`rooms/${code}/players/${online.uid}`);
         await dbMod.onDisconnect(hostPlayerRef).update({connected:false,lastSeen:Date.now()});
         await dbMod.update(hostPlayerRef,{connected:true,lastSeen:Date.now()});
-        if (!onlineSessionValid(epoch, code)) return;
-        subscribeToRoom(code, epoch); enterHostLobby();
+        subscribeToRoom(code); enterHostLobby();
       } catch (err) {
-        if (epoch !== online.roomEpoch) return;
         console.error(err); online.mode='offline'; online.isHost=false; online.roomCode=null; online.seatId=null;
         setOnlineStatus(err?.message || String(err), true);
       } finally {
@@ -2928,7 +2915,6 @@
 
     async function joinRoom() {
       if (online.roomCode || online.joining) return;
-      const epoch = ++online.roomEpoch;
       const code = String($('onlineJoinCode').value || '').trim().toUpperCase().replace(/[^A-Z0-9]/g,'');
       if (code.length !== 6) {setOnlineStatus('Enter the six-character room code.', true); return;}
       online.joining=true; $('createRoomBtn').disabled=true; $('joinRoomBtn').disabled=true;
@@ -2944,22 +2930,19 @@
         online.mode='guest'; online.isHost=false; online.roomCode=code; online.seatId=null; localStorage.setItem('mafia:lastRoomCode',code);
         await dbMod.onDisconnect(playerRef).update({connected:false,lastSeen:Date.now()});
         await dbMod.update(playerRef,{connected:true,lastSeen:Date.now()});
-        if (!onlineSessionValid(epoch, code)) return;
-        subscribeToRoom(code, epoch); enterGuestLobby();
+        subscribeToRoom(code); enterGuestLobby();
       } catch(err){
-        if (epoch !== online.roomEpoch) return;
         console.error(err); online.mode='offline'; online.isHost=false; online.roomCode=null; online.seatId=null;
         setOnlineStatus(err?.message||String(err),true);
       } finally {online.joining=false;$('createRoomBtn').disabled=false;$('joinRoomBtn').disabled=false;}
     }
 
     function syncOnlineShell() {
-      // Room meta/status is authoritative for lifecycle state. The public snapshot
-      // can legitimately be one callback behind during reconnects/room creation.
       const metaStatus = online.roomStatus || null;
-      const inLobby = metaStatus === 'lobby';
-      const inGame = metaStatus === 'started';
-      const gameOver = metaStatus === 'gameover';
+      const publicPhase = online.public?.phase || null;
+      const inGame = metaStatus === 'started' || (publicPhase && publicPhase !== 'lobby' && publicPhase !== 'gameover');
+      const inLobby = metaStatus === 'lobby' && (!publicPhase || publicPhase === 'lobby');
+      const gameOver = metaStatus === 'gameover' || publicPhase === 'gameover';
 
       if (inLobby) {
         $('onlineLobbyPhase').textContent = 'Room lobby';
@@ -2984,13 +2967,12 @@
       }
     }
 
-    function subscribeToRoom(code, epoch = online.roomEpoch) {
+    function subscribeToRoom(code) {
       cleanupOnlineListeners();
       const {dbMod} = online.api;
       const roomRef = dbMod.ref(online.db, `rooms/${code}`);
       online.roomStatus = null;
       online.roomUnsub = dbMod.onValue(dbMod.ref(online.db, `rooms/${code}/meta`), snap => {
-        if (!onlineSessionValid(epoch, code)) return;
         const meta = snap.val();
         if (!meta) {
           if (!online.leaving) leaveOnlineRoom(false); return;
@@ -3000,7 +2982,6 @@
         syncOnlineShell();
       });
       online.playersUnsub = dbMod.onValue(dbMod.ref(online.db, `rooms/${code}/players`), snap => {
-        if (!onlineSessionValid(epoch, code)) return;
         online.playersCache = snap.val() || {};
         if (online.isHost) reconcileHostPlayers();
         renderOnlineLobbyPlayers(); renderOnlinePublicPlayers();
@@ -3013,7 +2994,6 @@
         }
       });
       online.publicUnsub = dbMod.onValue(dbMod.ref(online.db, `rooms/${code}/public`), snap => {
-        if (!onlineSessionValid(epoch, code)) return;
         online.public = snap.val() || null;
         // Keep the guest's lightweight local roster aligned with the host's authoritative public state.
         // Private payloads still carry the true role/ability information.
@@ -3030,14 +3010,12 @@
           });
         }
         syncOnlineShell();
-        // Never let a stale public snapshot override the authoritative room meta state.
-        if (online.roomStatus === 'started' && online.public?.phase !== 'lobby') renderOnlinePublic();
-        if (online.roomStatus === 'gameover' && online.public?.phase === 'gameover') renderOnlineGameOver(online.public);
+        if (online.public?.phase !== 'lobby') renderOnlinePublic();
+        if (online.public?.phase === 'gameover') renderOnlineGameOver(online.public);
         renderAdminPanel();
-        if (online.isHost) maybeAutoAdvanceOnlinePhase().catch(console.error);
       });
       online.stateUnsub = dbMod.onValue(dbMod.ref(online.db, `rooms/${code}/state`), snap => {
-        if (!onlineSessionValid(epoch, code) || !online.isHost) return;
+        if (!online.isHost) return;
         const snapshot=snap.val();
         if (snapshot && online.roomStatus==='started' && Number(snapshot.onlineVersion || 0) !== Number(state.onlineVersion || 0)) {
           hydratePersistedState(snapshot);
@@ -3045,21 +3023,16 @@
         }
       });
       online.privateUnsub = dbMod.onValue(dbMod.ref(online.db, `rooms/${code}/private/${online.uid}`), snap => {
-        if (!onlineSessionValid(epoch, code)) return;
         online.private = snap.val() || null; renderOnlinePrivate();
       });
       online.commandQueue=[]; online.commandWorkerRunning=false;
-      online.commandUnsub=dbMod.onChildAdded(dbMod.ref(online.db,`rooms/${code}/commands`),snap=>{
-        if (!onlineSessionValid(epoch, code)) return;
-        online.commandQueue.push({snap,cmd:snap.val(),roomCode:code,epoch});
-        processOnlineCommandQueue().catch(console.error);
-      });
+      online.commandUnsub=dbMod.onChildAdded(dbMod.ref(online.db,`rooms/${code}/commands`),snap=>{online.commandQueue.push({snap,cmd:snap.val()});processOnlineCommandQueue().catch(console.error);});
       renderOnlineLobbyPlayers();
     }
 
     async function processOnlineCommandQueue() {
       if(online.commandWorkerRunning || !online.isHost || !online.api?.dbMod) return; online.commandWorkerRunning=true; const {dbMod}=online.api;
-      try{while(online.commandQueue.length){const item=online.commandQueue.shift();if(!item)continue;try{await handleOnlineCommand(item.cmd,item.snap.key,item.roomCode,item.epoch);}catch(err){console.error('Command error',err);}try{await dbMod.remove(item.snap.ref);}catch(err){console.error('Command cleanup error:',err);}}}finally{online.commandWorkerRunning=false;if(online.commandQueue.length)processOnlineCommandQueue().catch(console.error);}
+      try{while(online.commandQueue.length){const item=online.commandQueue.shift();if(!item)continue;try{await handleOnlineCommand(item.cmd,item.snap.key);}catch(err){console.error('Command error',err);}try{await dbMod.remove(item.snap.ref);}catch(err){console.error('Command cleanup error:',err);}}}finally{online.commandWorkerRunning=false;if(online.commandQueue.length)processOnlineCommandQueue().catch(console.error);}
     }
 
     function resolveLocalSeatId() {
@@ -3121,46 +3094,23 @@
 
     function enterHostLobby() {
       online.roomStatus = 'lobby';
-      // Immediately reset every online screen. Do not wait for Firebase listeners to
-      // echo the new room state, because the previous room may have left stale game
-      // or game-over elements visible for a frame (or longer on a slow connection).
-      hide('onlineEntry','onlineGame','onlineGameOver','onlineAdminPanel');
-      show('onlineLobby','hostRoomControls','setupScreen');
-      hide('guestLobbyNotice');
       $('hostRoomCode').textContent = online.roomCode;
-      $('onlineLobbyPhase').textContent = 'Room lobby';
-      $('onlineLobbyTitle').textContent = 'Configure the game';
+      show('onlineLobby'); show('hostRoomControls'); hide('guestLobbyNotice'); show('setupScreen'); hide('onlineGame');
       $('setupOnlineBadge').classList.remove('hidden');
       $('startBtn').disabled = false;
-      $('onlineActionArea').innerHTML = '';
-      $('onlineActionResult').innerHTML = '';
-      $('onlineRoleBox').innerHTML = 'Waiting for the host to start…';
-      $('onlinePublicStatus').textContent = 'Room lobby.';
-      $('onlinePlayersList').innerHTML = '';
-      $('onlineGameOver').classList.add('hidden');
       setOnlineStatus(`Room ${online.roomCode} created.`, false);
       renderOnlineLobbyPlayers();
     }
 
     function enterGuestLobby() {
       online.roomStatus = 'lobby';
-      // Same hard reset for guests so a reused tab can never display the previous
-      // room's game-over state underneath the new lobby.
-      hide('onlineEntry','setupScreen','onlineGame','onlineGameOver','onlineAdminPanel','hostRoomControls');
-      show('onlineLobby','guestLobbyNotice');
-      $('onlineLobbyPhase').textContent = 'Room lobby';
-      $('onlineLobbyTitle').textContent = 'Waiting for host';
-      $('onlineActionArea').innerHTML = '';
-      $('onlineActionResult').innerHTML = '';
-      $('onlineRoleBox').innerHTML = 'Waiting for the host to start…';
-      $('onlinePublicStatus').textContent = 'Room lobby.';
-      $('onlinePlayersList').innerHTML = '';
+      hide('setupScreen'); show('onlineLobby'); hide('onlineGame'); hide('hostRoomControls'); show('guestLobbyNotice');
+      $('onlineLobbyPhase').textContent = 'Room lobby'; $('onlineLobbyTitle').textContent = 'Waiting for host';
       setOnlineStatus(`Joined room ${online.roomCode}.`, false);
     }
 
     async function leaveOnlineRoom(showEntry=true){
       if(online.leaving) return; online.leaving=true;
-      ++online.roomEpoch;
       const code=online.roomCode,wasHost=online.isHost;
       try{if(code&&online.db&&online.api?.dbMod){const {dbMod}=online.api;if(wasHost) await dbMod.remove(dbMod.ref(online.db,`rooms/${code}`)); else if(online.uid) await dbMod.remove(dbMod.ref(online.db,`rooms/${code}/players/${online.uid}`));}}catch(err){console.error(err);}
       cleanupOnlineListeners(); localStorage.removeItem('mafia:lastRoomCode');
@@ -3175,7 +3125,7 @@
 
     function onlinePublicSnapshot() {
       const players = state.players.map(p => ({id: p.id, name: p.name, alive: p.alive, eliminatedByVote: !!p.eliminatedByVote, silenced: !!p.silenced, role: state.phase === 'gameover' ? (roleOf(p) ? {title: roleOf(p).title, orientation: roleOf(p).orientation} : null) : null}));
-      const base = {phase: state.phase, round: state.round, version: state.onlineVersion, players, joinable: online.roomStatus==='lobby' || (online.roomStatus==='started' && state.phase==='day' && !state.day.secondBallot && Object.keys(state.day?.votes||{}).length===0)};
+      const base = {phase: state.phase, round: state.round, version: state.onlineVersion, players, joinable: online.roomStatus==='lobby' || (online.roomStatus==='started' && state.phase==='day' && Object.keys(state.day?.votes||{}).length===0)};
       if (state.phase === 'day') {
         const submittedVotes = {};
         state.players.filter(p => p.alive).forEach(p => {
@@ -3191,7 +3141,7 @@
           base.night = {round:1, currentActorId:null, abilitiesSubmitted:eligible.filter(p => submitted[p.id]).length, abilitiesTotal:eligible.length};
         } else {
           const actor = onlineCurrentNightActor();
-          base.night = {round:2, currentActorId:actor?.id ?? null, reactionsCompleted:(state.night.reactionCompleted || []).length, reactionsTotal:(state.night.reactionQueue || state.night.round1Players || []).length};
+          base.night = {round:2, currentActorId:actor?.id ?? null, reactionsCompleted:(state.night.reactionCompleted || []).length, reactionsTotal:(state.night.round1Players || []).length};
         }
       }
       return base;
@@ -3551,12 +3501,9 @@
       online.pendingCommandPhase = online.public?.phase || null;
       [...$('onlineActionArea').querySelectorAll('button')].forEach(btn => btn.disabled = true);
 
-      const commandRoomCode = online.roomCode;
-      const commandEpoch = online.roomEpoch;
       try {
         await dbMod.set(commandRef, {
           uid: online.uid,
-          roomCode: commandRoomCode,
           ...(Number.isInteger(resolvedSeat) ? {seatId: resolvedSeat} : {}),
           type: 'action',
           payload,
@@ -3578,11 +3525,8 @@
       state.onlineCommandAcks[uid] = {commandId, accepted: !!accepted, message: String(message || (accepted ? 'Submitted.' : 'The host rejected that action.')), at: Date.now()};
     }
 
-    async function handleOnlineCommand(cmd, commandId=null, queuedRoomCode=null, queuedEpoch=null) {
-      const roomCode = queuedRoomCode || cmd.roomCode || online.roomCode;
-      const epoch = Number.isInteger(queuedEpoch) ? queuedEpoch : online.roomEpoch;
-      if (!onlineSessionValid(epoch, roomCode) || !online.isHost || !cmd || !cmd.payload || !commandId) return;
-      if (cmd.roomCode && cmd.roomCode !== online.roomCode) return;
+    async function handleOnlineCommand(cmd, commandId=null) {
+      if (!online.isHost || !cmd || !cmd.payload || !commandId) return;
       if (state.processedCommandIds?.[commandId]) return;
 
       const cmdVersion = Number(cmd.payload.version);
@@ -3655,8 +3599,9 @@
           ackOnlineCommand(cmd.uid, commandId, true, `Your vote for ${target.name} was recorded.`);
         }
 
-        await maybeAutoAdvanceOnlinePhase();
-        if (state.phase === 'day') await publishOnlineRoom();
+        const living = playersAlive();
+        if (living.every(v => v.silenced || isChosen(state.day.votes[v.id]))) await resolveOnlineDay();
+        else await publishOnlineRoom();
         return;
       }
 
@@ -3667,7 +3612,7 @@
       }
 
       const n = state.night;
-      if (n.round === 1) await handleOnlineNightRound1(actor, String(value), String(cmd.payload.actionType || cmd.payload.turnType || ''), cmd.uid, commandId, epoch, roomCode);
+      if (n.round === 1) await handleOnlineNightRound1(actor, String(value), String(cmd.payload.actionType || cmd.payload.turnType || ''), cmd.uid, commandId);
       else {
         const current = onlineCurrentNightActor();
         if (!current || current.id !== actor.id) {
@@ -3675,27 +3620,26 @@
           await publishOnlineRoom();
           return;
         }
-        await handleOnlineNightReaction(actor, String(value), cmd.uid, commandId, epoch, roomCode);
+        await handleOnlineNightReaction(actor, String(value), cmd.uid, commandId);
       }
     }
 
-    async function handleOnlineNightRound1(actor, value, actionType, commandUid=null, commandId=null, epoch=online.roomEpoch, roomCode=online.roomCode) {
-      if (!onlineSessionValid(epoch, roomCode)) return;
+    async function handleOnlineNightRound1(actor, value, actionType, commandUid=null, commandId=null) {
       const role = roleOf(actor), n = state.night;
       const dynamicAction = nightActionFor(actor);
-      if (!n.round1Players?.some(p => p.id === actor.id)) { ackOnlineCommand(commandUid, commandId, false, 'You are not eligible for this night action.'); if (!onlineSessionValid(epoch, roomCode)) return; await publishOnlineRoom(); return; }
+      if (!n.round1Players?.some(p => p.id === actor.id)) { ackOnlineCommand(commandUid, commandId, false, 'You are not eligible for this night action.'); await publishOnlineRoom(); return; }
       n.round1Submitted = n.round1Submitted || {};
       n.round1Actions = n.round1Actions || {};
       if (n.round1Submitted[actor.id]) {
         ackOnlineCommand(commandUid, commandId, true, 'Your night action was already recorded.');
-        if (!onlineSessionValid(epoch, roomCode)) return; await publishOnlineRoom();
+        await publishOnlineRoom();
         return;
       }
       if (!actor.alive || value === 'ack') {
         n.round1Actions[actor.id] = {action:'none'};
         n.round1Submitted[actor.id] = true;
         ackOnlineCommand(commandUid, commandId, true, 'Your night ability was recorded.');
-        if (!onlineSessionValid(epoch, roomCode)) return; await publishOnlineRoom(); await maybeFinishOnlineRound1(epoch, roomCode); return;
+        await publishOnlineRoom(); await maybeFinishOnlineRound1(); return;
       }
 
       const nightAction = String(nightActionFor(actor) || 'none');
@@ -3705,24 +3649,24 @@
           n.round1Actions[actor.id] = {action:'none'};
           n.round1Submitted[actor.id] = true;
           ackOnlineCommand(commandUid, commandId, true, 'That target is no longer available, so the night action was recorded as no-op.');
-          if (!onlineSessionValid(epoch, roomCode)) return; await publishOnlineRoom(); await maybeFinishOnlineRound1(epoch, roomCode); return;
+          await publishOnlineRoom(); await maybeFinishOnlineRound1(); return;
         }
         n.round1Actions[actor.id] = {action:nightAction,targetId:target.id};
         n.round1Submitted[actor.id] = true;
         ackOnlineCommand(commandUid, commandId, true, `Target recorded: ${target.name}.`);
         setPrivateResult(actor.id, `Target recorded: ${target.name}. Your ${nightAction === 'teamKill' ? 'team kill' : 'kill'} is submitted.`);
-        if (!onlineSessionValid(epoch, roomCode)) return; await publishOnlineRoom(); await maybeFinishOnlineRound1(epoch, roomCode); return;
+        await publishOnlineRoom(); await maybeFinishOnlineRound1(); return;
       }
 
       if (actionType === 'framerRoleChoice' && nightAction === 'framer') {
         if (n.framerRoleChooserId !== actor.id || !n.framerTargetId) {
           ackOnlineCommand(commandUid, commandId, false, 'That framing step is no longer active.');
-          if (!onlineSessionValid(epoch, roomCode)) return; await publishOnlineRoom();
+          await publishOnlineRoom();
           return;
         }
         if (!state.roles.some(r => r.id === String(value))) {
           ackOnlineCommand(commandUid, commandId, false, 'That role is no longer available.');
-          if (!onlineSessionValid(epoch, roomCode)) return; await publishOnlineRoom();
+          await publishOnlineRoom();
           return;
         }
         const target = playerOf(n.framerTargetId);
@@ -3732,14 +3676,14 @@
           n.round1Submitted[actor.id] = true;
           ackOnlineCommand(commandUid, commandId, true, 'The framing target is no longer available; your action was recorded as no-op.');
           setPrivateResult(actor.id,'The framing target is no longer available. Your night ability is submitted.');
-          if (!onlineSessionValid(epoch, roomCode)) return; await publishOnlineRoom(); await maybeFinishOnlineRound1(epoch, roomCode); return;
+          await publishOnlineRoom(); await maybeFinishOnlineRound1(); return;
         }
         n.round1Actions[actor.id] = {action:'framer',targetId:target.id,framedRoleId:String(value)};
         n.framerRoleChooserId = null;
         n.round1Submitted[actor.id] = true;
         target.framedRoleId = String(value);
         setPrivateResult(actor.id,`${target.name} will be treated as ${effectiveRoleOf(target)?.title || 'Unknown'} for Detective and Seer checks tonight.`);
-        if (!onlineSessionValid(epoch, roomCode)) return; await publishOnlineRoom(); await maybeFinishOnlineRound1(epoch, roomCode); return;
+        await publishOnlineRoom(); await maybeFinishOnlineRound1(); return;
       }
 
       if (nightAction === 'framer') {
@@ -3748,12 +3692,12 @@
           n.round1Actions[actor.id] = {action:'none'};
           n.round1Submitted[actor.id] = true;
           ackOnlineCommand(commandUid, commandId, true, 'The framing target is no longer available, so your action was recorded as no-op.');
-          if (!onlineSessionValid(epoch, roomCode)) return; await publishOnlineRoom(); await maybeFinishOnlineRound1(epoch, roomCode); return;
+          await publishOnlineRoom(); await maybeFinishOnlineRound1(); return;
         }
         n.framerTargetId=target.id; target.framedRoleId=null;
         n.framerRoleChooserId=actor.id;
         setPrivateResult(actor.id,`${target.name} was selected. Now choose what role they will appear as tonight. The target will not be told they were framed.`);
-        if (!onlineSessionValid(epoch, roomCode)) return; await publishOnlineRoom(); return;
+        await publishOnlineRoom(); return;
       }
 
       if (nightAction === 'hater' && state.round === 1) {
@@ -3765,7 +3709,7 @@
         n.round1Actions[actor.id] = {action:'hater',targetId:actor.haterTargetId};
         n.round1Submitted[actor.id]=true;
         setPrivateResult(actor.id,'Your random target has been recorded. The target will be revealed during night reactions.');
-        if (!onlineSessionValid(epoch, roomCode)) return; await publishOnlineRoom(); await maybeFinishOnlineRound1(epoch, roomCode); return;
+        await publishOnlineRoom(); await maybeFinishOnlineRound1(); return;
       }
 
       if (['protect','roleblock','silence','track','watch'].includes(nightAction)) {
@@ -3774,14 +3718,14 @@
         n.round1Submitted[actor.id]=true;
         ackOnlineCommand(commandUid, commandId, true, 'Your action was recorded.');
         setPrivateResult(actor.id,'Action recorded. Any information result will be shown during night reactions.');
-        if (!onlineSessionValid(epoch, roomCode)) return; await publishOnlineRoom(); await maybeFinishOnlineRound1(epoch, roomCode); return;
+        await publishOnlineRoom(); await maybeFinishOnlineRound1(); return;
       }
 
       if (nightAction === 'inspectOrientation') {
         const target=playerOf(Number(value));
         if (!target || !target.alive || target.id===actor.id) {
           ackOnlineCommand(commandUid, commandId, false, 'That player is no longer available to inspect.');
-          if (!onlineSessionValid(epoch, roomCode)) return; await publishOnlineRoom();
+          await publishOnlineRoom();
           return;
         }
         // Keep the Detective's selected target in the dedicated field used by
@@ -3792,18 +3736,18 @@
         n.round1Actions[actor.id] = {action:'inspectOrientation',targetId:target.id};
         n.round1Submitted[actor.id]=true;
         ackOnlineCommand(commandUid, commandId, true, `You are inspecting ${target.name}.`);
-        if (!onlineSessionValid(epoch, roomCode)) return; await publishOnlineRoom(); await maybeFinishOnlineRound1(epoch, roomCode); return;
+        await publishOnlineRoom(); await maybeFinishOnlineRound1(); return;
       }
 
       if (nightAction === 'seer') {
         const target=playerOf(n.round1SeerTargets?.[actor.id]);
-        if (!target || !target.alive) { n.round1Actions[actor.id]={action:'seer',targetId:null}; n.round1Submitted[actor.id]=true; ackOnlineCommand(commandUid, commandId, true, 'Your action was recorded.'); if (!onlineSessionValid(epoch, roomCode)) return; await publishOnlineRoom(); await maybeFinishOnlineRound1(epoch, roomCode); return; }
+        if (!target || !target.alive) { n.round1Actions[actor.id]={action:'seer',targetId:null}; n.round1Submitted[actor.id]=true; ackOnlineCommand(commandUid, commandId, true, 'Your action was recorded.'); await publishOnlineRoom(); await maybeFinishOnlineRound1(); return; }
         n.round1Actions[actor.id]={action:'seer',targetId:target.id};
-        n.round1Submitted[actor.id]=true; ackOnlineCommand(commandUid, commandId, true, 'Your action was recorded.'); if (!onlineSessionValid(epoch, roomCode)) return; await publishOnlineRoom(); await maybeFinishOnlineRound1(epoch, roomCode); return;
+        n.round1Submitted[actor.id]=true; ackOnlineCommand(commandUid, commandId, true, 'Your action was recorded.'); await publishOnlineRoom(); await maybeFinishOnlineRound1(); return;
       }
 
       n.round1Actions[actor.id] = {action:nightAction};
-      n.round1Submitted[actor.id]=true; ackOnlineCommand(commandUid, commandId, true, 'Your action was recorded.'); if (!onlineSessionValid(epoch, roomCode)) return; await publishOnlineRoom(); await maybeFinishOnlineRound1(epoch, roomCode);
+      n.round1Submitted[actor.id]=true; ackOnlineCommand(commandUid, commandId, true, 'Your action was recorded.'); await publishOnlineRoom(); await maybeFinishOnlineRound1();
     }
 
     async function resolveOnlineRound1Intents() {
@@ -3846,95 +3790,15 @@
       }
     }
 
-    let onlineAutoAdvanceRunning = false;
-
-    async function maybeAutoAdvanceOnlinePhase() {
-      const epoch = online.roomEpoch, roomCode = online.roomCode;
-      if (!onlineSessionValid(epoch, roomCode) || !online.isHost || onlineAutoAdvanceRunning || state.phase === 'gameover') return;
-      onlineAutoAdvanceRunning = true;
-      try {
-        // Win conditions are authoritative in online mode too. Check them before
-        // waiting for another action so an already-reached majority/elimination
-        // ends the game immediately instead of starting another phase.
-        const winNow = checkWin();
-        if (winNow.done) {
-          if (!onlineSessionValid(epoch, roomCode)) return;
-          await finishOnlineGame(winNow, epoch, roomCode);
-          return;
-        }
-
-        if (state.phase === 'day') {
-          const living = playersAlive();
-          const complete = living.every(v => v.silenced || isChosen(state.day.votes[v.id]));
-          if (complete && living.length > 1) {
-            if (!onlineSessionValid(epoch, roomCode)) return;
-            await resolveOnlineDay(epoch, roomCode);
-            return;
-          }
-        }
-
-        if (state.phase === 'night' && state.night?.round === 1) {
-          const players = state.night.round1Players || [];
-          // Anyone who has become ineligible before submitting gets an automatic no-op.
-          for (const player of players) {
-            if (!player.alive && !state.night.round1Submitted?.[player.id]) {
-              state.night.round1Actions[player.id] = {action:'none'};
-              state.night.round1Submitted[player.id] = true;
-            }
-          }
-          const complete = players.length > 0 && players.every(p => state.night.round1Submitted?.[p.id]);
-          if (complete) {
-            if (!onlineSessionValid(epoch, roomCode)) return;
-            await maybeFinishOnlineRound1(epoch, roomCode);
-            return;
-          }
-        }
-
-        if (state.phase === 'night' && state.night?.round === 2) {
-          const n = state.night;
-          const queue = n.reactionQueue || [];
-          // The reaction index is authoritative. If a late callback, reconnect,
-          // or duplicate acknowledgement leaves us sitting beyond the queue,
-          // finish the round exactly as pass-and-play would.
-          if (n.index >= queue.length) {
-            await finishOnlineNightOnline(epoch, roomCode);
-            return;
-          }
-          const actor = queue[n.index];
-          // Dead players have no reaction to perform. Do not make the whole room
-          // wait for a dead/disconnected client to click an acknowledgement.
-          if (actor && !actor.alive && !n.onlineAckNeeded) {
-            if (!n.reactionCompleted.includes(actor.id)) n.reactionCompleted.push(actor.id);
-            n.index++;
-            bumpOnlineVersion();
-            if (n.index >= queue.length) await finishOnlineNightOnline(epoch, roomCode);
-            else await publishOnlineRoom();
-            return;
-          }
-        }
-      } finally {
-        onlineAutoAdvanceRunning = false;
-      }
-    }
-
-    async function maybeFinishOnlineRound1(epoch=online.roomEpoch, roomCode=online.roomCode) {
+    async function maybeFinishOnlineRound1() {
       const n=state.night, players=n.round1Players||[];
-      if(!onlineSessionValid(epoch, roomCode) || !players.length || !players.every(p=>n.round1Submitted?.[p.id])) return;
-      if (n.resolvedRound1) return;
-      n.resolvedRound1 = true;
+      if(!players.length || !players.every(p=>n.round1Submitted?.[p.id])) return;
       await resolveOnlineRound1Intents();
-      if (!onlineSessionValid(epoch, roomCode)) return;
-      await beginOnlineReactionRound(epoch, roomCode);
+      await beginOnlineReactionRound();
     }
 
-    async function onlineCompleteReactiveOrAdvance(actor, epoch=online.roomEpoch, roomCode=online.roomCode) {
-      if (!onlineSessionValid(epoch, roomCode)) return;
+    function onlineCompleteReactiveOrAdvance(actor) {
       const n=state.night;
-      const result = checkWin();
-      if (result.done) {
-        await finishOnlineGame(result, epoch, roomCode);
-        return;
-      }
       if (n.pendingAttacks?.some(a=>a.targetId===actor.id) && actor.alive) {
         n.onlineAckNeeded=false; n.onlineResults={}; bumpOnlineVersion(); return publishOnlineRoom();
       }
@@ -3943,14 +3807,13 @@
       return publishOnlineRoom();
     }
 
-    async function handleOnlineNightReaction(actor, value, commandUid=null, commandId=null, epoch=online.roomEpoch, roomCode=online.roomCode) {
-      if (!onlineSessionValid(epoch, roomCode)) return;
+    async function handleOnlineNightReaction(actor, value, commandUid=null, commandId=null) {
       const n = state.night, role = roleOf(actor), attacks = findPendingAttacksFor(actor.id);
       const dynamicAction = nightActionFor(actor);
       if (value === 'ack') {
-        if (n.onlineAckNeeded) { ackOnlineCommand(commandUid, commandId, true, 'Acknowledged.'); await advanceOnlineNightAfterAck(false, epoch, roomCode); return; }
-        if (!attacks.length && actor.alive) { await advanceOnlineNightAfterAck(true, epoch, roomCode); return; }
-        if (!actor.alive) { await advanceOnlineNightAfterAck(true, epoch, roomCode); return; }
+        if (n.onlineAckNeeded) { ackOnlineCommand(commandUid, commandId, true, 'Acknowledged.'); await advanceOnlineNightAfterAck(); return; }
+        if (!attacks.length && actor.alive) { await advanceOnlineNightAfterAck(true); return; }
+        if (!actor.alive) { await advanceOnlineNightAfterAck(true); return; }
         return;
       }
       if (!actor.alive) { ackOnlineCommand(commandUid, commandId, true, 'You are already eliminated for this reaction.'); await publishOnlineRoom(); return; }
@@ -3984,26 +3847,26 @@
         const victim=playerOf(Number(value)); if (!victim || !deadThisNight.some(p=>p.id===victim.id)) return;
         victim.alive=true; actor.used.doctor=true; addLog(`${actor.name} revived ${victim.name}.`); setPrivateResult(actor.id,`You revived ${victim.name}.`); n.onlineAckNeeded=true; bumpOnlineVersion(); await publishOnlineRoom(); return;
       }
-      if (!attacks.length) {ackOnlineCommand(commandUid, commandId, true, 'No reaction was required.'); await advanceOnlineNightAfterAck(false, epoch, roomCode); return;}
+      if (!attacks.length) {ackOnlineCommand(commandUid, commandId, true, 'No reaction was required.'); await advanceOnlineNightAfterAck(); return;}
       const attack = attacks[0];
       if (!['traitor', 'escape', 'monkey', 'rps', 'scapegoat'].includes(dynamicAction)) {
         removePendingAttack(attack); actor.alive = false; ackOnlineCommand(commandUid, commandId, true, 'Your reaction was resolved.'); addLog(`${actor.name} was killed during the night.`); setPrivateResult(actor.id, `You were killed during the night.`); n.onlineAckNeeded = true; bumpOnlineVersion(); await publishOnlineRoom(); return;
       }
       if (dynamicAction === 'traitor' && value === 'traitorSurvive') {
-        removePendingAttack(attack); actor.roleId = roleByIdOrRestore('mafia')?.id || state.roles.find(r => r.orientation === 'evil')?.id || actor.roleId; ackOnlineCommand(commandUid, commandId, true, 'You survived and joined the Mafia.'); addLog(`${actor.name} survived a night attack and joined the Mafia.`); setPrivateResult(actor.id, 'You survived and joined the Mafia.'); await onlineCompleteReactiveOrAdvance(actor, epoch, roomCode); return;
+        removePendingAttack(attack); actor.roleId = roleByIdOrRestore('mafia')?.id || state.roles.find(r => r.orientation === 'evil')?.id || actor.roleId; ackOnlineCommand(commandUid, commandId, true, 'You survived and joined the Mafia.'); addLog(`${actor.name} survived a night attack and joined the Mafia.`); setPrivateResult(actor.id, 'You survived and joined the Mafia.'); await onlineCompleteReactiveOrAdvance(actor); return;
       }
       if (dynamicAction === 'escape') {
-        removePendingAttack(attack); actor.escaped = value === 'escaped'; if (value !== 'escaped') {actor.alive = false; addLog(`${actor.name} failed the escape challenge and was killed.`);} else addLog(`${actor.name} escaped the night attack.`); ackOnlineCommand(commandUid, commandId, true, value === 'escaped' ? 'You escaped.' : 'You were caught and killed.'); setPrivateResult(actor.id, value === 'escaped' ? 'You escaped.' : 'You were caught and killed.'); await onlineCompleteReactiveOrAdvance(actor, epoch, roomCode); return;
+        removePendingAttack(attack); actor.escaped = value === 'escaped'; if (value !== 'escaped') {actor.alive = false; addLog(`${actor.name} failed the escape challenge and was killed.`);} else addLog(`${actor.name} escaped the night attack.`); ackOnlineCommand(commandUid, commandId, true, value === 'escaped' ? 'You escaped.' : 'You were caught and killed.'); setPrivateResult(actor.id, value === 'escaped' ? 'You escaped.' : 'You were caught and killed.'); await onlineCompleteReactiveOrAdvance(actor); return;
       }
       if (dynamicAction === 'rps') {
-        removePendingAttack(attack); if (value === 'lost') actor.alive = false; ackOnlineCommand(commandUid, commandId, true, value === 'won' ? 'You survived.' : 'You lost and were killed.'); addLog(`${actor.name} ${value === 'won' ? 'won' : 'lost'} Rock, Paper, Scissors.`); setPrivateResult(actor.id, value === 'won' ? 'You survived.' : 'You lost and were killed.'); await onlineCompleteReactiveOrAdvance(actor, epoch, roomCode); return;
+        removePendingAttack(attack); if (value === 'lost') actor.alive = false; ackOnlineCommand(commandUid, commandId, true, value === 'won' ? 'You survived.' : 'You lost and were killed.'); addLog(`${actor.name} ${value === 'won' ? 'won' : 'lost'} Rock, Paper, Scissors.`); setPrivateResult(actor.id, value === 'won' ? 'You survived.' : 'You lost and were killed.'); await onlineCompleteReactiveOrAdvance(actor); return;
       }
       if (dynamicAction === 'monkey' && value === 'done') {
-        removePendingAttack(attack); actor.alive = false; ackOnlineCommand(commandUid, commandId, true, 'Your confrontation was resolved.'); addLog(`${actor.name} completed the confrontation and was killed.`); setPrivateResult(actor.id, 'You confronted the attacker and were killed.'); await onlineCompleteReactiveOrAdvance(actor, epoch, roomCode); return;
+        removePendingAttack(attack); actor.alive = false; ackOnlineCommand(commandUid, commandId, true, 'Your confrontation was resolved.'); addLog(`${actor.name} completed the confrontation and was killed.`); setPrivateResult(actor.id, 'You confronted the attacker and were killed.'); await onlineCompleteReactiveOrAdvance(actor); return;
       }
       if (dynamicAction === 'scapegoat') {
         if (value === 'noRedirect') {
-          removePendingAttack(attack); actor.alive = false; actor.used.scapegoat = true; ackOnlineCommand(commandUid, commandId, true, 'You chose not to redirect the attack and were killed.'); addLog(`${actor.name} chose not to redirect the night attack and was killed.`); setPrivateResult(actor.id, 'You were killed.'); await onlineCompleteReactiveOrAdvance(actor, epoch, roomCode); return;
+          removePendingAttack(attack); actor.alive = false; actor.used.scapegoat = true; ackOnlineCommand(commandUid, commandId, true, 'You chose not to redirect the attack and were killed.'); addLog(`${actor.name} chose not to redirect the night attack and was killed.`); setPrivateResult(actor.id, 'You were killed.'); await onlineCompleteReactiveOrAdvance(actor); return;
         }
         const victim = playerOf(Number(value));
         const adjacent = adjacentLiving(actor);
@@ -4012,7 +3875,7 @@
           ackOnlineCommand(commandUid, commandId, true, 'That redirect target is no longer available; you were killed instead.');
           addLog(`${actor.name} could not redirect to the selected player and was killed.`);
           setPrivateResult(actor.id, 'That redirect target is no longer available. You were killed.');
-          await onlineCompleteReactiveOrAdvance(actor, epoch, roomCode); return;
+          await onlineCompleteReactiveOrAdvance(actor); return;
         }
         removePendingAttack(attack);
         actor.used.scapegoat = true;
@@ -4041,7 +3904,7 @@
 
         addLog(`${actor.name} redirected a night attack to ${victim.name}.`);
         setPrivateResult(actor.id, `The attack was redirected to ${victim.name}.`);
-        await onlineCompleteReactiveOrAdvance(actor, epoch, roomCode);
+        await onlineCompleteReactiveOrAdvance(actor);
         return;
       }
     }
@@ -4059,14 +3922,13 @@
 
     function publishOnlineRoom() {
       if(!online.isHost || !online.roomCode) return Promise.resolve();
-      const roomCode=online.roomCode, epoch=online.roomEpoch;
+      const roomCode=online.roomCode;
       online.publishChain=online.publishChain.catch(()=>{}).then(async()=>{
-        if(!onlineSessionValid(epoch, roomCode) || !online.isHost) return;
+        if(!online.isHost || online.roomCode!==roomCode) return;
         const {dbMod}=online.api; const updates={}; const pub=onlinePublicSnapshot();
         updates[`rooms/${roomCode}/public`]=pub.phase==='gameover'?{...pub,winner:online._winner?.winner,reason:online._winner?.reason}:pub;
         updates[`rooms/${roomCode}/meta/status`]=pub.phase==='gameover'?'gameover':(pub.phase==='setup'?'lobby':'started');
-        updates[`rooms/${roomCode}/meta/joinable`] = !!pub.joinable;
-        updates[`rooms/${roomCode}/state`]=serializeAuthoritativeState();
+        if(pub.phase==='gameover' || pub.phase==='setup') updates[`rooms/${roomCode}/state`]=serializeAuthoritativeState(); else updates[`rooms/${roomCode}/state`]=serializeAuthoritativeState();
         for(const pl of state.players){
           const uid=pl.uid || Object.values(online.playersCache||{}).find(x=>Number(x.seatId)===pl.id)?.uid;
           if(!uid) continue; pl.uid=uid;
@@ -4078,74 +3940,48 @@
       return online.publishChain;
     }
 
-    async function publishOnlineLobby(epoch=online.roomEpoch, roomCode=online.roomCode){
-      if(!online.isHost||!roomCode||!onlineSessionValid(epoch, roomCode)) return;
+    async function publishOnlineLobby(){
+      if(!online.isHost||!online.roomCode) return;
       state.phase='setup'; state.round=1; bumpOnlineVersion();
       const {dbMod}=online.api;
       const updates={};
-      updates[`rooms/${roomCode}/meta/status`]='lobby';
-      updates[`rooms/${roomCode}/meta/joinable`]=true;
-      updates[`rooms/${roomCode}/public`]={phase:'lobby',round:1,version:state.onlineVersion,players:publicOnlinePlayers().map(p=>({id:p.seatId,name:p.name,alive:true,eliminatedByVote:false}))};
-      updates[`rooms/${roomCode}/state`]=serializeAuthoritativeState();
+      updates[`rooms/${online.roomCode}/meta/status`]='lobby';
+      updates[`rooms/${online.roomCode}/meta/joinable`]=true;
+      updates[`rooms/${online.roomCode}/public`]={phase:'lobby',round:1,version:state.onlineVersion,players:publicOnlinePlayers().map(p=>({id:p.seatId,name:p.name,alive:true,eliminatedByVote:false}))};
+      updates[`rooms/${online.roomCode}/state`]=serializeAuthoritativeState();
       await dbMod.update(dbMod.ref(online.db),updates);
     }
 
-    async function advanceOnlineNightAfterAck(force=false, epoch=online.roomEpoch, roomCode=online.roomCode) {
+    async function advanceOnlineNightAfterAck(force=false) {
       const n = state.night;
-      if (!onlineSessionValid(epoch, roomCode) || (!force && !n.onlineAckNeeded)) return;
+      if (!force && !n.onlineAckNeeded) return;
       n.onlineAckNeeded = false;
       n.onlineResults = {};
-
-      // Mirror pass-and-play: once the current actor has finished, the host's
-      // authoritative index is the only thing that determines whether the round
-      // is over. Record completion before advancing so the public counter cannot
-      // remain stale at (for example) 4/5.
-      if (n.round === 2) {
-        const actor = n.reactionQueue?.[n.index];
-        if (actor && !n.reactionCompleted.includes(actor.id)) n.reactionCompleted.push(actor.id);
-      }
-
-      if (!onlineSessionValid(epoch, roomCode)) return;
-      const result = checkWin();
-      if (result.done) {await finishOnlineGame(result, epoch, roomCode); return;}
-
-      const queue = n.round === 1 ? (n.queue || []) : (n.reactionQueue || []);
+      // Check a win after any reaction or kill before advancing.
+      const result = checkWin(); if (result.done) {finishOnlineGame(result); return;}
       n.index++;
       bumpOnlineVersion();
       n.onlineSeerTargetId = null;
-
-      if (n.index >= queue.length) {
+      if (n.index >= (n.round === 1 ? n.queue : n.reactionQueue).length) {
         if (n.round === 1) {
-          await beginOnlineReactionRound(epoch, roomCode);
-        } else {
-          await finishOnlineNightOnline(epoch, roomCode);
+          beginOnlineReactionRound(); return;
         }
-        return;
+        finishOnlineNightOnline(); return;
       }
       await publishOnlineRoom();
     }
 
-    async function resolveOnlineDay(epoch=online.roomEpoch, roomCode=online.roomCode) {
-      if (!onlineSessionValid(epoch, roomCode)) return;
+    async function resolveOnlineDay() {
       const living=playersAlive(), playerCounts=new Map(); let skipCount=0;
       living.forEach(voter=>{if(voter.silenced) return; const vote=state.day.votes[voter.id]; if(vote==='skip'){skipCount++;return;} if(validDayTarget(voter,vote)) playerCounts.set(vote,(playerCounts.get(vote)||0)+1);});
       const top=Math.max(0,...playerCounts.values()); const winners=[...playerCounts.entries()].filter(([,c])=>c===top&&top>0).map(([id])=>id);
-      if(skipCount>=top || winners.length===0){
-        state.day.secondBallot=false;state.day.tiedCandidates=[];state.day.votes={};addLog('Day vote skipped; nobody was eliminated.');
-        const result=checkWin(); if(result.done){await finishOnlineGame(result, epoch, roomCode);return;}
-        await startOnlineNight(epoch, roomCode);return;
-      }
+      if(skipCount>=top || winners.length===0){state.day.secondBallot=false;state.day.tiedCandidates=[];state.day.votes={};addLog('Day vote skipped; nobody was eliminated.');await startOnlineNight();return;}
       if(winners.length>1 && !state.day.secondBallot){state.day.secondBallot=true;state.day.tiedCandidates=winners;state.day.votes={};addLog(`Day vote tied between ${winners.map(id=>playerOf(id)?.name||id).join(', ')}.`);await publishOnlineRoom();return;}
-      if(winners.length>1){
-        state.day.secondBallot=false;state.day.tiedCandidates=[];state.day.votes={};addLog('Second day vote tied; nobody was eliminated.');
-        const result=checkWin(); if(result.done){await finishOnlineGame(result, epoch, roomCode);return;}
-        await startOnlineNight(epoch, roomCode);return;
-      }
-      const out=playerOf(winners[0]);out.alive=false;out.eliminatedByVote=true;addLog(`${out.name} was voted out during the day.`);const result=checkWin();if(result.done){await finishOnlineGame(result, epoch, roomCode);return;}await startOnlineNight(epoch, roomCode);return;
+      if(winners.length>1){state.day.secondBallot=false;state.day.tiedCandidates=[];state.day.votes={};addLog('Second day vote tied; nobody was eliminated.');await startOnlineNight();return;}
+      const out=playerOf(winners[0]);out.alive=false;out.eliminatedByVote=true;addLog(`${out.name} was voted out during the day.`);const result=checkWin();if(result.done){await finishOnlineGame(result);return;}await startOnlineNight();return;
     }
 
-    async function startOnlineNight(epoch=online.roomEpoch, roomCode=online.roomCode) {
-      if (!onlineSessionValid(epoch, roomCode)) return;
+    async function startOnlineNight() {
       clearDaySilence();
       state.phase='night';
       await setOnlineJoinable(false);
@@ -4153,7 +3989,7 @@
       const gamblerPool=gamblerAbilityPool();
       nightPlayers.forEach(p=>{p.framedRoleId=null; if(roleOf(p)?.nightAction==='gambler') gamblerActions[p.id]=randomChoice(gamblerPool)||'none'; if((gamblerActions[p.id]||roleOf(p)?.nightAction)==='seer'){const choices=nightPlayers.filter(t=>t.id!==p.id);round1SeerTargets[p.id]=randomChoice(choices)?.id??null;}});
       const queue = getConfiguredNightOrder(nightPlayers);
-      state.night={round:1,queue,index:0,busy:false,usedTeamKillRoleIds:[],pendingAttacks:[],reactionQueue:[],reactionCompleted:[],round1Players:nightPlayers,round1Submitted:{},round1SeerTargets,round1InspectTargets:{},framerTargetId:null,framerRoleChooserId:null,haterTargets:{},protectedIds:[],blockedIds:[],trackTargets:{},watchTargets:{},actionRecords:{},round1Actions:{},gamblerActions,onlineAckNeeded:false,onlineResults:{},onlineSeerTargetId:null,resolvedRound1:false};
+      state.night={round:1,queue,index:0,busy:false,usedTeamKillRoleIds:[],pendingAttacks:[],reactionQueue:[],reactionCompleted:[],round1Players:nightPlayers,round1Submitted:{},round1SeerTargets,round1InspectTargets:{},framerTargetId:null,framerRoleChooserId:null,haterTargets:{},protectedIds:[],blockedIds:[],trackTargets:{},watchTargets:{},actionRecords:{},round1Actions:{},gamblerActions,onlineAckNeeded:false,onlineResults:{},onlineSeerTargetId:null};
       await publishOnlineRoom();
     }
 
@@ -4174,20 +4010,8 @@
       });
     }
 
-    async function beginOnlineReactionRound(epoch=online.roomEpoch, roomCode=online.roomCode) {
-      if (!onlineSessionValid(epoch, roomCode)) return;
+    async function beginOnlineReactionRound() {
       resolveOnlineNightBeforeReactions();
-
-      // Resolve win conditions immediately after deterministic night effects.
-      // Otherwise the game can incorrectly create another reaction turn after
-      // a kill has already ended the game.
-      const result = checkWin();
-      if (result.done) {
-        await finishOnlineGame(result, epoch, roomCode);
-        return;
-      }
-
-      if (!onlineSessionValid(epoch, roomCode)) return;
       state.night.round=2;
       bumpOnlineVersion();
       const base = state.night.round1Players ? state.night.round1Players : playersAlive();
@@ -4195,9 +4019,8 @@
       state.night.index=0;state.night.onlineAckNeeded=false;state.night.onlineResults={}; await publishOnlineRoom();
     }
 
-    async function finishOnlineNightOnline(epoch=online.roomEpoch, roomCode=online.roomCode) {
-      if (!onlineSessionValid(epoch, roomCode)) return;
-      const result = checkWin(); if (result.done) {await finishOnlineGame(result, epoch, roomCode); return;}
+    async function finishOnlineNightOnline() {
+      const result = checkWin(); if (result.done) {await finishOnlineGame(result); return;}
       state.round++;
       state.phase = 'day';
       state.day = {secondBallot: false, votes: {}, tiedCandidates: []};
@@ -4206,8 +4029,8 @@
       await publishOnlineRoom();
     }
 
-    async function finishOnlineGame(result, epoch=online.roomEpoch, roomCode=online.roomCode) {
-      if (!onlineSessionValid(epoch, roomCode) || state.phase==='gameover') return;
+    async function finishOnlineGame(result) {
+      if (state.phase==='gameover') return;
       online._winner = result; state.phase = 'gameover'; bumpOnlineVersion();
       await publishOnlineRoom();
     }
@@ -4223,11 +4046,6 @@
         state.players=entries.map((p,i)=>{const existing=state.players.find(x=>x.uid===p.uid); return existing?{...existing,id:i,uid:p.uid,name:p.name}:{...createPlayer(i,p.name||`Player ${i+1}`),uid:p.uid};});
         assignRoles(); state.logs=[]; state.round=1; state.phase='day'; state.day={secondBallot:false,votes:{},tiedCandidates:[]}; state.night={}; state.processedCommandIds={}; state.onlineCommandAcks={}; state.onlineVersion=1;
         online.roomStatus='started';
-        const openingResult = checkWin();
-        if (openingResult.done) {
-          await finishOnlineGame(openingResult);
-          return;
-        }
         hide('setupScreen','onlineLobby');show('onlineGame');hide('onlineGameOver');show('onlineActionCard','onlineAdminPanel');
         const {dbMod}=online.api; const statusRef=dbMod.ref(online.db,`rooms/${online.roomCode}/meta/status`);
         const tx=await dbMod.runTransaction(statusRef,current=>current==='lobby'?'started':undefined);
@@ -4245,7 +4063,6 @@
     }
 
     async function restoreOnlineSession(){
-      const epoch = ++online.roomEpoch;
       const code=localStorage.getItem('mafia:lastRoomCode'); if(!code||!online.uid) return;
       try{
         const {dbMod}=await loadFirebase(); online.db=online.db||dbMod.getDatabase(online.app);
@@ -4254,11 +4071,9 @@
         const playerSnap=await dbMod.get(dbMod.ref(online.db,`rooms/${code}/players/${online.uid}`));
         if(meta.hostUid!==online.uid && !playerSnap.exists()){localStorage.removeItem('mafia:lastRoomCode');return;}
         online.roomCode=code; online.isHost=meta.hostUid===online.uid; online.mode=online.isHost?'host':'guest'; online.roomStatus=meta.status||'lobby'; online.seatId=playerSnap.exists() && Number.isInteger(playerSnap.val()?.seatId)?playerSnap.val().seatId:null;
-        subscribeToRoom(code, epoch);
-        if(meta.status==='lobby') {
-          online.public=null; online.private=null; online._winner=null;
-          if(online.isHost) enterHostLobby(); else enterGuestLobby();
-        } else { hide('onlineEntry','onlineLobby','setupScreen'); show('onlineGame'); if(meta.status==='gameover') show('onlineGameOver'); }
+        subscribeToRoom(code);
+        if(meta.status==='lobby') { if(online.isHost) enterHostLobby(); else enterGuestLobby(); }
+        else { hide('onlineEntry','onlineLobby','setupScreen'); show('onlineGame'); if(meta.status==='gameover') show('onlineGameOver'); }
       }catch(err){console.error('Session restore failed:',err);localStorage.removeItem('mafia:lastRoomCode');}
     }
 
@@ -4285,23 +4100,11 @@
     $('adminEndGameBtn')?.addEventListener('click', () => adminEndGame().catch(console.error));
 
     $('onlineBackToLobbyBtn').addEventListener('click', async () => {
-      if (!online.isHost) {hide('onlineGame','onlineGameOver'); show('onlineLobby'); return;}
-
-      // Returning to the lobby starts a new online lifecycle. Incrementing the epoch
-      // here is essential: any delayed night/day/game-over promise from the previous
-      // game must become invalid before it can write the room back to `started` or
-      // `gameover`. Without this, a finished game could re-appear over a fresh lobby.
-      const epoch = ++online.roomEpoch;
-      const code = online.roomCode;
-      cleanupOnlineListeners();
-      online._winner=null; online.public=null; online.private=null; online.commandQueue=[];
-      state.phase='setup'; state.round=1; state.day={secondBallot:false,votes:{},tiedCandidates:[]}; state.night={}; state.logs=[];
+      if (!online.isHost) {hide('onlineGame'); show('onlineLobby'); return;}
+      online._winner=null; state.phase='setup'; hide('onlineGame','onlineGameOver'); show('onlineLobby','setupScreen');
       state.players=publicOnlinePlayers().sort((a,b)=>a.seatId-b.seatId).map(p=>{const next=createPlayer(p.seatId,p.name); next.uid=p.uid||null; return next;});
-
-      enterHostLobby();
-      subscribeToRoom(code, epoch);
-      renderSetup();
-      await publishOnlineLobby(epoch, code);
+      state.logs=[]; state.day={secondBallot:false,votes:{},tiedCandidates:[]}; state.night={}; renderSetup();
+      await publishOnlineLobby();
     });
     $('offlineContinueBtn').addEventListener('click', () => {online.mode = 'offline'; hide('onlineEntry', 'onlineLobby', 'onlineGame'); show('setupScreen'); renderSetup();});
 
