@@ -2892,7 +2892,13 @@
           if (!claimed) code = roomCode();
         }
         if (!claimed) throw new Error('Could not claim a room code. Try again.');
+        // Reset any stale client-side room/game state before subscribing to the new room.
+        // This prevents a late callback from a previous room/game-over screen from
+        // leaking into a freshly created lobby.
         online.mode='host'; online.isHost=true; online.roomCode=code; online.seatId=0;
+        online.roomStatus='lobby'; online.public=null; online.private=null; online.playersCache={};
+        online._winner=null; state.phase='setup'; state.round=1; state.night={};
+        state.day={secondBallot:false,votes:{},tiedCandidates:[]}; state.logs=[];
         localStorage.setItem('mafia:lastRoomCode', code);
         const now=Date.now(), name=getDisplayName();
         await dbMod.update(dbMod.ref(online.db), {
@@ -2938,11 +2944,12 @@
     }
 
     function syncOnlineShell() {
+      // Room meta/status is authoritative for lifecycle state. The public snapshot
+      // can legitimately be one callback behind during reconnects/room creation.
       const metaStatus = online.roomStatus || null;
-      const publicPhase = online.public?.phase || null;
-      const inGame = metaStatus === 'started' || (publicPhase && publicPhase !== 'lobby' && publicPhase !== 'gameover');
-      const inLobby = metaStatus === 'lobby' && (!publicPhase || publicPhase === 'lobby');
-      const gameOver = metaStatus === 'gameover' || publicPhase === 'gameover';
+      const inLobby = metaStatus === 'lobby';
+      const inGame = metaStatus === 'started';
+      const gameOver = metaStatus === 'gameover';
 
       if (inLobby) {
         $('onlineLobbyPhase').textContent = 'Room lobby';
@@ -3010,8 +3017,9 @@
           });
         }
         syncOnlineShell();
-        if (online.public?.phase !== 'lobby') renderOnlinePublic();
-        if (online.public?.phase === 'gameover') renderOnlineGameOver(online.public);
+        // Never let a stale public snapshot override the authoritative room meta state.
+        if (online.roomStatus === 'started' && online.public?.phase !== 'lobby') renderOnlinePublic();
+        if (online.roomStatus === 'gameover' && online.public?.phase === 'gameover') renderOnlineGameOver(online.public);
         renderAdminPanel();
         if (online.isHost) maybeAutoAdvanceOnlinePhase().catch(console.error);
       });
@@ -4147,8 +4155,10 @@
         if(meta.hostUid!==online.uid && !playerSnap.exists()){localStorage.removeItem('mafia:lastRoomCode');return;}
         online.roomCode=code; online.isHost=meta.hostUid===online.uid; online.mode=online.isHost?'host':'guest'; online.roomStatus=meta.status||'lobby'; online.seatId=playerSnap.exists() && Number.isInteger(playerSnap.val()?.seatId)?playerSnap.val().seatId:null;
         subscribeToRoom(code);
-        if(meta.status==='lobby') { if(online.isHost) enterHostLobby(); else enterGuestLobby(); }
-        else { hide('onlineEntry','onlineLobby','setupScreen'); show('onlineGame'); if(meta.status==='gameover') show('onlineGameOver'); }
+        if(meta.status==='lobby') {
+          online.public=null; online.private=null; online._winner=null;
+          if(online.isHost) enterHostLobby(); else enterGuestLobby();
+        } else { hide('onlineEntry','onlineLobby','setupScreen'); show('onlineGame'); if(meta.status==='gameover') show('onlineGameOver'); }
       }catch(err){console.error('Session restore failed:',err);localStorage.removeItem('mafia:lastRoomCode');}
     }
 
