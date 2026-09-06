@@ -1286,6 +1286,7 @@
       editingRoleId: null,
       onlineVersion: 0,
       processedCommandIds: {},
+      onlineCommandAcks: {},
     };
 
     const NIGHT_ACTIONS = Object.freeze({
@@ -1578,7 +1579,8 @@
       state.night = parsed.night || {};
       state.logs = Array.isArray(parsed.logs) ? parsed.logs : [];
       state.onlineVersion = Number.isInteger(parsed.onlineVersion) ? parsed.onlineVersion : 0;
-      state.processedCommandIds = parsed.processedCommandIds || {};
+      state.processedCommandIds = {};
+      state.onlineCommandAcks = parsed.onlineCommandAcks || {};
       const byId = new Map(state.players.map(p => [Number(p.id), p]));
       for (const key of ['queue','reactionQueue','round1Players','reactionCompleted']) {
         if (!Array.isArray(state.night[key])) continue;
@@ -1592,7 +1594,7 @@
         roles: state.roles, players: state.players, mode: state.mode, phase: state.phase,
         handoffIndex: state.handoffIndex, handoffRevealed: state.handoffRevealed, round: state.round,
         day: state.day, night: state.night, logs: state.logs.slice(0, 250),
-        onlineVersion: state.onlineVersion, processedCommandIds: state.processedCommandIds
+        onlineVersion: state.onlineVersion, onlineCommandAcks: state.onlineCommandAcks
       }));
     }
 
@@ -3157,7 +3159,8 @@
           const vote = state.day.votes[player.id];
           payload.turn = {type:'ack', prompt:vote === 'skip' ? 'Your vote is Skip. Wait for the other players.' : 'Your vote has been submitted. Wait for the other players.'};
         } else {
-          const options = playersAlive().filter(t => t.id !== player.id).map(t => ({id:t.id,name:t.name}));
+          const candidateIds = state.day.secondBallot ? (state.day.tiedCandidates || []) : playersAlive().map(t => t.id);
+          const options = candidateIds.filter(id => id !== player.id).map(playerOf).filter(Boolean).map(t => ({id:t.id,name:t.name}));
           options.push({id:'skip',name:'Skip voting'});
           payload.turn = {type:'dayVote',prompt:'Choose a living player to vote out, or vote Skip. You cannot vote for yourself.',options};
         }
@@ -3273,6 +3276,7 @@
       $('onlinePhaseTitle').textContent = pub.phase === 'day' ? 'Discuss & vote' : pub.phase === 'night' ? (pub.night?.round === 1 ? 'Night actions' : 'Night reactions') : pub.phase === 'gameover' ? 'Finished' : 'Mafia';
       $('onlineRoundPill').textContent = `Round ${pub.round || 1}`;
       const me = pub.players?.find(p => Number(p.id) === Number(online.seatId));
+      if (online.pendingCommandId && online.pendingCommandPhase && online.pendingCommandPhase !== pub.phase) online.pendingCommandId = null;
       $('onlinePublicStatus').innerHTML = pub.phase === 'day'
         ? `<strong>Day:</strong> ${Object.values(pub.day?.votesSubmitted || {}).filter(Boolean).length}/${pub.players?.filter(p => p.alive).length || 0} votes submitted. ${pub.day?.secondBallot ? 'Second ballot between the tied players.' : ''}`
         : pub.phase === 'night'
@@ -3376,6 +3380,8 @@
 
     function renderOnlinePrivate() {
       const priv = online.private;
+      const ack = priv?.commandAck;
+      const ackMatches = !!(ack && online.pendingCommandId && ack.commandId === online.pendingCommandId);
       const area = $('onlineActionArea');
       area.innerHTML = '';
       $('onlineActionResult').innerHTML = '';
@@ -3396,7 +3402,8 @@
         const me = (online.public.players || []).find(p => Number(p.id) === Number(mySeat));
         const alreadyVoted = !!(me && online.public.day?.votesSubmitted?.[me.id]);
         const alive = !!me && me.alive !== false;
-        const candidates = (online.public.players || []).filter(p => p.alive !== false && Number(p.id) !== Number(mySeat));
+        const allowedIds = online.public.day?.secondBallot ? (online.public.day?.tiedCandidates || []).map(Number) : null;
+        const candidates = (online.public.players || []).filter(p => p.alive !== false && Number(p.id) !== Number(mySeat) && (!allowedIds || allowedIds.includes(Number(p.id))));
 
         if (!me) {
           $('onlineActionTitle').textContent = 'Getting your seat';
@@ -3430,6 +3437,12 @@
       }
 
       if (priv?.result) $('onlineActionResult').innerHTML = `<div class="result">${escapeHtml(priv.result)}</div>`;
+      if (ackMatches) {
+        online.pendingCommandId = null;
+        online.pendingCommandPhase = null;
+        $('onlineActionPrompt').textContent = ack.accepted ? 'Action confirmed.' : 'Action needs attention.';
+        $('onlineActionResult').innerHTML = `<div class="result">${escapeHtml(ack.message || '')}</div>`;
+      }
     }
 
     function renderOnlineGameOver(pub) {
@@ -3447,70 +3460,79 @@
 
       const {dbMod} = online.api;
       const isVote = turn?.type === 'dayVote';
-
-      // The Firebase UID is the real player identity. A seat number is only a
-      // host-side convenience, so votes/actions no longer wait for the async
-      // seat assignment to propagate back to the player's browser.
-      let resolvedSeat = Number.isInteger(online.seatId) ? online.seatId : resolveLocalSeatId();
-      const me = online.playersCache?.[online.uid];
-      if (!Number.isInteger(resolvedSeat) && Number.isInteger(me?.seatId)) resolvedSeat = me.seatId;
+      const resolvedSeat = Number.isInteger(online.seatId) ? online.seatId : resolveLocalSeatId();
       if (Number.isInteger(resolvedSeat)) online.seatId = resolvedSeat;
 
-      if (isVote && state.players[resolvedSeat]?.silenced) {
+      const me = online.playersCache?.[online.uid];
+      if (isVote && (me?.silenced || (online.public?.players || []).find(p => Number(p.id) === Number(resolvedSeat))?.silenced)) {
         $('onlineActionResult').innerHTML = '<div class="result">You are silenced and cannot vote today.</div>';
         return;
       }
-      if (isVote) {
-        $('onlineActionPrompt').textContent = 'Vote sending…';
-      } else {
-        $('onlineActionPrompt').textContent = 'Sending action…';
-      }
 
+      const commandRef = dbMod.push(dbMod.ref(online.db, `rooms/${online.roomCode}/commands`));
+      const commandId = commandRef.key;
+      const version = Number(turn?.version ?? online.public?.version ?? online.private?.version ?? 0);
       const payload = {
         value,
-        turnType: turn.type,
-        // For multi-step night abilities such as the Framer, the selected
-        // option's action name carries the specific command type.
-        actionType: isVote ? 'dayVote' : (turn.action || turn.type)
+        turnType: turn?.type || null,
+        actionType: isVote ? 'dayVote' : (turn?.action || turn?.type || null),
+        version: Number.isInteger(version) ? version : 0
       };
 
-      try {
-        const cmdRef = dbMod.push(dbMod.ref(online.db, `rooms/${online.roomCode}/commands`));
-        await dbMod.set(cmdRef, {
-          uid: online.uid, ...(Number.isInteger(resolvedSeat) ? {seatId: resolvedSeat} : {}),
-          type:'action', payload:{...payload, version: turn?.version ?? online.public?.version ?? online.private?.version ?? 0}, createdAt:Date.now()
-        });
+      $('onlineActionPrompt').textContent = isVote ? 'Vote sending…' : 'Sending action…';
+      $('onlineActionResult').innerHTML = '<div class="result">Waiting for the host to confirm…</div>';
+      online.pendingCommandId = commandId;
+      online.pendingCommandIsVote = isVote;
+      online.pendingCommandPhase = online.public?.phase || null;
+      [...$('onlineActionArea').querySelectorAll('button')].forEach(btn => btn.disabled = true);
 
-        if (isVote) {
-          $('onlineActionPrompt').textContent = 'Vote sent. Waiting for the other players…';
-          $('onlineActionResult').innerHTML = '<div class="result">Your vote was sent to the host.</div>';
-        } else {
-          $('onlineActionPrompt').textContent = 'Action submitted. Waiting for the game to advance…';
-          $('onlineActionResult').innerHTML = '<div class="result">Your night action was sent to the host.</div>';
-        }
+      try {
+        await dbMod.set(commandRef, {
+          uid: online.uid,
+          ...(Number.isInteger(resolvedSeat) ? {seatId: resolvedSeat} : {}),
+          type: 'action',
+          payload,
+          createdAt: Date.now()
+        });
       } catch (err) {
+        online.pendingCommandId = null;
+        online.pendingCommandPhase = null;
+        [...$('onlineActionArea').querySelectorAll('button')].forEach(btn => btn.disabled = false);
         console.error('Online action failed:', err);
         $('onlineActionPrompt').textContent = isVote ? 'Could not send your vote.' : 'Could not send your action.';
         $('onlineActionResult').innerHTML = `<div class="result">${escapeHtml(err?.message || String(err))}</div>`;
       }
     }
 
+    function ackOnlineCommand(uid, commandId, accepted, message) {
+      if (!uid || !commandId) return;
+      state.onlineCommandAcks = state.onlineCommandAcks || {};
+      state.onlineCommandAcks[uid] = {commandId, accepted: !!accepted, message: String(message || (accepted ? 'Submitted.' : 'The host rejected that action.')), at: Date.now()};
+    }
+
     async function handleOnlineCommand(cmd, commandId=null) {
       if (!online.isHost || !cmd || !cmd.payload || !commandId) return;
       if (state.processedCommandIds?.[commandId]) return;
-      const cmdVersion = Number(cmd.payload.version);
-      if (!Number.isInteger(cmdVersion) || cmdVersion !== Number(state.onlineVersion || 0)) { state.processedCommandIds[commandId] = true; return; }
 
-      // Authorize the command by authenticated Firebase UID. Seat IDs are only
-      // used to address the host's local game state after membership is found.
+      const cmdVersion = Number(cmd.payload.version);
+      if (!Number.isInteger(cmdVersion) || cmdVersion > Number(state.onlineVersion || 0)) {
+        state.processedCommandIds[commandId] = true;
+        ackOnlineCommand(cmd.uid, commandId, false, 'That action belongs to a newer game state. Please try again.');
+        await publishOnlineRoom();
+        return;
+      }
+
       const membership = Object.values(online.playersCache || {}).find(p => p && p.uid === cmd.uid);
-      if (!membership) return;
-      // Resolve the actor primarily from the authenticated Firebase UID.
-      // This makes commands work even while a guest is still waiting for a seat
-      // number to propagate to their browser.
+      if (!membership) {
+        state.processedCommandIds[commandId] = true;
+        ackOnlineCommand(cmd.uid, commandId, false, 'You are no longer a member of this room.');
+        await publishOnlineRoom();
+        return;
+      }
+
       let actor = state.players.find(p => p && p.uid === cmd.uid) || null;
       const actorSeat = Number.isInteger(membership.seatId) ? membership.seatId : Number(cmd.seatId);
-      if (!actor) actor = Number.isInteger(actorSeat) ? playerOf(actorSeat) : null;
+      if (!actor && Number.isInteger(actorSeat)) actor = playerOf(actorSeat);
       if (!actor) {
         const ordered = Object.values(online.playersCache || {})
           .filter(p => p && p.uid)
@@ -3521,54 +3543,123 @@
         const inferred = ordered.findIndex(p => p.uid === cmd.uid);
         if (inferred >= 0) actor = playerOf(inferred);
       }
-      if (!actor) return;
-      state.processedCommandIds[commandId]=true;
-
-      const value = cmd.payload.value;
-      if (state.phase === 'day' && (cmd.payload.turnType === 'dayVote' || cmd.payload.actionType === 'dayVote')) {
-        if (!actor.alive || isChosen(state.day.votes[actor.id])) return;
-        if (value === 'skip') return;
-        else { const target = playerOf(Number(value)); if (!target || !validDayTarget(actor, Number(value))) return; state.day.votes[actor.id] = target.id; }
-        const living = playersAlive();
-        if (living.every(v => v.silenced || isChosen(state.day.votes[v.id]))) await resolveOnlineDay(); else await publishOnlineRoom();
+      if (!actor) {
+        state.processedCommandIds[commandId] = true;
+        ackOnlineCommand(cmd.uid, commandId, false, 'Your player seat could not be resolved. Rejoin the room and try again.');
+        await publishOnlineRoom();
         return;
       }
-      if (state.phase !== 'night') return;
+
+      state.processedCommandIds[commandId] = true;
+      const value = cmd.payload.value;
+
+      if (state.phase === 'day' && (cmd.payload.turnType === 'dayVote' || cmd.payload.actionType === 'dayVote')) {
+        if (!actor.alive) {
+          ackOnlineCommand(cmd.uid, commandId, false, 'You are eliminated and cannot vote.');
+          await publishOnlineRoom();
+          return;
+        }
+        if (actor.silenced) {
+          ackOnlineCommand(cmd.uid, commandId, false, 'You are silenced and cannot vote today.');
+          await publishOnlineRoom();
+          return;
+        }
+        if (isChosen(state.day.votes[actor.id])) {
+          ackOnlineCommand(cmd.uid, commandId, true, 'Your existing vote was already recorded.');
+          await publishOnlineRoom();
+          return;
+        }
+
+        if (value === 'skip') {
+          state.day.votes[actor.id] = 'skip';
+          ackOnlineCommand(cmd.uid, commandId, true, 'Your Skip vote was recorded.');
+        } else {
+          const target = playerOf(Number(value));
+          if (!target || !validDayTarget(actor, Number(value))) {
+            ackOnlineCommand(cmd.uid, commandId, false, 'That player is no longer eligible for this ballot. The voting options have been refreshed.');
+            await publishOnlineRoom();
+            return;
+          }
+          state.day.votes[actor.id] = target.id;
+          ackOnlineCommand(cmd.uid, commandId, true, `Your vote for ${target.name} was recorded.`);
+        }
+
+        const living = playersAlive();
+        if (living.every(v => v.silenced || isChosen(state.day.votes[v.id]))) await resolveOnlineDay();
+        else await publishOnlineRoom();
+        return;
+      }
+
+      if (state.phase !== 'night') {
+        ackOnlineCommand(cmd.uid, commandId, false, 'The game has moved to another phase.');
+        await publishOnlineRoom();
+        return;
+      }
+
       const n = state.night;
-      if (n.round === 1) await handleOnlineNightRound1(actor,String(value),String(cmd.payload.actionType || cmd.payload.turnType || ''));
-      else { const current=onlineCurrentNightActor(); if (!current || current.id !== actor.id) return; await handleOnlineNightReaction(actor,String(value)); }
+      if (n.round === 1) await handleOnlineNightRound1(actor, String(value), String(cmd.payload.actionType || cmd.payload.turnType || ''), cmd.uid, commandId);
+      else {
+        const current = onlineCurrentNightActor();
+        if (!current || current.id !== actor.id) {
+          ackOnlineCommand(cmd.uid, commandId, false, 'It is not your reaction turn. The game state has been refreshed.');
+          await publishOnlineRoom();
+          return;
+        }
+        await handleOnlineNightReaction(actor, String(value), cmd.uid, commandId);
+      }
     }
 
-    async function handleOnlineNightRound1(actor, value, actionType) {
+    async function handleOnlineNightRound1(actor, value, actionType, commandUid=null, commandId=null) {
       const role = roleOf(actor), n = state.night;
-      if (!n.round1Players?.some(p => p.id === actor.id)) return;
+      const dynamicAction = nightActionFor(actor);
+      if (!n.round1Players?.some(p => p.id === actor.id)) { ackOnlineCommand(commandUid, commandId, false, 'You are not eligible for this night action.'); await publishOnlineRoom(); return; }
       n.round1Submitted = n.round1Submitted || {};
       n.round1Actions = n.round1Actions || {};
-      if (n.round1Submitted[actor.id]) return;
+      if (n.round1Submitted[actor.id]) {
+        ackOnlineCommand(commandUid, commandId, true, 'Your night action was already recorded.');
+        await publishOnlineRoom();
+        return;
+      }
       if (!actor.alive || value === 'ack') {
         n.round1Actions[actor.id] = {action:'none'};
         n.round1Submitted[actor.id] = true;
+        ackOnlineCommand(commandUid, commandId, true, 'Your night ability was recorded.');
         await publishOnlineRoom(); await maybeFinishOnlineRound1(); return;
       }
 
-      const nightAction = String(dynamicAction || 'none');
+      const nightAction = String(nightActionFor(actor) || 'none');
       if (nightAction === 'kill' || nightAction === 'teamKill') {
         const target = playerOf(Number(value));
-        if (!target || !target.alive || target.id === actor.id) return;
+        if (!target || !target.alive || target.id === actor.id) {
+          n.round1Actions[actor.id] = {action:'none'};
+          n.round1Submitted[actor.id] = true;
+          ackOnlineCommand(commandUid, commandId, true, 'That target is no longer available, so the night action was recorded as no-op.');
+          await publishOnlineRoom(); await maybeFinishOnlineRound1(); return;
+        }
         n.round1Actions[actor.id] = {action:nightAction,targetId:target.id};
         n.round1Submitted[actor.id] = true;
+        ackOnlineCommand(commandUid, commandId, true, `Target recorded: ${target.name}.`);
         setPrivateResult(actor.id, `Target recorded: ${target.name}. Your ${nightAction === 'teamKill' ? 'team kill' : 'kill'} is submitted.`);
         await publishOnlineRoom(); await maybeFinishOnlineRound1(); return;
       }
 
-      if (actionType === 'framerRoleChoice' && dynamicAction === 'framer') {
-        if (n.framerRoleChooserId !== actor.id || !n.framerTargetId) return;
-        if (!state.roles.some(r => r.id === String(value))) return;
+      if (actionType === 'framerRoleChoice' && nightAction === 'framer') {
+        if (n.framerRoleChooserId !== actor.id || !n.framerTargetId) {
+          ackOnlineCommand(commandUid, commandId, false, 'That framing step is no longer active.');
+          await publishOnlineRoom();
+          return;
+        }
+        if (!state.roles.some(r => r.id === String(value))) {
+          ackOnlineCommand(commandUid, commandId, false, 'That role is no longer available.');
+          await publishOnlineRoom();
+          return;
+        }
         const target = playerOf(n.framerTargetId);
         if (!target || !target.alive) {
           n.framerRoleChooserId = null;
           n.round1Actions[actor.id] = {action:'framer'};
           n.round1Submitted[actor.id] = true;
+          ackOnlineCommand(commandUid, commandId, true, 'The framing target is no longer available; your action was recorded as no-op.');
           setPrivateResult(actor.id,'The framing target is no longer available. Your night ability is submitted.');
           await publishOnlineRoom(); await maybeFinishOnlineRound1(); return;
         }
@@ -3581,7 +3672,13 @@
       }
 
       if (nightAction === 'framer') {
-        const target=playerOf(Number(value)); if (!target || !target.alive) return;
+        const target=playerOf(Number(value));
+        if (!target || !target.alive) {
+          n.round1Actions[actor.id] = {action:'none'};
+          n.round1Submitted[actor.id] = true;
+          ackOnlineCommand(commandUid, commandId, true, 'The framing target is no longer available, so your action was recorded as no-op.');
+          await publishOnlineRoom(); await maybeFinishOnlineRound1(); return;
+        }
         n.framerTargetId=target.id; target.framedRoleId=null;
         n.framerRoleChooserId=actor.id;
         setPrivateResult(actor.id,`${target.name} was selected. Now choose what role they will appear as tonight. The target will not be told they were framed.`);
@@ -3604,6 +3701,7 @@
         const target=playerOf(Number(value)); if (!target || !target.alive || target.id===actor.id) return;
         n.round1Actions[actor.id] = {action:nightAction,targetId:target.id};
         n.round1Submitted[actor.id]=true;
+        ackOnlineCommand(commandUid, commandId, true, 'Your action was recorded.');
         setPrivateResult(actor.id,'Action recorded. Any information result will be shown during night reactions.');
         await publishOnlineRoom(); await maybeFinishOnlineRound1(); return;
       }
@@ -3611,18 +3709,18 @@
       if (nightAction === 'inspectOrientation') {
         const target=playerOf(Number(value)); if (!target || !target.alive || target.id===actor.id) return;
         n.round1Actions[actor.id] = {action:'inspectOrientation',targetId:target.id};
-        n.round1Submitted[actor.id]=true; await publishOnlineRoom(); await maybeFinishOnlineRound1(); return;
+        n.round1Submitted[actor.id]=true; ackOnlineCommand(commandUid, commandId, true, 'Your action was recorded.'); await publishOnlineRoom(); await maybeFinishOnlineRound1(); return;
       }
 
       if (nightAction === 'seer') {
         const target=playerOf(n.round1SeerTargets?.[actor.id]);
-        if (!target || !target.alive) { n.round1Actions[actor.id]={action:'seer',targetId:null}; n.round1Submitted[actor.id]=true; await publishOnlineRoom(); await maybeFinishOnlineRound1(); return; }
+        if (!target || !target.alive) { n.round1Actions[actor.id]={action:'seer',targetId:null}; n.round1Submitted[actor.id]=true; ackOnlineCommand(commandUid, commandId, true, 'Your action was recorded.'); await publishOnlineRoom(); await maybeFinishOnlineRound1(); return; }
         n.round1Actions[actor.id]={action:'seer',targetId:target.id};
-        n.round1Submitted[actor.id]=true; await publishOnlineRoom(); await maybeFinishOnlineRound1(); return;
+        n.round1Submitted[actor.id]=true; ackOnlineCommand(commandUid, commandId, true, 'Your action was recorded.'); await publishOnlineRoom(); await maybeFinishOnlineRound1(); return;
       }
 
       n.round1Actions[actor.id] = {action:nightAction};
-      n.round1Submitted[actor.id]=true; await publishOnlineRoom(); await maybeFinishOnlineRound1();
+      n.round1Submitted[actor.id]=true; ackOnlineCommand(commandUid, commandId, true, 'Your action was recorded.'); await publishOnlineRoom(); await maybeFinishOnlineRound1();
     }
 
     async function resolveOnlineRound1Intents() {
@@ -3682,16 +3780,16 @@
       return publishOnlineRoom();
     }
 
-    async function handleOnlineNightReaction(actor, value) {
+    async function handleOnlineNightReaction(actor, value, commandUid=null, commandId=null) {
       const n = state.night, role = roleOf(actor), attacks = findPendingAttacksFor(actor.id);
       const dynamicAction = nightActionFor(actor);
       if (value === 'ack') {
-        if (n.onlineAckNeeded) { await advanceOnlineNightAfterAck(); return; }
+        if (n.onlineAckNeeded) { ackOnlineCommand(commandUid, commandId, true, 'Acknowledged.'); await advanceOnlineNightAfterAck(); return; }
         if (!attacks.length && actor.alive) { await advanceOnlineNightAfterAck(true); return; }
         if (!actor.alive) { await advanceOnlineNightAfterAck(true); return; }
         return;
       }
-      if (!actor.alive) return;
+      if (!actor.alive) { ackOnlineCommand(commandUid, commandId, true, 'You are already eliminated for this reaction.'); await publishOnlineRoom(); return; }
       if (dynamicAction === 'inspectOrientation' || dynamicAction === 'seer') {
         const targetId = dynamicAction === 'inspectOrientation' ? n.round1InspectTargets?.[actor.id] : n.round1SeerTargets?.[actor.id];
         const target = playerOf(targetId);
@@ -3702,7 +3800,16 @@
       if (dynamicAction === 'janitor') {
         const deadThisNight=(n.round1Players||[]).filter(p=>!p.alive);
         if(!deadThisNight.length) setPrivateResult(actor.id,'No one was killed tonight, so there is no body to inspect.');
-        else { const victim=playerOf(Number(value)); if(!victim || !deadThisNight.some(p=>p.id===victim.id)) return; setPrivateResult(actor.id,`${victim.name} had the exact role ${roleOf(victim)?.title || 'Unknown'}.`); }
+        else {
+          const victim=playerOf(Number(value));
+          if(!victim || !deadThisNight.some(p=>p.id===victim.id)) {
+            ackOnlineCommand(commandUid, commandId, false, 'That player is no longer a valid body to inspect.');
+            setPrivateResult(actor.id,'That body is no longer available.');
+            n.onlineAckNeeded=true; bumpOnlineVersion(); await publishOnlineRoom(); return;
+          }
+          setPrivateResult(actor.id,`${victim.name} had the exact role ${roleOf(victim)?.title || 'Unknown'}.`);
+        }
+        ackOnlineCommand(commandUid, commandId, true, 'Reaction recorded.');
         n.onlineAckNeeded=true; bumpOnlineVersion(); await publishOnlineRoom(); return;
       }
       if (role?.nightAction === 'doctor') {
@@ -3713,30 +3820,36 @@
         const victim=playerOf(Number(value)); if (!victim || !deadThisNight.some(p=>p.id===victim.id)) return;
         victim.alive=true; actor.used.doctor=true; addLog(`${actor.name} revived ${victim.name}.`); setPrivateResult(actor.id,`You revived ${victim.name}.`); n.onlineAckNeeded=true; bumpOnlineVersion(); await publishOnlineRoom(); return;
       }
-      if (!attacks.length) {await advanceOnlineNightAfterAck(); return;}
+      if (!attacks.length) {ackOnlineCommand(commandUid, commandId, true, 'No reaction was required.'); await advanceOnlineNightAfterAck(); return;}
       const attack = attacks[0];
       if (!['traitor', 'escape', 'monkey', 'rps', 'scapegoat'].includes(dynamicAction)) {
-        removePendingAttack(attack); actor.alive = false; addLog(`${actor.name} was killed during the night.`); setPrivateResult(actor.id, `You were killed during the night.`); n.onlineAckNeeded = true; bumpOnlineVersion(); await publishOnlineRoom(); return;
+        removePendingAttack(attack); actor.alive = false; ackOnlineCommand(commandUid, commandId, true, 'Your reaction was resolved.'); addLog(`${actor.name} was killed during the night.`); setPrivateResult(actor.id, `You were killed during the night.`); n.onlineAckNeeded = true; bumpOnlineVersion(); await publishOnlineRoom(); return;
       }
       if (dynamicAction === 'traitor' && value === 'traitorSurvive') {
-        removePendingAttack(attack); actor.roleId = roleByIdOrRestore('mafia')?.id || state.roles.find(r => r.orientation === 'evil')?.id || actor.roleId; addLog(`${actor.name} survived a night attack and joined the Mafia.`); setPrivateResult(actor.id, 'You survived and joined the Mafia.'); await onlineCompleteReactiveOrAdvance(actor); return;
+        removePendingAttack(attack); actor.roleId = roleByIdOrRestore('mafia')?.id || state.roles.find(r => r.orientation === 'evil')?.id || actor.roleId; ackOnlineCommand(commandUid, commandId, true, 'You survived and joined the Mafia.'); addLog(`${actor.name} survived a night attack and joined the Mafia.`); setPrivateResult(actor.id, 'You survived and joined the Mafia.'); await onlineCompleteReactiveOrAdvance(actor); return;
       }
       if (dynamicAction === 'escape') {
-        removePendingAttack(attack); actor.escaped = value === 'escaped'; if (value !== 'escaped') {actor.alive = false; addLog(`${actor.name} failed the escape challenge and was killed.`);} else addLog(`${actor.name} escaped the night attack.`); setPrivateResult(actor.id, value === 'escaped' ? 'You escaped.' : 'You were caught and killed.'); await onlineCompleteReactiveOrAdvance(actor); return;
+        removePendingAttack(attack); actor.escaped = value === 'escaped'; if (value !== 'escaped') {actor.alive = false; addLog(`${actor.name} failed the escape challenge and was killed.`);} else addLog(`${actor.name} escaped the night attack.`); ackOnlineCommand(commandUid, commandId, true, value === 'escaped' ? 'You escaped.' : 'You were caught and killed.'); setPrivateResult(actor.id, value === 'escaped' ? 'You escaped.' : 'You were caught and killed.'); await onlineCompleteReactiveOrAdvance(actor); return;
       }
       if (dynamicAction === 'rps') {
-        removePendingAttack(attack); if (value === 'lost') actor.alive = false; addLog(`${actor.name} ${value === 'won' ? 'won' : 'lost'} Rock, Paper, Scissors.`); setPrivateResult(actor.id, value === 'won' ? 'You survived.' : 'You lost and were killed.'); await onlineCompleteReactiveOrAdvance(actor); return;
+        removePendingAttack(attack); if (value === 'lost') actor.alive = false; ackOnlineCommand(commandUid, commandId, true, value === 'won' ? 'You survived.' : 'You lost and were killed.'); addLog(`${actor.name} ${value === 'won' ? 'won' : 'lost'} Rock, Paper, Scissors.`); setPrivateResult(actor.id, value === 'won' ? 'You survived.' : 'You lost and were killed.'); await onlineCompleteReactiveOrAdvance(actor); return;
       }
       if (dynamicAction === 'monkey' && value === 'done') {
-        removePendingAttack(attack); actor.alive = false; addLog(`${actor.name} completed the confrontation and was killed.`); setPrivateResult(actor.id, 'You confronted the attacker and were killed.'); await onlineCompleteReactiveOrAdvance(actor); return;
+        removePendingAttack(attack); actor.alive = false; ackOnlineCommand(commandUid, commandId, true, 'Your confrontation was resolved.'); addLog(`${actor.name} completed the confrontation and was killed.`); setPrivateResult(actor.id, 'You confronted the attacker and were killed.'); await onlineCompleteReactiveOrAdvance(actor); return;
       }
       if (dynamicAction === 'scapegoat') {
         if (value === 'noRedirect') {
-          removePendingAttack(attack); actor.alive = false; actor.used.scapegoat = true; addLog(`${actor.name} chose not to redirect the night attack and was killed.`); setPrivateResult(actor.id, 'You were killed.'); await onlineCompleteReactiveOrAdvance(actor); return;
+          removePendingAttack(attack); actor.alive = false; actor.used.scapegoat = true; ackOnlineCommand(commandUid, commandId, true, 'You chose not to redirect the attack and were killed.'); addLog(`${actor.name} chose not to redirect the night attack and was killed.`); setPrivateResult(actor.id, 'You were killed.'); await onlineCompleteReactiveOrAdvance(actor); return;
         }
         const victim = playerOf(Number(value));
         const adjacent = adjacentLiving(actor);
-        if (!victim || !victim.alive || !adjacent.some(p => p.id === victim.id)) return;
+        if (!victim || !victim.alive || !adjacent.some(p => p.id === victim.id)) {
+          removePendingAttack(attack); actor.alive = false; actor.used.scapegoat = true;
+          ackOnlineCommand(commandUid, commandId, true, 'That redirect target is no longer available; you were killed instead.');
+          addLog(`${actor.name} could not redirect to the selected player and was killed.`);
+          setPrivateResult(actor.id, 'That redirect target is no longer available. You were killed.');
+          await onlineCompleteReactiveOrAdvance(actor); return;
+        }
         removePendingAttack(attack);
         actor.used.scapegoat = true;
         recordNightAction(actor,'scapegoat',victim.id,{redirectedFrom:actor.id});
@@ -3786,7 +3899,7 @@
         for(const pl of state.players){
           const uid=pl.uid || Object.values(online.playersCache||{}).find(x=>Number(x.seatId)===pl.id)?.uid;
           if(!uid) continue; pl.uid=uid;
-          const payload=onlinePrivatePayloadFor(pl); const result=state.night?.onlineResults?.[pl.id]; if(result) payload.result=result;
+          const payload=onlinePrivatePayloadFor(pl); const result=state.night?.onlineResults?.[pl.id]; if(result) payload.result=result; const uidForAck=pl.uid || Object.values(online.playersCache||{}).find(x=>Number(x.seatId)===pl.id)?.uid; if(uidForAck && state.onlineCommandAcks?.[uidForAck]) payload.commandAck=state.onlineCommandAcks[uidForAck];
           updates[`rooms/${roomCode}/private/${uid}`]=payload;
         }
         await dbMod.update(dbMod.ref(online.db),updates);
@@ -3895,7 +4008,7 @@
         const entries=publicOnlinePlayers().filter(p=>p&&p.uid).sort((a,b)=>a.seatId-b.seatId);
         if(entries.length<2){alert('Need at least 2 connected players.');return;}
         state.players=entries.map((p,i)=>{const existing=state.players.find(x=>x.uid===p.uid); return existing?{...existing,id:i,uid:p.uid,name:p.name}:{...createPlayer(i,p.name||`Player ${i+1}`),uid:p.uid};});
-        assignRoles(); state.logs=[]; state.round=1; state.phase='day'; state.day={secondBallot:false,votes:{},tiedCandidates:[]}; state.night={}; state.processedCommandIds={}; state.onlineVersion=1;
+        assignRoles(); state.logs=[]; state.round=1; state.phase='day'; state.day={secondBallot:false,votes:{},tiedCandidates:[]}; state.night={}; state.processedCommandIds={}; state.onlineCommandAcks={}; state.onlineVersion=1;
         online.roomStatus='started';
         hide('setupScreen','onlineLobby');show('onlineGame');hide('onlineGameOver');show('onlineActionCard','onlineAdminPanel');
         const {dbMod}=online.api; const statusRef=dbMod.ref(online.db,`rooms/${online.roomCode}/meta/status`);
