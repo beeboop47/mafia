@@ -1428,10 +1428,19 @@
     </div>`;
     }
     function renderPlayers() {
-      const el = $('players'); el.innerHTML = '';
+      const el = $('players');
+      // Preserve the field currently being edited so roster syncs cannot steal focus
+      // or move the caret while a player is typing a name.
+      const activeInput = document.activeElement?.tagName === 'INPUT' && document.activeElement.parentElement?.parentElement === el
+        ? document.activeElement
+        : null;
+      const activePlayerIndex = activeInput ? Number(activeInput.dataset.playerIndex) : null;
+      const selectionStart = activeInput?.selectionStart ?? null;
+      const selectionEnd = activeInput?.selectionEnd ?? null;
+      el.innerHTML = '';
       state.players.forEach((player, index) => {
         const row = document.createElement('div'); row.className = 'player-row';
-        const name = document.createElement('input'); name.type = 'text'; name.value = player.name; name.setAttribute('aria-label', 'Player name');
+        const name = document.createElement('input'); name.type = 'text'; name.value = player.name; name.dataset.playerIndex = String(index); name.setAttribute('aria-label', 'Player name');
         name.addEventListener('input', e => player.name = e.target.value);
         row.appendChild(name);
 
@@ -1453,6 +1462,15 @@
         row.appendChild(remove);
         el.appendChild(row);
       });
+      if (activePlayerIndex != null && el.querySelector(`[data-player-index=\"${activePlayerIndex}\"]`)) {
+        const restored = el.querySelector(`[data-player-index=\"${activePlayerIndex}\"]`);
+        restored.focus();
+        if (selectionStart != null && selectionEnd != null) {
+          const pos = Math.min(selectionStart, restored.value.length);
+          const end = Math.min(selectionEnd, restored.value.length);
+          try { restored.setSelectionRange(pos, end); } catch {}
+        }
+      }
     }
     function renderRandomRolePool() {
       const el = $('randomRolePool'); el.innerHTML = '';
@@ -3074,8 +3092,16 @@
       }
       if(gameStarted) return;
       const oldByUid=new Map(state.players.filter(p=>p.uid).map(p=>[p.uid,p]));
+      const oldById=new Map(state.players.map(p=>[Number(p.id),p]));
       const sorted=entries.map(([,p])=>p).sort((a,b)=>a.seatId-b.seatId);
-      state.players=sorted.map(p=>{const old=oldByUid.get(p.uid); return old ? {...old,id:p.seatId,uid:p.uid,name:p.name||old.name} : {...createPlayer(p.seatId,p.name||`Player ${p.seatId+1}`),uid:p.uid};});
+      // During setup, local player records may not have UIDs yet. Match those records
+      // by seat as a fallback so changing names never wipes manual role assignments.
+      state.players=sorted.map(p=>{
+        const old=oldByUid.get(p.uid) || oldById.get(Number(p.seatId));
+        return old
+          ? {...old,id:p.seatId,uid:p.uid,name:p.name || old.name}
+          : {...createPlayer(p.seatId,p.name||`Player ${p.seatId+1}`),uid:p.uid};
+      });
       renderSetup();
     }
 
