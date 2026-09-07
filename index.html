@@ -2102,9 +2102,7 @@
             ? `<strong>Team kill:</strong> ${team.map(p => escapeHtml(p.name)).join(', ')} share one kill tonight. If one of you uses it, the others cannot. Choose one target.`
             : `<strong>${escapeHtml(role.title)}</strong> — choose a living target for your team kill.`;
           living.forEach(choose);
-          if (role.id !== 'peacemaker') {
-            area.appendChild(actionButton('Do not use the team kill', 'skip', () => setChoiceAndContinue(actor, 'skip')));
-          }
+          area.appendChild(actionButton('Do not use the team kill', 'skip', () => setChoiceAndContinue(actor, 'skip')));
           break;
         }
         case 'kill': {
@@ -3669,9 +3667,12 @@
       if (nightAction === 'kill' || nightAction === 'teamKill') {
         const roleIsPeacemaker = role?.id === 'peacemaker';
         const target = playerOf(Number(value));
-        if (value === 'skip' && roleIsPeacemaker) {
-          ackOnlineCommand(commandUid, commandId, false, 'Peacemaker must use the team kill. Choose a living target.');
-          await publishOnlineRoom(); return;
+        if (value === 'skip') {
+          n.round1Actions[actor.id] = {action:'none'};
+          n.round1Submitted[actor.id] = true;
+          ackOnlineCommand(commandUid, commandId, true, 'You chose not to use the team kill tonight.');
+          setPrivateResult(actor.id, 'You chose not to use the team kill tonight.');
+          await publishOnlineRoom(); await maybeFinishOnlineRound1(); return;
         }
         if (!target || !target.alive || target.id === actor.id) {
           if (roleIsPeacemaker) {
