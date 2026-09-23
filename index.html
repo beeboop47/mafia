@@ -655,6 +655,87 @@
       }
     }
 
+    /* Progressive setup / utility controls */
+    .setup-toolbar {display:grid;grid-template-columns:minmax(0,1.3fr) minmax(0,1fr);gap:10px;margin-top:10px}
+    .setup-toolbar .notice {margin-top:0}
+    .preset-actions {display:flex;gap:8px;flex-wrap:wrap;margin-top:10px}
+    details.advanced-panel {margin-top:14px;border:1px solid var(--line);border-radius:12px;background:#0d1017;overflow:hidden}
+    details.advanced-panel > summary {cursor:pointer;padding:13px 14px;font-weight:900;list-style:none;display:flex;align-items:center;gap:8px}
+    details.advanced-panel > summary::-webkit-details-marker {display:none}
+    details.advanced-panel > summary::after {content:'+';margin-left:auto;color:var(--muted);font-size:20px}
+    details.advanced-panel[open] > summary::after {content:'−'}
+    .advanced-body {padding:0 14px 14px}
+    .private-role-banner {padding:12px;border:1px solid #4f3d61;border-radius:10px;background:#15101d;margin-bottom:10px}
+    .private-role-banner .role-name {font-size:22px;font-weight:900;margin:4px 0}
+    .intel-card {margin-top:10px;padding:10px;border-radius:9px;border:1px solid #4b5262;background:#10151f}
+    .role-toggle-grid {
+      display:grid;
+      grid-template-columns:repeat(auto-fit,minmax(170px,1fr));
+      gap:8px;
+      max-height:280px;
+      overflow-y:auto;
+      padding:2px;
+      -webkit-overflow-scrolling:touch;
+    }
+    .role-toggle {
+      min-height:48px;
+      display:flex;
+      align-items:center;
+      gap:10px;
+      padding:9px 10px;
+      border:1px solid var(--line);
+      border-radius:10px;
+      background:#0c0f15;
+      cursor:pointer;
+      user-select:none;
+      -webkit-tap-highlight-color:transparent;
+    }
+    .role-toggle.selected {
+      border-color:#6d7587;
+      background:#171c27;
+      box-shadow:0 0 0 1px rgba(255,255,255,.035) inset;
+    }
+    .role-toggle input[type=checkbox] {
+      width:22px;
+      height:22px;
+      min-width:22px;
+      margin:0;
+      accent-color:var(--accent);
+    }
+    .role-toggle .role-toggle-name {
+      min-width:0;
+      flex:1;
+      font-weight:800;
+      overflow-wrap:anywhere;
+    }
+    .setting-toggle {
+      display:flex;
+      align-items:flex-start;
+      gap:11px;
+      min-height:52px;
+      padding:10px 0;
+      cursor:pointer;
+      -webkit-tap-highlight-color:transparent;
+    }
+    .setting-toggle input[type=checkbox] {
+      width:24px;
+      height:24px;
+      min-width:24px;
+      margin:1px 0 0;
+      accent-color:var(--accent);
+    }
+    .setting-toggle .setting-copy {
+      min-width:0;
+      flex:1;
+      line-height:1.4;
+    }
+    @media(max-width:760px){
+      .setup-toolbar{grid-template-columns:1fr}
+      .preset-actions>button{flex:1 1 140px}
+      .role-toggle-grid{grid-template-columns:1fr;max-height:320px}
+      .role-toggle{min-height:52px;padding:10px 12px}
+    }
+
     /* Online multiplayer */
     .online-header {
       display: flex;
@@ -795,7 +876,7 @@
           <h2>Play from separate devices</h2>
         </div>
         <div class="spacer"></div>
-        <span id="onlineAuthPill" class="pill">Connecting…</span>
+        <span id="onlineAuthPill" class="pill">Not connected</span>
       </div>
       <div class="notice">Create a room on one device, share the six-character code, and have everyone else join. The
         host controls the start screen and game state.</div>
@@ -939,7 +1020,7 @@
       </div>
     </section>
 
-    <section id="setupScreen" class="card">
+    <section id="setupScreen" class="card hidden">
       <div class="section-title">
         <div>
           <div class="phase">Game setup</div>
@@ -949,7 +1030,33 @@
         <span id="setupOnlineBadge" class="pill hidden">Online host</span>
       </div>
 
-      <div class="grid2">
+      <div class="setup-toolbar">
+        <div class="notice">
+          <strong>Quick setup</strong>
+          <div class="muted tiny" style="margin-top:5px">Choose a preset, then fine-tune it below. Presets set the random role pool without deleting your custom roles.</div>
+          <div style="margin-top:10px">
+            <label>Preset</label>
+            <select id="presetSelect"></select>
+          </div>
+          <div class="preset-actions">
+            <button id="applyPresetBtn" type="button">Apply preset</button>
+            <button id="savePresetBtn" class="ghost" type="button">Save custom preset</button>
+            <button id="deletePresetBtn" class="ghost" type="button">Delete custom preset</button>
+          </div>
+        </div>
+        <div class="notice">
+          <strong>Saved configuration</strong>
+          <div class="muted tiny" style="margin-top:5px">Stores players, role library, role pool, assignment settings and custom presets in this browser.</div>
+          <div class="preset-actions">
+            <button id="saveConfigBtn" class="good" type="button">Save config locally</button>
+            <button id="loadConfigBtn" class="ghost" type="button">Load saved config</button>
+            <button id="clearConfigBtn" class="ghost" type="button">Clear saved config</button>
+          </div>
+          <div id="configStatus" class="muted tiny" style="margin-top:8px"></div>
+        </div>
+      </div>
+
+      <div class="grid2" style="margin-top:12px">
         <div>
           <label>Role assignment mode</label>
           <select id="roundMode">
@@ -966,6 +1073,17 @@
         </div>
       </div>
 
+      <div class="notice" style="margin-top:12px">
+        <label class="setting-toggle" for="autoSideWinChecks">
+          <input id="autoSideWinChecks" type="checkbox" checked>
+          <span class="setting-copy">
+            <strong>Automatic side wins</strong>
+            <span class="muted tiny" style="display:block;margin-top:4px">When enabled, Evil wins when living Evil equals or outnumbers living non-Evil, and the normal Good/no-Evil end condition is checked. Turn this off for custom games that should continue past those normal side-win points.</span>
+          </span>
+        </label>
+        <div class="muted tiny" style="margin-top:4px"><strong>Always active:</strong> with exactly two living players, any Evil survivor gives Evil the win. If there is no Evil survivor and at least one of the two is Good, Good wins.</div>
+      </div>
+
       <div class="divider"></div>
 
       <div class="section-title">
@@ -975,6 +1093,9 @@
       </div>
       <div id="players" class="players"></div>
 
+      <details class="advanced-panel">
+        <summary>Advanced role configuration</summary>
+        <div class="advanced-body">
       <div class="divider"></div>
 
       <div class="section-title">
@@ -1012,6 +1133,18 @@
           </div>
         </div>
         <div style="margin-top:10px">
+          <label>Role ID (special behaviour)</label>
+          <select id="roleSpecialId">
+            <option value="default">Default — no special identity</option>
+            <option value="policeman">Policeman — permanent intel + Henchman link</option>
+            <option value="henchman">Henchman — recognises Policeman</option>
+            <option value="godfather">Godfather — shares the Evil team kill</option>
+            <option value="jester">Jester — converts when Evil is eliminated</option>
+            <option value="serial_killer">Serial Killer — Jester conversion target</option>
+          </select>
+          <div class="muted tiny" style="margin-top:5px">Most roles should stay on <strong>Default</strong>. IDs only enable hard-coded behaviour that cannot be expressed by the normal ability/visibility settings. Renaming a role does not change its ID.</div>
+        </div>
+        <div style="margin-top:10px">
           <label>Description shown to the player who gets the role</label>
           <textarea id="roleDescription" placeholder="Write the complete player-facing role instructions."></textarea>
         </div>
@@ -1038,6 +1171,7 @@
             <option value="watch">Watch a player</option>
             <option value="gambler">Random ability each night</option>
             <option value="janitor">Reveal a killed player's exact role</option>
+            <option value="changeRole">Change a player's role permanently</option>
           </select>
         </div>
         <div style="margin-top:10px">
@@ -1050,6 +1184,33 @@
             <option value="neutral">Neutral players</option>
             <option value="evil">Evil players</option>
           </select>
+        </div>
+        <div style="margin-top:10px">
+          <label>Specific roles that can see this role (optional)</label>
+          <div id="roleVisibleToRoles" class="role-toggle-grid" role="group" aria-label="Specific roles that can see this role"></div>
+          <div class="muted tiny" style="margin-top:6px">Tap any role to toggle it. Selected roles are added to the general visibility rule above.</div>
+        </div>
+        <div class="grid2" style="margin-top:10px">
+          <div>
+            <label>Night-action target filter</label>
+            <select id="roleTargetFilter">
+              <option value="any">Any living player</option>
+              <option value="good">Good only</option>
+              <option value="neutral">Neutral only</option>
+              <option value="evil">Evil only</option>
+            </select>
+          </div>
+          <div>
+            <label>Maximum uses per game</label>
+            <input id="roleMaxUses" type="number" min="0" max="99" step="1" placeholder="0 = unlimited">
+          </div>
+        </div>
+        <div class="row" style="margin-top:10px">
+          <label style="margin:0"><input id="roleCanTargetSelf" type="checkbox"> Night action may target self</label>
+        </div>
+        <div style="margin-top:10px">
+          <label>Custom night prompt (optional)</label>
+          <input id="roleNightPrompt" type="text" maxlength="180" placeholder="Override the default instruction shown during the night">
         </div>
         <div style="margin-top:10px">
           <label>Win condition</label>
@@ -1065,12 +1226,13 @@
           <button id="saveRoleBtn" type="button">Save role</button>
         </div>
       </div>
+        </div>
+      </details>
 
       <div class="divider"></div>
 
       <div class="notice">
-        <strong>Win logic:</strong> Evil wins when the number of living evil players is at least the number of living
-        non-evil players. Good wins when no evil players remain. Neutral roles remain in play after evil is eliminated; their own win conditions are checked when applicable. A role with the 'Wins when voted out' condition ends the game when that player is voted out. If evil is eliminated while a Jester is still alive, the Jester becomes a Serial Killer instead of the game ending.
+        <strong>Win logic:</strong> Role-specific win conditions are checked first. The normal Good/no-Evil and Evil-majority checks are controlled by <strong>Automatic side wins</strong> above. When those checks are enabled, neutral roles can keep a no-Evil game running and a surviving Jester converts to Serial Killer instead of ending the game. The two-player safeguard described above is always active regardless of that setting.
       </div>
 
       <div class="row" style="justify-content:flex-end;margin-top:14px">
@@ -1185,7 +1347,7 @@
         visibility: 'nobody', nightAction: 'teamKill'
       },
       {
-        id: 'serial_killer', title: 'Serial Killer', orientation: 'neutral',
+        id: 'serial_killer', specialId: 'serial_killer', title: 'Serial Killer', orientation: 'neutral',
         description: 'Each night, choose one living player to kill.',
         visibility: 'nobody', nightAction: 'kill'
       },
@@ -1220,7 +1382,7 @@
         visibility: 'evil', nightAction: 'traitor'
       },
       {
-        id: 'jester', title: 'Jester', orientation: 'neutral',
+        id: 'jester', specialId: 'jester', title: 'Jester', orientation: 'neutral',
         description: 'Try to get voted out by the Citizens during the day. You win immediately when the town votes you out.',
         visibility: 'nobody', nightAction: 'none', winCondition: 'votedOut'
       },
@@ -1240,7 +1402,7 @@
         visibility: 'evil', nightAction: 'hater', winCondition: 'sideWhenTargetVotedOut'
       },
       {
-        id: 'godfather', title: 'Godfather', orientation: 'evil',
+        id: 'godfather', specialId: 'godfather', title: 'Godfather', orientation: 'evil',
         description: 'Coordinate with your evil subordinates to kill. Your evil team shares one team kill per night; any living evil player can submit the team kill and only one is used.',
         visibility: 'evil', nightAction: 'teamKill'
       },
@@ -1268,6 +1430,21 @@
         id: 'janitor', title: 'Janitor', orientation: 'good',
         description: 'During the night reactions, while cleaning up a body, choose one player killed that night and learn their exact role.',
         visibility: 'nobody', nightAction: 'janitor'
+      },
+      {
+        id: 'policeman', specialId: 'policeman', title: 'Policeman', orientation: 'good',
+        description: 'When you first reveal this role, you are assigned one permanent intelligence target and learn that player’s exact role and alignment. You may hint at what you know, but you must never directly claim that you are the Policeman. Your intelligence is repeated privately every night.',
+        visibility: 'nobody', nightAction: 'none', randomEnabled: false, randomCount: 1
+      },
+      {
+        id: 'henchman', specialId: 'henchman', title: 'Henchman', orientation: 'evil',
+        description: 'If a Policeman is in the game, you and the Policeman recognise each other. You may pressure the Policeman in real life and try to make them act or speak the way you want, but normal game rules still apply.',
+        visibility: 'evil', nightAction: 'none', randomEnabled: false, randomCount: 1
+      },
+      {
+        id: 'leader', title: 'Leader', orientation: 'neutral',
+        description: 'Each night, choose a living player and permanently replace their role with another role from the library. Their allegiance, visibility, ability and special win condition all become those of the new role.',
+        visibility: 'nobody', nightAction: 'changeRole', randomEnabled: false, randomCount: 1
       }
     ];
 
@@ -1287,6 +1464,7 @@
       onlineVersion: 0,
       processedCommandIds: {},
       onlineCommandAcks: {},
+      autoSideWinChecks: true,
     };
 
     const NIGHT_ACTIONS = Object.freeze({
@@ -1310,6 +1488,7 @@
       watch: {label: 'Watch a player'},
       gambler: {label: 'Random ability each night'},
       janitor: {label: "Reveal a killed player's exact role"},
+      changeRole: {label: "Change a player's role permanently"},
     });
 
     const $ = id => document.getElementById(id);
@@ -1319,14 +1498,117 @@
       .replaceAll('"', '&quot;').replaceAll("'", '&#39;');
 
     function createPlayer(id, name) {
-      return {id, uid: null, name, roleId: null, alive: true, used: {}, escaped: false, eliminatedByVote: false, framedRoleId: null, haterTargetId: null, silenced: false};
+      return {id, uid: null, name, roleId: null, alive: true, used: {}, escaped: false, eliminatedByVote: false, framedRoleId: null, haterTargetId: null, policemanIntel: null, silenced: false};
     }
     function playersAlive() {return state.players.filter(p => p.alive);}
     function roleOf(player) {return player ? state.roles.find(r => r.id === player.roleId) : null;}
+
+    // A role's internal `id` remains a hidden unique key used for assignments,
+    // presets and saves. `specialId` is the user-editable behaviour identity.
+    // Legacy saves created before this split are inferred from their old IDs.
+    const SPECIAL_ROLE_IDS = new Set(['policeman', 'henchman', 'godfather', 'jester', 'serial_killer']);
+    function specialRoleId(role) {
+      if (!role) return 'default';
+      if (SPECIAL_ROLE_IDS.has(role.specialId)) return role.specialId;
+      if ((role.specialId == null || role.specialId === '') && SPECIAL_ROLE_IDS.has(role.id)) return role.id;
+      return 'default';
+    }
+    function roleHasSpecialId(role, id) { return specialRoleId(role) === id; }
+
     function effectiveRoleOf(player) {
       if (!player) return null;
       const framed = player.framedRoleId ? state.roles.find(r => r.id === player.framedRoleId) : null;
       return framed || roleOf(player);
+    }
+
+    function normalizedRoleOptions(role) {
+      return {
+        visibleToRoleIds: Array.isArray(role?.visibleToRoleIds) ? role.visibleToRoleIds : [],
+        targetFilter: ['good','neutral','evil'].includes(role?.targetFilter) ? role.targetFilter : 'any',
+        canTargetSelf: !!role?.canTargetSelf,
+        maxUses: Math.max(0, Math.floor(Number(role?.maxUses) || 0)),
+        nightPrompt: String(role?.nightPrompt || '').trim()
+      };
+    }
+
+    function actionUsesLeft(player, role = roleOf(player)) {
+      const max = normalizedRoleOptions(role).maxUses;
+      if (!max) return Infinity;
+      const used = Number(player?.used?.nightActionCount || 0);
+      return Math.max(0, max - used);
+    }
+
+    function markNightAbilityUsed(player, role = roleOf(player)) {
+      if (!player || !normalizedRoleOptions(role).maxUses) return;
+      player.used = player.used || {};
+      player.used.nightActionCount = Number(player.used.nightActionCount || 0) + 1;
+    }
+
+    function validAbilityTargets(actor, role = roleOf(actor), includeDead = false) {
+      const opts = normalizedRoleOptions(role);
+      return state.players.filter(target => {
+        if (!includeDead && !target.alive) return false;
+        if (!opts.canTargetSelf && target.id === actor.id) return false;
+        if (opts.targetFilter !== 'any' && roleOf(target)?.orientation !== opts.targetFilter) return false;
+        return true;
+      });
+    }
+
+    function ensurePolicemanIntel(player) {
+      if (!player || !roleHasSpecialId(roleOf(player), 'policeman')) return null;
+      if (player.policemanIntel?.targetId != null) return player.policemanIntel;
+      const target = randomChoice(state.players.filter(p => p.id !== player.id));
+      const targetRole = roleOf(target);
+      player.policemanIntel = target && targetRole ? {targetId: target.id, roleId: targetRole.id, roleTitle: targetRole.title, orientation: targetRole.orientation} : null;
+      return player.policemanIntel;
+    }
+
+    function specialRoleIntelHtml(player) {
+      const role = roleOf(player);
+      if (!role) return '';
+      const chunks = [];
+      if (roleHasSpecialId(role, 'policeman')) {
+        const intel = ensurePolicemanIntel(player);
+        const target = playerOf(intel?.targetId);
+        if (intel && target) chunks.push(`<div class="intel-card"><strong>Policeman intelligence</strong><div style="margin-top:5px"><strong>${escapeHtml(target.name)}</strong> was <strong>${escapeHtml(intel.roleTitle)}</strong> (${escapeHtml(labelOrientation(intel.orientation))}) when you received your assignment.</div><div class="tiny muted" style="margin-top:6px">You may hint at this information, but you must not directly say that you are the Policeman.</div></div>`);
+        const henchmen = state.players.filter(p => p.id !== player.id && roleHasSpecialId(roleOf(p), 'henchman'));
+        if (henchmen.length) chunks.push(`<div class="intel-card"><strong>Henchman contact</strong><div style="margin-top:5px">${henchmen.map(p=>escapeHtml(p.name)).join(', ')} ${henchmen.length === 1 ? 'is' : 'are'} Henchman. You recognise each other.</div></div>`);
+      }
+      if (roleHasSpecialId(role, 'henchman')) {
+        const police = state.players.filter(p => roleHasSpecialId(roleOf(p), 'policeman'));
+        if (police.length) chunks.push(`<div class="intel-card"><strong>Policeman contact</strong><div style="margin-top:5px">${police.map(p=>escapeHtml(p.name)).join(', ')} ${police.length === 1 ? 'is' : 'are'} Policeman. You recognise each other and may pressure them in real life, within the agreed rules of the game.</div></div>`);
+      }
+      return chunks.join('');
+    }
+
+    function applyPermanentRoleChange(target, newRoleId, actor = null) {
+      const nextRole = state.roles.find(r => r.id === newRoleId);
+      if (!target || !nextRole) return false;
+      const oldRole = roleOf(target);
+      target.roleId = nextRole.id;
+      target.framedRoleId = null;
+      target.haterTargetId = null;
+      target.policemanIntel = null;
+      target.used = {};
+      if (roleHasSpecialId(nextRole, 'policeman')) ensurePolicemanIntel(target);
+      addLog(`${actor?.name || 'A night ability'} permanently changed ${target.name}'s role from ${oldRole?.title || 'Unknown'} to ${nextRole.title}.`);
+      return true;
+    }
+
+    function queuePermanentRoleChange(actor, target, newRoleId) {
+      if (!state.night || !actor || !target || !state.roles.some(r=>r.id===newRoleId)) return false;
+      state.night.pendingRoleChanges = state.night.pendingRoleChanges || [];
+      state.night.pendingRoleChanges.push({actorId:actor.id,targetId:target.id,newRoleId});
+      return true;
+    }
+
+    function applyQueuedRoleChanges() {
+      const changes = [...(state.night?.pendingRoleChanges || [])].sort((a,b)=>Number(a.actorId)-Number(b.actorId));
+      state.night.pendingRoleChanges = [];
+      changes.forEach(change => {
+        const actor=playerOf(change.actorId), target=playerOf(change.targetId);
+        if(target) applyPermanentRoleChange(target,change.newRoleId,actor);
+      });
     }
 
     function nightActionFor(player) {
@@ -1366,6 +1648,39 @@
     function show(...ids) {ids.forEach(id => $(id)?.classList.remove('hidden'));}
 
     // ---- Setup / roles --------------------------------------------------------
+    const BUILTIN_PRESETS = {
+      classic: {name:'Classic', description:'1 Godfather + 1 Detective.', roles:{godfather:1, detective:1}},
+      chaos: {name:'Chaos', description:'Every available non-Citizen role selected once.', allRoles:true},
+      trickery: {name:'Trickery', description:'Hacker, Framer, Serial Killer, Persuader, Gambler and Leader.', roles:{hacker:1, framer:1, serial_killer:1, persuader:1, gambler:1, leader:1}},
+      protection: {name:'Protection', description:'Godfather, Detective, Doctor and Peacemaker.', roles:{godfather:1, detective:1, doctor:1, peacemaker:1}}
+    };
+    const CONFIG_STORAGE_KEY = 'mafia:config:v3';
+    const PRESET_STORAGE_KEY = 'mafia:customPresets:v1';
+
+    function readCustomPresets() { try { return JSON.parse(localStorage.getItem(PRESET_STORAGE_KEY) || '{}') || {}; } catch { return {}; } }
+    function writeCustomPresets(value) { localStorage.setItem(PRESET_STORAGE_KEY, JSON.stringify(value || {})); }
+    function currentRolePoolSnapshot() { return Object.fromEntries(state.roles.filter(r=>r.id!=='citizen' && r.randomEnabled!==false && Number(r.randomCount||0)>0).map(r=>[r.id,Math.max(1,Math.floor(Number(r.randomCount)||1))])); }
+    function renderPresetSelect() {
+      const el=$('presetSelect'); if(!el) return; const current=el.value; el.innerHTML='';
+      Object.entries(BUILTIN_PRESETS).forEach(([id,p])=>el.appendChild(new Option(`${p.name} — ${p.description}`,`builtin:${id}`)));
+      Object.entries(readCustomPresets()).forEach(([id,p])=>el.appendChild(new Option(`${p.name} — custom`,`custom:${id}`)));
+      if([...el.options].some(o=>o.value===current)) el.value=current;
+    }
+    function applyPresetDefinition(def) {
+      if(!def) return;
+      state.mode='random';
+      state.roles.forEach(role=>{ if(role.id==='citizen') return; role.randomEnabled=false; role.randomCount=1; });
+      if(def.allRoles){
+        state.roles.forEach(role=>{ if(role.id!=='citizen'){role.randomEnabled=true;role.randomCount=1;} });
+      } else {
+        Object.entries(def.roles || {}).forEach(([id,count])=>{ const role=roleByIdOrRestore(id); if(role){role.randomEnabled=true;role.randomCount=Math.max(1,Math.floor(Number(count)||1));} });
+      }
+      renderSetup();
+    }
+    function selectedPresetDefinition() { const value=$('presetSelect')?.value||''; const [kind,id]=value.split(':'); return kind==='builtin'?BUILTIN_PRESETS[id]:readCustomPresets()[id]; }
+    function saveConfigLocal() { const payload={roles:state.roles,players:state.players.map(p=>({...p,alive:true,used:{},escaped:false,eliminatedByVote:false,framedRoleId:null,haterTargetId:null,policemanIntel:null,silenced:false})),mode:state.mode,nightOrder:$('nightOrder')?.value||'player',autoSideWinChecks:state.autoSideWinChecks!==false,customPresets:readCustomPresets()}; localStorage.setItem(CONFIG_STORAGE_KEY,JSON.stringify(payload)); $('configStatus').textContent='Saved players, roles, presets and settings on this device.'; }
+    function loadConfigLocal() { try{const p=JSON.parse(localStorage.getItem(CONFIG_STORAGE_KEY)||'null');if(!p)throw new Error();state.roles=Array.isArray(p.roles)?p.roles:structuredClone(DEFAULT_ROLES);state.players=Array.isArray(p.players)&&p.players.length?p.players:state.players;state.mode=p.mode||'random';state.autoSideWinChecks=p.autoSideWinChecks!==false;if(p.customPresets&&typeof p.customPresets==='object')writeCustomPresets(p.customPresets);renderSetup();if($('nightOrder'))$('nightOrder').value=p.nightOrder||'player';$('configStatus').textContent='Saved configuration loaded.';}catch{$('configStatus').textContent='No valid saved configuration found.';} }
+
     function visibilityText(value) {
       return ({
         nobody: 'Nobody', everyone: 'Everyone', sameOrientation: 'Same orientation',
@@ -1394,6 +1709,8 @@
       if (!viewer.alive) return true;
 
       const viewerRole = roleOf(viewer);
+      if ((roleHasSpecialId(viewerRole, 'policeman') && roleHasSpecialId(role, 'henchman')) || (roleHasSpecialId(viewerRole, 'henchman') && roleHasSpecialId(role, 'policeman'))) return true;
+      if (Array.isArray(role.visibleToRoleIds) && viewerRole && role.visibleToRoleIds.includes(viewerRole.id)) return true;
       if (role.visibility === 'everyone') return true;
       if (role.visibility === 'nobody') return false;
       if (!viewerRole) return false;
@@ -1512,7 +1829,7 @@
         <button class="ghost" data-edit type="button">Edit</button>
         <button class="danger" data-delete type="button">Remove</button></div>
       <div class="role-desc">${escapeHtml(role.description)}</div>
-      <div class="muted tiny" style="margin-top:8px">Night ability: ${escapeHtml(NIGHT_ACTIONS[role.nightAction]?.label || role.nightAction || 'None')} · Seen by: ${escapeHtml(visibilityText(role.visibility))} · Win condition: ${escapeHtml(winConditionText(role))}</div>`;
+      <div class="muted tiny" style="margin-top:8px">Night ability: ${escapeHtml(NIGHT_ACTIONS[role.nightAction]?.label || role.nightAction || 'None')} · Seen by: ${escapeHtml(visibilityText(role.visibility))}${role.visibleToRoleIds?.length ? ` + selected roles (${role.visibleToRoleIds.map(id=>state.roles.find(r=>r.id===id)?.title||id).join(', ')})` : ''} · Win condition: ${escapeHtml(winConditionText(role))}${specialRoleId(role) !== 'default' ? ` · ID: ${escapeHtml(specialRoleId(role))}` : ''}</div>`;
         card.querySelector('[data-edit]').addEventListener('click', () => openRoleEditor(role.id));
         card.querySelector('[data-delete]').addEventListener('click', () => removeRole(role.id));
         el.appendChild(card);
@@ -1520,7 +1837,8 @@
     }
     function renderSetup() {
       $('roundMode').value = state.mode;
-      renderPlayers(); renderRandomRolePool(); renderRoleLibrary();
+      if($('autoSideWinChecks')) $('autoSideWinChecks').checked = state.autoSideWinChecks !== false;
+      renderPlayers(); renderRandomRolePool(); renderRoleLibrary(); renderPresetSelect();
     }
     function openRoleEditor(id = null) {
       state.editingRoleId = id;
@@ -1528,9 +1846,37 @@
       $('editorTitle').textContent = role ? `Edit: ${role.title}` : 'New role';
       $('roleTitle').value = role?.title || '';
       $('roleOrientation').value = role?.orientation || 'good';
+      $('roleSpecialId').value = specialRoleId(role);
       $('roleDescription').value = role?.description || '';
       $('roleNightAction').value = role?.nightAction || 'none';
       $('roleVisibility').value = role?.visibility || 'nobody';
+      const visibleRolePicker = $('roleVisibleToRoles');
+      visibleRolePicker.innerHTML = '';
+      const selectedVisibleRoleIds = new Set(role?.visibleToRoleIds || []);
+      state.roles.filter(r => !role || r.id !== role.id).forEach(r => {
+        const item = document.createElement('label');
+        item.className = 'role-toggle';
+        const checkbox = document.createElement('input');
+        checkbox.type = 'checkbox';
+        checkbox.dataset.roleId = r.id;
+        checkbox.checked = selectedVisibleRoleIds.has(r.id);
+        const name = document.createElement('span');
+        name.className = 'role-toggle-name';
+        name.textContent = r.title;
+        const orientation = document.createElement('span');
+        orientation.className = `pill ${r.orientation || 'neutral'}`;
+        orientation.textContent = labelOrientation(r.orientation || 'neutral');
+        const syncSelectedState = () => item.classList.toggle('selected', checkbox.checked);
+        checkbox.addEventListener('change', syncSelectedState);
+        item.append(checkbox, name, orientation);
+        syncSelectedState();
+        visibleRolePicker.appendChild(item);
+      });
+      const options = normalizedRoleOptions(role);
+      $('roleTargetFilter').value = options.targetFilter;
+      $('roleCanTargetSelf').checked = options.canTargetSelf;
+      $('roleMaxUses').value = options.maxUses || 0;
+      $('roleNightPrompt').value = options.nightPrompt;
       $('roleWinCondition').value = normalizedWinCondition(role);
       $('roleEditor').classList.remove('hidden'); $('roleTitle').focus();
     }
@@ -1550,14 +1896,9 @@
     }
     function validateSetup() {
       if (state.players.length < 2) return 'Need at least 2 players.';
-      if (state.mode === 'manual') {
-        const assignments = state.players.map(p => p.roleId).filter(Boolean);
-        const evilAssigned = assignments.some(id => state.roles.find(r => r.id === id)?.orientation === 'evil');
-        if (!evilAssigned) return 'Manual setup must include at least one evil player.';
-      } else {
-        const evilPool = state.roles.some(r => r.orientation === 'evil' && r.randomEnabled !== false && Math.max(1, Math.floor(r.randomCount || 1)) > 0);
-        if (!evilPool) return 'Random setup must include at least one enabled evil role.';
-      }
+      // No-Evil setups are intentionally allowed. Custom games may disable the
+      // normal side-win checks, and the always-on two-player safeguard handles
+      // the explicit two-player Good/Evil edge cases.
       return null;
     }
 
@@ -1599,6 +1940,7 @@
       state.onlineVersion = Number.isInteger(parsed.onlineVersion) ? parsed.onlineVersion : 0;
       state.processedCommandIds = {};
       state.onlineCommandAcks = parsed.onlineCommandAcks || {};
+      state.autoSideWinChecks = parsed.autoSideWinChecks !== false;
       const byId = new Map(state.players.map(p => [Number(p.id), p]));
       for (const key of ['queue','reactionQueue','round1Players','reactionCompleted']) {
         if (!Array.isArray(state.night[key])) continue;
@@ -1612,7 +1954,8 @@
         roles: state.roles, players: state.players, mode: state.mode, phase: state.phase,
         handoffIndex: state.handoffIndex, handoffRevealed: state.handoffRevealed, round: state.round,
         day: state.day, night: state.night, logs: state.logs.slice(0, 250),
-        onlineVersion: state.onlineVersion, onlineCommandAcks: state.onlineCommandAcks
+        onlineVersion: state.onlineVersion, onlineCommandAcks: state.onlineCommandAcks,
+        autoSideWinChecks: state.autoSideWinChecks !== false
       }));
     }
 
@@ -1666,7 +2009,8 @@
         const shuffledAssigned = shuffle(assigned);
         state.players.forEach((p, i) => {p.roleId = shuffledAssigned[i] || null;});
       }
-      state.players.forEach(p => {p.alive = true; p.used = {}; p.escaped = false; p.eliminatedByVote = false; p.framedRoleId = null; p.haterTargetId = null; p.silenced = false;});
+      state.players.forEach(p => {p.alive = true; p.used = {}; p.escaped = false; p.eliminatedByVote = false; p.framedRoleId = null; p.haterTargetId = null; p.policemanIntel = null; p.silenced = false;});
+      state.players.filter(p => roleHasSpecialId(roleOf(p), 'policeman')).forEach(ensurePolicemanIntel);
     }
 
     // ---- Handoff / day --------------------------------------------------------
@@ -1683,13 +2027,19 @@
       $('handoffDescription').innerHTML = state.handoffRevealed
         ? `${rolePill(role)}<div style="margin-top:10px">${escapeHtml(role?.description || '')}</div><div class="tiny muted" style="margin-top:10px">Night ability: ${escapeHtml(NIGHT_ACTIONS[role?.nightAction]?.label || 'None')}</div>`
         : 'Tap reveal to privately see your role.';
-      if (state.handoffRevealed) renderKnownRoles(player, 'handoffKnownRoles'); else $('handoffKnownRoles').innerHTML = '';
+      if (state.handoffRevealed) {
+        if (roleHasSpecialId(role, 'policeman')) ensurePolicemanIntel(player);
+        renderKnownRoles(player, 'handoffKnownRoles');
+        $('handoffKnownRoles').innerHTML += specialRoleIntelHtml(player);
+      } else $('handoffKnownRoles').innerHTML = '';
       $('revealRoleBtn').disabled = state.handoffRevealed;
       $('handoffNextBtn').disabled = !state.handoffRevealed;
       $('handoffNextBtn').textContent = state.handoffIndex === state.players.length - 1 ? 'Start day' : 'Hide & pass';
     }
     function startDay() {
       state.phase = 'day'; state.day = {secondBallot: false, votes: {}, tiedCandidates: []};
+      const result = checkWin();
+      if (result.done) {endGame(result); return;}
       hide('handoffCard', 'nightCard'); show('dayCard');
       setPhase('Day', 'Vote someone out'); renderDay();
     }
@@ -1791,12 +2141,12 @@
     function coordinatedKillMembers(actor) {
       const role = roleOf(actor);
       if (!role || !isTeamKillRole(role)) return [actor];
-      if (role.id === 'godfather') return playersAlive().filter(player => roleOf(player)?.orientation === 'evil');
+      if (roleHasSpecialId(role, 'godfather')) return playersAlive().filter(player => roleOf(player)?.orientation === 'evil');
       return playersAlive().filter(player => roleOf(player)?.id === role.id);
     }
 
     function teamKillGroupKey(role) {
-      return role?.id === 'godfather' ? 'evil' : role?.id;
+      return roleHasSpecialId(role, 'godfather') ? 'evil' : role?.id;
     }
 
     function getConfiguredNightOrder(players) {
@@ -1847,10 +2197,14 @@
         blockedIds: [],
         trackTargets: {},
         watchTargets: {},
-        gamblerActions: {}
+        gamblerActions: {},
+        roleChangeActorId: null,
+        roleChangeTargetId: null,
+        pendingRoleChanges: []
       };
       nightPlayers.forEach(player => {
         const role = roleOf(player);
+        if (roleHasSpecialId(role, 'policeman')) ensurePolicemanIntel(player);
         if (role?.nightAction === 'gambler') state.night.gamblerActions[player.id] = randomChoice(gamblerAbilityPool()) || 'none';
         if (nightActionFor(player) === 'seer') {
           const possible = nightPlayers.filter(t => t.id !== player.id);
@@ -1896,6 +2250,9 @@
       renderKnownRoles(actor, 'nightKnownRoles');
 
       const role = roleOf(actor);
+      if (role) {
+        $('nightKnownRoles').innerHTML = `<div class="private-role-banner"><div class="tiny muted">YOUR ROLE TONIGHT</div><div class="role-name">${escapeHtml(role.title)}</div>${rolePill(role)}<div class="tiny" style="margin-top:8px">${escapeHtml(role.description || '')}</div></div>` + $('nightKnownRoles').innerHTML + specialRoleIntelHtml(actor);
+      }
       const teammates = coordinatedKillMembers(actor).filter(player => player.id !== actor.id);
       if (!role || !teammates.length) return;
 
@@ -1934,12 +2291,26 @@
       const role = roleOf(actor);
       const nightAction = nightActionFor(actor);
       if (!role) {completeNightTurn(); return;}
+      if (nightAction !== 'none' && actionUsesLeft(actor, role) <= 0) {
+        showNightResult('<strong>No uses remaining.</strong> This role has reached its per-game ability limit.');
+        completeNightTurn(); return;
+      }
       if (state.night.blockedIds?.includes(actor.id)) {
         showNightResult('<strong>Your night ability was blocked.</strong> You cannot use it tonight.');
         $('nightPrompt').textContent = 'Roleblock resolved. Acknowledge and continue.';
         $('nightActionArea').innerHTML = '';
         $('nightActionArea').appendChild(actionButton('Acknowledge & continue', 'blockedAcknowledge', () => completeNightTurn()));
         return;
+      }
+
+      if (nightAction === 'changeRole') {
+        const target = playerOf(choice);
+        if (!target || !target.alive || !validAbilityTargets(actor, role).some(p=>p.id===target.id)) { showNightResult('That player is no longer a valid target.'); completeNightTurn(); return; }
+        state.night.roleChangeTargetId = target.id;
+        state.night.roleChangeActorId = actor.id;
+        setNightBusy(false);
+        showNightResult(`<strong>Target selected:</strong> ${escapeHtml(target.name)}. Choose their new permanent role.`);
+        updateNight(); return;
       }
 
       if (nightAction === 'inspectOrientation') {
@@ -1950,6 +2321,7 @@
           return;
         }
         state.night.inspectTargets[actor.id] = target.id;
+        markNightAbilityUsed(actor, role);
         recordNightAction(actor, 'inspectOrientation', target.id);
         showNightResult(`<strong>Target recorded.</strong><br>You will see ${escapeHtml(target.name)}'s orientation during the night reactions.`);
         $('nightPrompt').textContent = 'Inspection target recorded. Acknowledge to finish this turn.';
@@ -1970,6 +2342,7 @@
           return;
         }
         state.night.seerTargets[actor.id] = target.id;
+        markNightAbilityUsed(actor, role);
         recordNightAction(actor, 'seer', target.id);
         state.night.seerReveal = {targetId: target.id};
         showNightResult(`<strong>Target recorded.</strong><br>You will see ${escapeHtml(target.name)}'s exact role during the night reactions.`);
@@ -2027,6 +2400,7 @@
         if (nightAction === 'silence') target.silenced = true;
         if (nightAction === 'track') state.night.trackTargets[actor.id] = target.id;
         if (nightAction === 'watch') state.night.watchTargets[actor.id] = target.id;
+        recordNightAction(actor, nightAction, target.id);
         const messages = {
           protect: `<strong>${escapeHtml(target.name)}</strong> is protected tonight.`,
           roleblock: `<strong>${escapeHtml(target.name)}</strong> is roleblocked tonight. Their night ability will be skipped when their turn is reached.`,
@@ -2034,6 +2408,7 @@
           track: `You are tracking <strong>${escapeHtml(target.name)}</strong>. Their night action will be revealed during the night reactions.`,
           watch: `You are watching <strong>${escapeHtml(target.name)}</strong>. Who they targeted will be revealed during the night reactions.`
         };
+        markNightAbilityUsed(actor, role);
         showNightResult(messages[nightAction]);
         $('nightPrompt').textContent = 'Action recorded. Acknowledge to finish this turn.';
         $('nightActionArea').innerHTML = '';
@@ -2072,16 +2447,14 @@
           state.night.usedTeamKillRoleIds.push(teamKillGroupKey(role));
         }
 
-        if (state.night.protectedIds?.includes(target.id)) {
-          showNightResult(`<strong>Attack blocked.</strong> ${escapeHtml(target.name)} was protected tonight.`);
-        } else {
-          state.night.pendingAttacks.push({
-            attackerId: actor.id,
-            targetId: target.id,
-            sourceAction: nightAction
-          });
-          showNightResult(`<strong>Target recorded.</strong> The attack will be resolved during the reaction round.`);
-        }
+        state.night.pendingAttacks.push({
+          attackerId: actor.id,
+          targetId: target.id,
+          sourceAction: nightAction
+        });
+        recordNightAction(actor, nightAction, target.id);
+        markNightAbilityUsed(actor, role);
+        showNightResult(`<strong>Target recorded.</strong> The attack will be resolved after every Round 1 action, so protection is order-independent.`);
         $('nightPrompt').textContent = 'Action recorded. Acknowledge to finish this turn.';
         $('nightActionArea').innerHTML = '';
         $('nightActionArea').appendChild(actionButton('Acknowledge & continue', 'attackAcknowledge', () => {
@@ -2105,7 +2478,14 @@
 
     function renderStandardAction(actor, role, living) {
       const area = $('nightActionArea');
+      const options = normalizedRoleOptions(role);
+      const allowedTargets = validAbilityTargets(actor, role);
       const choose = target => area.appendChild(actionButton(target.name, target.id, () => setChoiceAndContinue(actor, target.id)));
+      if (role.nightAction !== 'none' && actionUsesLeft(actor, role) <= 0) {
+        $('nightPrompt').textContent = `You have used this ability ${options.maxUses} time${options.maxUses===1?'':'s'} and have no uses remaining.`;
+        area.appendChild(actionButton('Acknowledge & continue','skip',()=>setChoiceAndContinue(actor,'skip'))); return;
+      }
+      if (options.nightPrompt) $('nightPrompt').textContent = options.nightPrompt;
 
       switch (role.nightAction) {
         case 'teamKill': {
@@ -2125,13 +2505,13 @@
         }
         case 'kill': {
           $('nightPrompt').textContent = 'Choose one living player to kill. The attack is resolved in the reaction round.';
-          living.forEach(choose);
+          allowedTargets.forEach(choose);
           break;
         }
 
         case 'inspectOrientation':
           $('nightPrompt').textContent = 'Choose one living player to inspect. Their orientation will be revealed during the night reactions.';
-          living.forEach(choose);
+          allowedTargets.forEach(choose);
           break;
         case 'seer': {
           const target = playerOf(state.night.seerTargets?.[actor.id]);
@@ -2159,9 +2539,13 @@
         case 'watch': {
           const prompts = {protect:'Choose a living player to protect from night kills.',roleblock:'Choose a living player whose night ability will be blocked.',silence:'Choose a living player who will be unable to vote tomorrow.',track:'Choose a living player; their night ability will be revealed to you during the reactions.',watch:'Choose a living player; who they targeted will be revealed to you during the reactions.'};
           $('nightPrompt').textContent = prompts[role.nightAction];
-          living.forEach(choose);
+          allowedTargets.forEach(choose);
           break;
         }
+        case 'changeRole':
+          $('nightPrompt').textContent = options.nightPrompt || 'Choose a living player. You will then choose their new permanent role.';
+          allowedTargets.forEach(choose);
+          break;
         default:
           $('nightPrompt').textContent = 'No active action in this round. Acknowledge your turn, then pass the device.';
           area.appendChild(actionButton('Acknowledge & continue', 'skip', () => setChoiceAndContinue(actor, 'skip')));
@@ -2247,6 +2631,23 @@
         $('resolveNightBtn').disabled = true;
         const role = roleOf(actor);
         const action = nightActionFor(actor);
+        if (action === 'changeRole' && state.night.roleChangeActorId === actor.id) {
+          const target = playerOf(state.night.roleChangeTargetId);
+          const area = $('nightActionArea');
+          if (!target || !target.alive) { state.night.roleChangeActorId=null; state.night.roleChangeTargetId=null; $('nightPrompt').textContent='The selected player is no longer available.'; area.appendChild(actionButton('Acknowledge & continue','roleChangeMissing',()=>completeNightTurn())); return; }
+          $('nightPrompt').innerHTML = `Choose <strong>${escapeHtml(target.name)}</strong>'s new permanent role.`;
+          area.innerHTML='';
+          state.roles.filter(candidate=>candidate.id!==target.roleId).forEach(candidate=>area.appendChild(actionButton(`${candidate.title} — ${labelOrientation(candidate.orientation)}`,candidate.id,()=>{
+            if(state.night.busy)return; setNightBusy(true);
+            queuePermanentRoleChange(actor,target,candidate.id);
+            state.night.roleChangeActorId=null; state.night.roleChangeTargetId=null;
+            markNightAbilityUsed(actor, role);
+            recordNightAction(actor,'changeRole',target.id,{newRoleId:candidate.id});
+            showNightResult(`<strong>Role change locked in.</strong><br>${escapeHtml(target.name)} will become ${escapeHtml(candidate.title)} when the night ends.`);
+            completeNightTurn();
+          })));
+          return;
+        }
         if (action === 'framer' && state.night.framerRoleChooserId === actor.id) {
           const target = playerOf(state.night.framerTargetId);
           const area = $('nightActionArea');
@@ -2263,6 +2664,8 @@
             setNightBusy(true);
             target.framedRoleId = candidate.id;
             state.night.framerRoleChooserId = null;
+            markNightAbilityUsed(actor, role);
+            recordNightAction(actor, 'framer', target.id, {framedRoleId:candidate.id});
             showNightResult(`<strong>Frame recorded.</strong><br>${escapeHtml(target.name)} will be treated as <strong>${escapeHtml(candidate.title)}</strong> for Detective and Seer checks tonight.`);
             completeNightTurn();
           })));
@@ -2288,6 +2691,11 @@
         const role = {...(roleOf(target) || {}), nightAction: nightActionFor(target)};
         if (!target || !target.alive) {
           removePendingAttack(attack);
+          return;
+        }
+        if (state.night.protectedIds?.includes(target.id)) {
+          removePendingAttack(attack);
+          addLog(`${target.name} was protected from a night attack.`);
           return;
         }
         if (!reactiveActions.has(role?.nightAction)) {
@@ -2349,6 +2757,7 @@
       const attacks = findPendingAttacksFor(actor.id);
       setPhase('Night', 'Night reactions — Round 2');
       $('nightKnownRoles').innerHTML = '';
+      renderNightKnownRoles(actor);
       $('nightActionArea').innerHTML = '';
       $('nightResult').innerHTML = '';
       $('resolveNightBtn').classList.add('hidden');
@@ -2645,6 +3054,7 @@
       $('nightPrompt').textContent = 'Night is resolving…';
       $('nightActionArea').innerHTML = '';
       $('nightResult').innerHTML = '';
+      applyQueuedRoleChanges();
       const result = checkWin();
       renderGameLog();
       if (result.done) {endGame(result); return;}
@@ -2663,6 +3073,7 @@
       const evil = living.filter(p => roleOf(p)?.orientation === 'evil').length;
       const nonEvil = living.filter(p => roleOf(p)?.orientation !== 'evil').length;
 
+      // Role-specific wins always take precedence over general side wins.
       for (const player of state.players) {
         const role = roleOf(player);
         if (!role || normalizedWinCondition(role) === 'none') continue;
@@ -2677,28 +3088,42 @@
         }
       }
 
-      const neutrals = living.filter(p => roleOf(p)?.orientation === 'neutral');
-      if (evil === 0) {
-        const livingJester = living.find(p => p.roleId === 'jester');
-        if (livingJester) {
-          const sk = state.roles.find(r => r.id === 'serial_killer');
-          if (sk) {
-            livingJester.roleId = sk.id;
-            livingJester.framedRoleId = null;
-            livingJester.eliminatedByVote = false;
-            addLog(`${livingJester.name} was the last neutral Jester when evil was eliminated and became a Serial Killer.`);
-            return {done: false};
-          }
+      // Always-on two-player safeguard. This is intentionally independent of
+      // the optional normal side-win setting so two-player games cannot stall.
+      if (living.length === 2) {
+        if (evil > 0) {
+          return {done: true, winner: 'Evil', reason: 'Two players remain and at least one of them is Evil.'};
         }
-        if (neutrals.length) return {done: false};
-        return {done: true, winner: 'Good', reason: 'All evil players have been eliminated and no neutral players remain.'};
+        const good = living.filter(p => roleOf(p)?.orientation === 'good').length;
+        if (good > 0) {
+          return {done: true, winner: 'Good', reason: 'Two players remain, at least one is Good, and no Evil players remain.'};
+        }
       }
-      if (evil >= nonEvil) return {done: true, winner: 'Evil', reason: 'Evil now equals or outnumbers the living non-evil players.'};
 
-      // A two-player game can leave exactly one survivor after a day vote.
-      // Once only one player remains, there is no longer a meaningful vote/night
-      // cycle to continue. Special win conditions above still take precedence;
-      // otherwise the sole survivor wins by being the last player standing.
+      // Normal Mafia side-win checks can be disabled for custom/experimental
+      // games. They remain enabled by default.
+      if (state.autoSideWinChecks !== false) {
+        const neutrals = living.filter(p => roleOf(p)?.orientation === 'neutral');
+        if (evil === 0) {
+          const livingJester = living.find(p => roleHasSpecialId(roleOf(p), 'jester'));
+          if (livingJester) {
+            const sk = state.roles.find(r => roleHasSpecialId(r, 'serial_killer'));
+            if (sk) {
+              livingJester.roleId = sk.id;
+              livingJester.framedRoleId = null;
+              livingJester.eliminatedByVote = false;
+              addLog(`${livingJester.name} was the last neutral Jester when evil was eliminated and became a Serial Killer.`);
+              return {done: false};
+            }
+          }
+          if (neutrals.length) return {done: false};
+          return {done: true, winner: 'Good', reason: 'All evil players have been eliminated and no neutral players remain.'};
+        }
+        if (evil >= nonEvil) return {done: true, winner: 'Evil', reason: 'Evil now equals or outnumbers the living non-evil players.'};
+      }
+
+      // A game with one living player has no further meaningful vote/night
+      // cycle. Keep this global regardless of the normal side-win setting.
       if (living.length === 1) {
         const last = living[0];
         const lastRole = roleOf(last);
@@ -2736,17 +3161,24 @@
       state.players.push(createPlayer(id, `Player ${id + 1}`)); renderSetup();
     });
     $('roundMode').addEventListener('change', e => {state.mode = e.target.value; renderSetup();});
+    $('autoSideWinChecks').addEventListener('change', e => {state.autoSideWinChecks = e.target.checked;});
     $('newRoleBtn').addEventListener('click', () => openRoleEditor());
     $('cancelRoleBtn').addEventListener('click', closeRoleEditor);
     $('saveRoleBtn').addEventListener('click', () => {
       const title = $('roleTitle').value.trim(), description = $('roleDescription').value.trim();
       if (!title || !description) {alert('Give the role a title and player-facing description.'); return;}
       const orientation = $('roleOrientation').value, visibility = $('roleVisibility').value, nightAction = $('roleNightAction').value, winCondition = $('roleWinCondition').value;
+      const specialId = SPECIAL_ROLE_IDS.has($('roleSpecialId').value) ? $('roleSpecialId').value : 'default';
+      const visibleToRoleIds = [...$('roleVisibleToRoles').querySelectorAll('input[type=checkbox][data-role-id]:checked')].map(input => input.dataset.roleId);
+      const targetFilter = $('roleTargetFilter').value;
+      const canTargetSelf = $('roleCanTargetSelf').checked;
+      const maxUses = Math.max(0, Math.floor(Number($('roleMaxUses').value)||0));
+      const nightPrompt = $('roleNightPrompt').value.trim();
       if (winCondition === 'sideWhenTargetVotedOut' && nightAction !== 'hater') { alert('A target-based win condition requires the Hater night ability.'); return; }
       if (state.editingRoleId) {
         const role = state.roles.find(r => r.id === state.editingRoleId);
         const previousNightAction = role?.nightAction;
-        Object.assign(role, {title, orientation, description, visibility, nightAction, winCondition});
+        Object.assign(role, {title, orientation, description, visibility, visibleToRoleIds, nightAction, targetFilter, canTargetSelf, maxUses, nightPrompt, winCondition, specialId});
         // Special target state belongs to the Hater ability, not to the Hater role id.
         // If the ability is changed away from Hater, clear any stale target state so
         // the role behaves exactly like the newly selected ability.
@@ -2756,10 +3188,17 @@
           });
         }
       } else {
-        state.roles.push({id: `custom_${Date.now()}_${Math.random().toString(36).slice(2,8)}`, title, orientation, description, visibility, nightAction, winCondition, randomCount: 0});
+        state.roles.push({id: `custom_${Date.now()}_${Math.random().toString(36).slice(2,8)}`, specialId, title, orientation, description, visibility, visibleToRoleIds, nightAction, targetFilter, canTargetSelf, maxUses, nightPrompt, winCondition, randomCount: 0});
       }
       closeRoleEditor(); renderSetup();
     });
+    $('applyPresetBtn').addEventListener('click',()=>{const def=selectedPresetDefinition();if(def){applyPresetDefinition(def);$('configStatus').textContent=`Applied ${def.name || 'preset'}.`;}});
+    $('savePresetBtn').addEventListener('click',()=>{const name=prompt('Name this custom preset:');if(!name?.trim())return;const id=`preset_${Date.now()}`;const presets=readCustomPresets();presets[id]={name:name.trim(),roles:currentRolePoolSnapshot()};writeCustomPresets(presets);renderPresetSelect();$('presetSelect').value=`custom:${id}`;$('configStatus').textContent='Custom preset saved.';});
+    $('deletePresetBtn').addEventListener('click',()=>{const value=$('presetSelect').value;if(!value.startsWith('custom:')){alert('Built-in presets cannot be deleted.');return;}const id=value.split(':')[1],presets=readCustomPresets();delete presets[id];writeCustomPresets(presets);renderPresetSelect();$('configStatus').textContent='Custom preset deleted.';});
+    $('saveConfigBtn').addEventListener('click',saveConfigLocal);
+    $('loadConfigBtn').addEventListener('click',loadConfigLocal);
+    $('clearConfigBtn').addEventListener('click',()=>{localStorage.removeItem(CONFIG_STORAGE_KEY);$('configStatus').textContent='Saved configuration cleared.';});
+
     $('startBtn').addEventListener('click', () => {
       if (online.mode === 'host') {startOnlineGameAsHost(); return;}
       if (state.players.length < 2) {alert('Need at least 2 players.'); return;}
@@ -3191,7 +3630,8 @@
       const knownRoles = !player?.alive
         ? state.players.map(t => ({id: t.id, name: t.name, role: roleOf(t)?.title || 'Unknown', orientation: roleOf(t)?.orientation || 'neutral'}))
         : onlineKnownRolesFor(player);
-      const payload = {version: state.onlineVersion, role:r ? {title:r.title, orientation:r.orientation, description:r.description, nightAction:r.nightAction}:null, knownRoles, turn:null, result:null};
+      const specialIntel = roleHasSpecialId(r, 'policeman') ? (()=>{const intel=ensurePolicemanIntel(player),target=playerOf(intel?.targetId);return intel&&target?{type:'policeman',targetName:target.name,roleTitle:intel.roleTitle,orientation:intel.orientation}:null;})() : (roleHasSpecialId(r, 'henchman') ? {type:'henchman',policemen:state.players.filter(p=>roleHasSpecialId(roleOf(p),'policeman')).map(p=>p.name)} : null);
+      const payload = {version: state.onlineVersion, role:r ? {title:r.title, orientation:r.orientation, description:r.description, nightAction:r.nightAction}:null, knownRoles, specialIntel, turn:null, result:null};
       if (!r || !player) return payload;
       if (state.phase === 'day') {
         if (player.silenced) {
@@ -3219,6 +3659,13 @@
             const targetOptions = teamUsed ? [{id:'ack',name:'Done'}] : playersAlive().filter(t => t.id !== player.id).map(t => ({id:t.id,name:t.name}));
             if (!teamUsed && dynamicAction === 'teamKill') targetOptions.push({id:'skip',name:'Do not use the team kill'});
             payload.turn = {type:'nightRound1',action:dynamicAction,prompt:teamUsed ? `Your ${r.title} team already has a kill submitted tonight.` : (dynamicAction === 'teamKill' ? 'Choose a living player for your shared team kill, or choose not to use it tonight.' : 'Choose a living player to kill.'),options:targetOptions};
+          } else if (dynamicAction === 'changeRole') {
+            if (night.roleChangeActorId === player.id && night.roleChangeTargetId != null) {
+              const target=playerOf(night.roleChangeTargetId);
+              payload.turn={type:'nightRound1',action:'changeRoleChoice',prompt:target?`Choose ${target.name}'s new permanent role.`:'The target is no longer available.',options:target?state.roles.filter(x=>x.id!==target.roleId).map(x=>({id:x.id,name:`${x.title} — ${labelOrientation(x.orientation)}`})):[{id:'ack',name:'Done'}]};
+            } else {
+              payload.turn={type:'nightRound1',action:'changeRole',prompt:r.nightPrompt||'Choose a living player. You will then choose their new permanent role.',options:validAbilityTargets(player,r).map(t=>({id:t.id,name:t.name}))};
+            }
           } else if (dynamicAction === 'inspectOrientation') {
             payload.turn = {type:'nightRound1',action:'inspectOrientation',prompt:'Choose a living player to inspect. Their orientation will be shown during night reactions.',options:playersAlive().filter(t => t.id !== player.id).map(t => ({id:t.id,name:t.name}))};
           } else if (dynamicAction === 'seer') {
@@ -3381,8 +3828,7 @@
       if(!online.isHost || online.roomStatus!=='started') return;
       const p=adminSelectedPlayer(), role=state.roles.find(r=>r.id===$('adminRoleSelect')?.value);
       if(!p || !role) return;
-      p.roleId=role.id; p.framedRoleId=null;
-      addLog(`Host changed ${p.name}'s role to ${role.title}.`);
+      applyPermanentRoleChange(p, role.id, {name:'Host'});
       await adminPublishAndRefresh(`${p.name} is now ${role.title}.`);
     }
 
@@ -3440,6 +3886,11 @@
       $('onlineKnownRoles').innerHTML = (priv?.knownRoles || []).length
         ? `<div class="known-roles"><strong>Roles you know</strong><div class="known-role-list">${(priv?.knownRoles || []).map(x => `<div class="known-role"><strong>${escapeHtml(x.name)}</strong><div class="tiny muted" style="margin-top:4px">${escapeHtml(x.role)} · ${escapeHtml(labelOrientation(x.orientation))}</div></div>`).join('')}</div></div>`
         : '';
+      if (priv?.specialIntel?.type === 'policeman') {
+        $('onlineKnownRoles').innerHTML += `<div class="intel-card"><strong>Policeman intelligence</strong><div style="margin-top:5px"><strong>${escapeHtml(priv.specialIntel.targetName)}</strong> was <strong>${escapeHtml(priv.specialIntel.roleTitle)}</strong> (${escapeHtml(labelOrientation(priv.specialIntel.orientation))}) when assigned.</div><div class="tiny muted" style="margin-top:6px">Hint at your knowledge if useful, but do not directly claim that you are the Policeman.</div></div>`;
+      } else if (priv?.specialIntel?.type === 'henchman' && priv.specialIntel.policemen?.length) {
+        $('onlineKnownRoles').innerHTML += `<div class="intel-card"><strong>Policeman contact</strong><div style="margin-top:5px">${priv.specialIntel.policemen.map(escapeHtml).join(', ')} ${priv.specialIntel.policemen.length===1?'is':'are'} Policeman.</div></div>`;
+      }
 
       // Day voting is driven by public game state, not by asynchronous seat/private state.
       if (online.public?.phase === 'day') {
@@ -3691,7 +4142,6 @@
 
       const nightAction = String(nightActionFor(actor) || 'none');
       if (nightAction === 'kill' || nightAction === 'teamKill') {
-        const roleIsPeacemaker = role?.id === 'peacemaker';
         const target = playerOf(Number(value));
         if (value === 'skip') {
           n.round1Actions[actor.id] = {action:'none'};
@@ -3701,10 +4151,6 @@
           await publishOnlineRoom(); await maybeFinishOnlineRound1(); return;
         }
         if (!target || !target.alive || target.id === actor.id) {
-          if (roleIsPeacemaker) {
-            ackOnlineCommand(commandUid, commandId, false, 'Peacemaker must use the team kill. That target is no longer available; choose another living target.');
-            await publishOnlineRoom(); return;
-          }
           n.round1Actions[actor.id] = {action:'none'};
           n.round1Submitted[actor.id] = true;
           ackOnlineCommand(commandUid, commandId, true, 'That target is no longer available, so the night action was recorded as no-op.');
@@ -3715,6 +4161,20 @@
         ackOnlineCommand(commandUid, commandId, true, `Target recorded: ${target.name}.`);
         setPrivateResult(actor.id, `Target recorded: ${target.name}. Your ${nightAction === 'teamKill' ? 'team kill' : 'kill'} is submitted.`);
         await publishOnlineRoom(); await maybeFinishOnlineRound1(); return;
+      }
+
+      if (actionType === 'changeRoleChoice' && nightAction === 'changeRole') {
+        if (n.roleChangeActorId !== actor.id || n.roleChangeTargetId == null) {ackOnlineCommand(commandUid,commandId,false,'That role-change step is no longer active.');await publishOnlineRoom();return;}
+        const target=playerOf(n.roleChangeTargetId),candidate=state.roles.find(r=>r.id===String(value));
+        if(!target||!target.alive||!candidate){ackOnlineCommand(commandUid,commandId,false,'That target or role is no longer available.');await publishOnlineRoom();return;}
+        queuePermanentRoleChange(actor,target,candidate.id); markNightAbilityUsed(actor,role); recordNightAction(actor,'changeRole',target.id,{newRoleId:candidate.id});
+        n.roleChangeActorId=null;n.roleChangeTargetId=null;n.round1Actions[actor.id]={action:'changeRole',targetId:target.id,newRoleId:candidate.id};n.round1Submitted[actor.id]=true;
+        ackOnlineCommand(commandUid,commandId,true,`${target.name} will become ${candidate.title} when the night ends.`);setPrivateResult(actor.id,`${target.name}'s permanent role change to ${candidate.title} is locked in for the end of the night.`);await publishOnlineRoom();await maybeFinishOnlineRound1();return;
+      }
+      if (nightAction === 'changeRole') {
+        if(actionUsesLeft(actor,role)<=0){n.round1Actions[actor.id]={action:'none'};n.round1Submitted[actor.id]=true;ackOnlineCommand(commandUid,commandId,true,'No ability uses remain.');await publishOnlineRoom();await maybeFinishOnlineRound1();return;}
+        const target=playerOf(Number(value));if(!target||!target.alive||!validAbilityTargets(actor,role).some(p=>p.id===target.id)){ackOnlineCommand(commandUid,commandId,false,'That player is no longer a valid target.');await publishOnlineRoom();return;}
+        n.roleChangeActorId=actor.id;n.roleChangeTargetId=target.id;ackOnlineCommand(commandUid,commandId,true,`Target selected: ${target.name}. Choose their new role.`);await publishOnlineRoom();return;
       }
 
       if (actionType === 'framerRoleChoice' && nightAction === 'framer') {
@@ -4047,9 +4507,9 @@
       await setOnlineJoinable(false);
       bumpOnlineVersion(); const nightPlayers=playersAlive().slice(); const round1SeerTargets={}; const gamblerActions={};
       const gamblerPool=gamblerAbilityPool();
-      nightPlayers.forEach(p=>{p.framedRoleId=null; if(roleOf(p)?.nightAction==='gambler') gamblerActions[p.id]=randomChoice(gamblerPool)||'none'; if((gamblerActions[p.id]||roleOf(p)?.nightAction)==='seer'){const choices=nightPlayers.filter(t=>t.id!==p.id);round1SeerTargets[p.id]=randomChoice(choices)?.id??null;}});
+      nightPlayers.forEach(p=>{p.framedRoleId=null; if(roleHasSpecialId(roleOf(p),'policeman')) ensurePolicemanIntel(p); if(roleOf(p)?.nightAction==='gambler') gamblerActions[p.id]=randomChoice(gamblerPool)||'none'; if((gamblerActions[p.id]||roleOf(p)?.nightAction)==='seer'){const choices=nightPlayers.filter(t=>t.id!==p.id);round1SeerTargets[p.id]=randomChoice(choices)?.id??null;}});
       const queue = getConfiguredNightOrder(nightPlayers);
-      state.night={round:1,queue,index:0,busy:false,usedTeamKillRoleIds:[],pendingAttacks:[],reactionQueue:[],reactionCompleted:[],round1Players:nightPlayers,round1Submitted:{},round1SeerTargets,round1InspectTargets:{},framerTargetId:null,framerRoleChooserId:null,haterTargets:{},protectedIds:[],blockedIds:[],trackTargets:{},watchTargets:{},actionRecords:{},round1Actions:{},gamblerActions,onlineAckNeeded:false,onlineResults:{},onlineSeerTargetId:null};
+      state.night={round:1,queue,index:0,busy:false,usedTeamKillRoleIds:[],pendingAttacks:[],reactionQueue:[],reactionCompleted:[],round1Players:nightPlayers,round1Submitted:{},round1SeerTargets,round1InspectTargets:{},framerTargetId:null,framerRoleChooserId:null,roleChangeActorId:null,roleChangeTargetId:null,pendingRoleChanges:[],haterTargets:{},protectedIds:[],blockedIds:[],trackTargets:{},watchTargets:{},actionRecords:{},round1Actions:{},gamblerActions,onlineAckNeeded:false,onlineResults:{},onlineSeerTargetId:null};
       await publishOnlineRoom();
     }
 
@@ -4080,6 +4540,7 @@
     }
 
     async function finishOnlineNightOnline() {
+      applyQueuedRoleChanges();
       const result = checkWin(); if (result.done) {await finishOnlineGame(result); return;}
       state.round++;
       state.phase = 'day';
@@ -4111,6 +4572,8 @@
         const tx=await dbMod.runTransaction(statusRef,current=>current==='lobby'?'started':undefined);
         if(!tx.committed){online.roomStatus='lobby'; throw new Error('The room changed while the game was starting.');}
         await setOnlineJoinable(true);
+        const openingResult=checkWin();
+        if(openingResult.done){await finishOnlineGame(openingResult);return;}
         await publishOnlineRoom();
         $('onlineActionPrompt').textContent='The host started the game. Check your private role above.';
       })().catch(err=>{console.error(err);alert(err?.message||String(err));}).finally(()=>{onlineStartPromise=null;});
@@ -4187,13 +4650,16 @@
       }
     };
 
-    (async () => {
+    // Do not connect to Firebase, authenticate, create, join, or restore a room on page load.
+    // Online networking begins only after an explicit Create room / Join room action.
+    (() => {
       if (!firebaseConfigured()) {
         $('onlineAuthPill').textContent = 'Setup needed';
-        setOnlineStatus('Multiplayer is ready, but Firebase is not configured yet. Add your Firebase web config to FIREBASE_CONFIG in this file.', true);
+        setOnlineStatus('Multiplayer needs Firebase configuration before Create room or Join room can be used.', true);
         return;
       }
-      try {await ensureAnonymousAuth(); await restoreOnlineSession();} catch (err) {console.error(err); $('onlineAuthPill').textContent = 'Offline'; setOnlineStatus(err?.message || String(err), true);}
+      $('onlineAuthPill').textContent = 'Not connected';
+      hide('onlineStatus');
     })();
   </script>
 </body>
