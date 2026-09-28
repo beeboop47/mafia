@@ -1640,6 +1640,10 @@
       const nextRole = state.roles.find(r => r.id === newRoleId);
       if (!target || !nextRole) return false;
       const oldRole = roleOf(target);
+      if (state.phase === 'night' && state.night && oldRole?.id !== nextRole.id) {
+        state.night.roleChangeNotices = state.night.roleChangeNotices || {};
+        state.night.roleChangeNotices[target.id] = `Your role was changed tonight. You are now ${nextRole.title} (${labelOrientation(nextRole.orientation)}). ${nextRole.description || ''} Night ability: ${NIGHT_ACTIONS[roleActiveNightAction(nextRole)]?.label || 'None'}. Night reaction: ${NIGHT_REACTIONS[roleNightReaction(nextRole)]?.label || 'None'}.`;
+      }
       target.roleId = nextRole.id;
       target.framedRoleId = null;
       target.haterTargetId = null;
@@ -1647,6 +1651,21 @@
       if (roleHasSpecialId(nextRole, 'policeman')) ensurePolicemanIntel(target);
       addLog(`${actor?.name || 'A night ability'} permanently changed ${target.name}'s role from ${oldRole?.title || 'Unknown'} to ${nextRole.title}.`);
       return true;
+    }
+
+    function queueNightRoleChange(actor, target, newRoleId) {
+      state.night.pendingRoleChanges = state.night.pendingRoleChanges || [];
+      state.night.pendingRoleChanges.push({actorId: actor.id, targetId: target.id, newRoleId});
+    }
+
+    function resolvePendingRoleChanges() {
+      const changes = state.night.pendingRoleChanges || [];
+      state.night.pendingRoleChanges = [];
+      for (const change of changes) {
+        if (state.night.blockedIds?.includes(change.actorId)) continue;
+        const target = playerOf(change.targetId);
+        if (target?.alive) applyPermanentRoleChange(target, change.newRoleId, playerOf(change.actorId));
+      }
     }
 
     function nightActionFor(player) {
@@ -2313,6 +2332,8 @@
     function renderNightKnownRoles(actor) {
       $('nightKnownRoles').innerHTML = '';
       renderKnownRoles(actor, 'nightKnownRoles');
+      const roleChangeNotice = state.night?.round === 2 && state.night.roleChangeNotices?.[actor.id];
+      if (roleChangeNotice) $('nightKnownRoles').innerHTML += `<div class="result"><strong>Role changed</strong><div>${escapeHtml(roleChangeNotice)}</div></div>`;
 
       const role = roleOf(actor);
       if (role) {
@@ -2714,11 +2735,11 @@
           area.innerHTML='';
           sortedRoles(state.roles.filter(candidate=>candidate.id!==target.roleId)).forEach(candidate=>area.appendChild(actionButton(`${candidate.title} — ${labelOrientation(candidate.orientation)}`,candidate.id,()=>{
             if(state.night.busy)return; setNightBusy(true);
-            applyPermanentRoleChange(target,candidate.id,actor);
+            queueNightRoleChange(actor,target,candidate.id);
             state.night.roleChangeActorId=null; state.night.roleChangeTargetId=null;
             markNightAbilityUsed(actor, role);
             recordNightAction(actor,'changeRole',target.id,{newRoleId:candidate.id});
-            showNightResult(`<strong>Role changed.</strong><br>${escapeHtml(target.name)} is now ${escapeHtml(candidate.title)}.`);
+            showNightResult(`<strong>Role change recorded.</strong><br>${escapeHtml(target.name)} will become ${escapeHtml(candidate.title)} just before night reactions, unless your ability is blocked.`);
             completeNightTurn();
           })));
           return;
@@ -2784,6 +2805,7 @@
       // All deterministic night effects are resolved before the very first
       // reaction turn. Reaction-only abilities (Trait​or/Escape/Monkey/RPS/
       // Scapegoat) remain pending because their target must make a choice.
+      resolvePendingRoleChanges();
       resolveNightBeforeReactions();
       state.night.round = 2;
       state.night.reactionQueue = buildNightReactionQueue();
@@ -3708,6 +3730,8 @@
         : null;
       const payload = {version: state.onlineVersion, alive: player?.alive !== false, role:r ? {title:r.title, orientation:r.orientation, description:r.description, nightAction:nightActionFor(player), nightReaction:nightReactionFor(player)}:null, knownRoles, specialIntel, turn:null, result:null};
       const customNightPrompt = normalizedRoleOptions(r).nightPrompt;
+      payload.roleChangeNotice = state.phase === 'night' && state.night?.round === 2
+        ? state.night.roleChangeNotices?.[player?.id] || null : null;
       if (!r || !player) return payload;
       if (state.phase === 'day') {
         if (player.silenced) {
@@ -4027,6 +4051,7 @@
       }
 
       if (priv?.result) $('onlineActionResult').innerHTML = `<div class="result">${escapeHtml(priv.result)}</div>`;
+      if (priv?.roleChangeNotice) $('onlineActionResult').innerHTML = `<div class="result"><strong>Role changed</strong><div>${escapeHtml(priv.roleChangeNotice)}</div></div>` + $('onlineActionResult').innerHTML;
       if (ackMatches) {
         online.pendingCommandId = null;
         online.pendingCommandPhase = null;
@@ -4443,8 +4468,7 @@
         if(action==='changeRole'){
           const target=playerOf(intent.targetId), candidate=state.roles.find(r=>r.id===intent.newRoleId);
           if(target && target.alive && candidate) {
-            applyPermanentRoleChange(target,candidate.id,actor);
-            setPrivateResult(actor.id,`${target.name} is now ${candidate.title}.`);
+            queueNightRoleChange(actor,target,candidate.id);
           }
           continue;
         }
@@ -4681,6 +4705,7 @@
     }
 
     async function beginOnlineReactionRound() {
+      resolvePendingRoleChanges();
       resolveOnlineNightBeforeReactions();
       state.night.round=2;
       bumpOnlineVersion();
