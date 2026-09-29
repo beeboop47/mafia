@@ -102,12 +102,12 @@ const DEFAULT_ROLES = [
   },
   {
     id: 'policeman', specialId: 'policeman', title: 'Policeman', orientation: 'good',
-    description: 'When you first reveal this role, you are assigned one permanent intelligence target and learn that player’s exact role and alignment. You may hint at what you know, but you must never directly claim that you are the Policeman. Your intelligence is repeated privately every night.',
+    description: 'You are assigned one permanent intelligence target and learn that player’s exact role and alignment. You may hint at what you know, but you must never directly claim that you are the Policeman.',
     visibility: 'nobody', nightAction: 'none', randomEnabled: false, randomCount: 1
   },
   {
     id: 'henchman', specialId: 'henchman', title: 'Henchman', orientation: 'evil',
-    description: 'If a Policeman is in the game, you and the Policeman recognise each other. You may pressure the Policeman in real life and try to make them act or speak the way you want, but normal game rules still apply.',
+    description: 'If a Policeman is in the game, you and the Policeman recognise each other. You may pressure the Policeman in real life and make them act or speak the way you want.',
     visibility: 'evil', nightAction: 'none', randomEnabled: false, randomCount: 1
   },
   {
