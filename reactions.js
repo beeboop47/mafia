@@ -10,6 +10,16 @@ const EXTRA_REACTIONS = {
   passAbility: {label:'Pass Ability',category:'Transformative',trigger:'death'},
   nameSuccessor: {label:'Name a Successor',category:'Transformative',trigger:'death'}
 };
+const NIGHT_REACTIONS = Object.freeze({
+  ...EXTRA_REACTIONS,
+  none: {label:'None'},
+  scapegoat: {label:'Scapegoat redirect',category:'Redirective'},
+  traitor: {label:'Traitor conversion',category:'Transformative'},
+  escape: {label:'Escape challenge',category:'Defensive'},
+  monkey: {label:'Confrontation',category:'Retaliatory'},
+  rps: {label:'Rock, Paper, Scissors',category:'Defensive'}
+});
+const NIGHT_REACTION_ACTIONS = new Set(Object.keys(NIGHT_REACTIONS).filter(id=>id!=='none'));
 const INVESTIGATION_ACTIONS = new Set(['compare','exclude','audit','inspectOrientation','track','watch','seer','randomAllegiance']);
 
 function needsReactionPlan(player) {

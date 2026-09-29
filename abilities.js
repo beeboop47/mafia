@@ -27,6 +27,28 @@ const EXTRA_ABILITIES = {
   sendSignal: {label:'Send Signal', category:'Miscellaneous', text:true, prompt:'Choose a player and a gesture or phrase for them to use tomorrow in real life. They will privately receive your name and signal during reactions.'}
 };
 
+const NIGHT_ACTIONS = Object.freeze({
+  ...NIGHT_REACTIONS,
+  ...EXTRA_ABILITIES,
+  compare: {label:'Compare players',category:'Investigative'},
+  exclude: {label:'Exclude allegiance',category:'Investigative'},
+  audit: {label:'Check activity',category:'Investigative'},
+  inspectOrientation: {label:'Inspect orientation',category:'Investigative'},
+  track: {label:'Track a player',category:'Investigative'},
+  janitor: {label:"Reveal a killed player's exact role",category:'Investigative'},
+  framer: {label:'Frame a player',category:'Deceitful'},
+  changeRole: {label:"Change a player's role permanently",category:'Transformative'},
+  teamKill: {label:'Team kill',category:'Offensive'},
+  kill: {label:'Kill',category:'Offensive'},
+  roleblock: {label:'Roleblock a player',category:'Offensive'},
+  silence: {label:'Silence a player',category:'Offensive'},
+  protect: {label:'Protect a player',category:'Defensive'},
+  doctor: {label:'Doctor revive',category:'Defensive'},
+  seer: {label:'Random Role Reveal',category:'Passive'},
+  hater: {label:'Assign Target',category:'Miscellaneous'},
+  gambler: {label:'Random ability each night',category:'Miscellaneous'},
+});
+
 function isPassiveAbility(action) {
   return action === 'seer' || EXTRA_ABILITIES[action]?.category === 'Passive';
 }

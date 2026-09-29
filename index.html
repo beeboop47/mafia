@@ -1153,51 +1153,11 @@
         </div>
         <div style="margin-top:10px">
           <label>Night ability</label>
-          <select id="roleNightAction">
-            <option value="none">None</option>
-            <optgroup label="Investigative">
-            <option value="compare">Compare players</option>
-            <option value="exclude">Exclude allegiance</option>
-            <option value="audit">Check activity</option>
-            <option value="inspectOrientation">Inspect orientation</option>
-            <option value="track">Track a player</option>
-            <option value="janitor">Reveal a killed player's exact role</option>
-            </optgroup>
-            <optgroup label="Deceitful">
-            <option value="framer">Frame a player</option>
-            </optgroup>
-            <optgroup label="Transformative">
-            <option value="changeRole">Change a player's role permanently</option>
-            </optgroup>
-            <optgroup label="Offensive">
-            <option value="teamKill">Team kill</option>
-            <option value="kill">Kill</option>
-            <option value="roleblock">Roleblock a player</option>
-            <option value="silence">Silence a player</option>
-            </optgroup>
-            <optgroup label="Defensive">
-            <option value="protect">Protect a player</option>
-            <option value="doctor">Doctor revive</option>
-            </optgroup>
-            <optgroup label="Passive">
-            <option value="seer">Random Role Reveal</option>
-            </optgroup>
-            <optgroup label="Miscellaneous">
-            <option value="hater">Assign Target</option>
-            <option value="gambler">Random ability each night</option>
-            </optgroup>
-          </select>
+          <select id="roleNightAction"></select>
         </div>
         <div style="margin-top:10px">
           <label>Night reaction</label>
-          <select id="roleNightReaction">
-            <option value="none">None</option>
-            <option value="scapegoat">Scapegoat redirect</option>
-            <option value="traitor">Traitor conversion</option>
-            <option value="escape">Escape challenge</option>
-            <option value="monkey">Confrontation</option>
-            <option value="rps">Rock, Paper, Scissors</option>
-          </select>
+          <select id="roleNightReaction"></select>
           <div class="muted tiny" style="margin-top:5px">Reactions can trigger on an attack, death, visit or investigation. They can be combined with a separate night ability.</div>
         </div>
         <div style="margin-top:10px">
@@ -1364,8 +1324,8 @@
     </dialog>
   </div>
 
-  <script src="abilities.js"></script>
   <script src="reactions.js"></script>
+  <script src="abilities.js"></script>
   <script>
     const DEFAULT_ROLES = [
 
@@ -1525,56 +1485,26 @@
       autoSideWinChecks: true,
     };
 
-    const NIGHT_ACTIONS = Object.freeze({
-      ...EXTRA_ABILITIES,
-      compare: {label: 'Compare players'},
-      exclude: {label: 'Exclude allegiance'},
-      audit: {label: 'Check activity'},
-      none: {label: 'None'},
-      teamKill: {label: 'Team kill'},
-      kill: {label: 'Kill'},
-      inspectOrientation: {label: 'Inspect orientation'},
-      seer: {label: 'Random Role Reveal'},
-      scapegoat: {label: 'Scapegoat redirect'},
-      traitor: {label: 'Traitor conversion'},
-      escape: {label: 'Escape challenge'},
-      monkey: {label: 'Confrontation'},
-      rps: {label: 'Rock, Paper, Scissors'},
-      doctor: {label: 'Doctor revive'},
-      framer: {label: 'Frame a player'},
-      hater: {label: 'Assign Target'},
-      protect: {label: 'Protect a player'},
-      roleblock: {label: 'Roleblock a player'},
-      silence: {label: 'Silence a player'},
-      track: {label: 'Track a player'},
-      gambler: {label: 'Random ability each night'},
-      janitor: {label: "Reveal a killed player's exact role"},
-      changeRole: {label: "Change a player's role permanently"},
-    });
-    const NIGHT_REACTION_ACTIONS = new Set(['traitor', 'scapegoat', 'escape', 'monkey', 'rps', ...Object.keys(EXTRA_REACTIONS)]);
-    const NIGHT_REACTIONS = Object.freeze({
-      ...EXTRA_REACTIONS,
-      none: {label: 'None'},
-      scapegoat: {label: 'Scapegoat redirect'},
-      traitor: {label: 'Traitor conversion'},
-      escape: {label: 'Escape challenge'},
-      monkey: {label: 'Confrontation'},
-      rps: {label: 'Rock, Paper, Scissors'},
-    });
-
     const $ = id => document.getElementById(id);
-    $('roleNightReaction').replaceChildren();
-    const noReactionOption=document.createElement('option');noReactionOption.value='none';noReactionOption.textContent='None';$('roleNightReaction').appendChild(noReactionOption);
-    const existingReactionCategories={escape:'Defensive',rps:'Defensive',monkey:'Retaliatory',scapegoat:'Redirective',traitor:'Transformative'};
-    for(const category of ['Defensive','Retaliatory','Investigative','Deceitful','Transformative','Redirective']){
-      const group=document.createElement('optgroup');group.label=category;
-      for(const [id,spec] of Object.entries(NIGHT_REACTIONS))if((spec.category||existingReactionCategories[id])===category){const option=document.createElement('option');option.value=id;option.textContent=spec.label;group.appendChild(option);}
-      $('roleNightReaction').appendChild(group);
+    function populateNightChoice(selectId, catalog, categories, excluded) {
+      const select = $(selectId);
+      select.replaceChildren();
+      const none = document.createElement('option');
+      none.value = 'none'; none.textContent = 'None'; select.appendChild(none);
+      for (const category of categories) {
+        const group = document.createElement('optgroup'); group.label = category;
+        for (const [id,spec] of Object.entries(catalog)) {
+          if (excluded.has(id) || spec.category !== category) continue;
+          const option = document.createElement('option');
+          option.value = id; option.textContent = spec.label;
+          if (spec.prompt) option.title = spec.prompt;
+          group.appendChild(option);
+        }
+        select.appendChild(group);
+      }
     }
-    for(const [id,spec] of Object.entries(EXTRA_ABILITIES)){
-      const group=[...$('roleNightAction').querySelectorAll('optgroup')].find(g=>g.label===spec.category);
-      const option=document.createElement('option');option.value=id;option.textContent=spec.label;option.title=spec.prompt;group.appendChild(option);
-    }
+    populateNightChoice('roleNightAction', NIGHT_ACTIONS, ['Investigative','Deceitful','Transformative','Offensive','Defensive','Passive','Miscellaneous'], NIGHT_REACTION_ACTIONS);
+    populateNightChoice('roleNightReaction', NIGHT_REACTIONS, ['Defensive','Retaliatory','Investigative','Deceitful','Transformative','Redirective'], new Set());
     const isChosen = value => value !== undefined && value !== null;
     const escapeHtml = value => String(value ?? '')
       .replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;')
@@ -1826,7 +1756,7 @@
       const link = document.createElement('a');
       link.href = url; link.download = 'mafia-config.json'; link.click();
       setTimeout(() => URL.revokeObjectURL(url), 1000);
-      $('configStatus').textContent = 'Configuration exported. Import this file on the local AI page.';
+      $('configStatus').textContent = 'Configuration exported. You can import this file in another browser.';
     }
     async function importConfigLocal(file) {
       if (!file) return;
