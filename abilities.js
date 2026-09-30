@@ -59,8 +59,8 @@ function extraChoices(actor, action) {
   let secondary = [];
   if (spec.second === 'player') secondary = targets.map(p => ({id:String(p.id), name:p.name}));
   if (spec.second === 'allegiance') secondary = ['good','evil','neutral'].map(id => ({id,name:labelOrientation(id)}));
-  if (spec.second === 'ability') secondary = Object.entries(NIGHT_ACTIONS).filter(([id]) => !NIGHT_REACTION_ACTIONS.has(id)).map(([id,a]) => ({id,name:a.label}));
-  if (spec.second === 'reaction') secondary = Object.entries(NIGHT_REACTIONS).map(([id,a]) => ({id,name:a.label}));
+  if (spec.second === 'ability') secondary = Object.entries(NIGHT_ACTIONS).filter(([id]) => !NIGHT_REACTION_ACTIONS.has(id)).map(([id,a]) => ({id,name:a.label,category:a.category}));
+  if (spec.second === 'reaction') secondary = Object.entries(NIGHT_REACTIONS).map(([id,a]) => ({id,name:a.label,category:a.category}));
   return {targets:targets.map(p => ({id:String(p.id),name:p.name})), secondary, text:!!spec.text, passive:isPassiveAbility(action)};
 }
 
@@ -72,7 +72,15 @@ function renderExtraForm(area, action, choices, submit) {
     const wrap=document.createElement('label'); wrap.textContent=label;
     const field=document.createElement('select'); field.required=true;
     const placeholder=document.createElement('option'); placeholder.value=''; placeholder.textContent='Choose'; field.appendChild(placeholder);
-    options.forEach(o=>{const option=document.createElement('option');option.value=o.id;option.textContent=o.name;field.appendChild(option);});
+    const categories = action === 'changeAbility' && label === 'Choice' ? NIGHT_ABILITY_CATEGORIES
+      : action === 'changeReaction' && label === 'Choice' ? NIGHT_REACTION_CATEGORIES : null;
+    if (categories) {
+      categories.forEach(category=>{
+        const group=document.createElement('optgroup');group.label=category;
+        options.filter(o=>o.category===category).forEach(o=>group.appendChild(new Option(o.name,o.id)));
+        if(group.children.length)field.appendChild(group);
+      });
+    } else options.forEach(o=>{const option=document.createElement('option');option.value=o.id;option.textContent=o.name;field.appendChild(option);});
     wrap.appendChild(field);form.appendChild(wrap);return field;
   };
   const target=select('Player',choices.targets);

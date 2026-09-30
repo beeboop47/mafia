@@ -1348,6 +1348,8 @@
     };
 
     const $ = id => document.getElementById(id);
+    const NIGHT_ABILITY_CATEGORIES = ['Investigative','Deceitful','Transformative','Offensive','Defensive','Passive','Miscellaneous'];
+    const NIGHT_REACTION_CATEGORIES = ['Defensive','Retaliatory','Investigative','Deceitful','Transformative','Redirective'];
     function populateNightChoice(selectId, catalog, categories, excluded) {
       const select = $(selectId);
       select.replaceChildren();
@@ -1365,8 +1367,8 @@
         select.appendChild(group);
       }
     }
-    populateNightChoice('roleNightAction', NIGHT_ACTIONS, ['Investigative','Deceitful','Transformative','Offensive','Defensive','Passive','Miscellaneous'], NIGHT_REACTION_ACTIONS);
-    populateNightChoice('roleNightReaction', NIGHT_REACTIONS, ['Defensive','Retaliatory','Investigative','Deceitful','Transformative','Redirective'], new Set());
+    populateNightChoice('roleNightAction', NIGHT_ACTIONS, NIGHT_ABILITY_CATEGORIES, NIGHT_REACTION_ACTIONS);
+    populateNightChoice('roleNightReaction', NIGHT_REACTIONS, NIGHT_REACTION_CATEGORIES, new Set());
     const isChosen = value => value !== undefined && value !== null;
     const escapeHtml = value => String(value ?? '')
       .replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;')
@@ -1381,6 +1383,15 @@
 
     function sortedRoles(roles = state.roles) {
       return [...roles].sort(sortRolesByDisplay);
+    }
+
+    function appendGroupedRoles(select, roles) {
+      for (const orientation of ['good','neutral','evil']) {
+        const group = document.createElement('optgroup');
+        group.label = labelOrientation(orientation);
+        roles.filter(role => role.orientation === orientation).forEach(role => group.appendChild(new Option(role.title, role.id)));
+        if (group.children.length) select.appendChild(group);
+      }
     }
 
     function createPlayer(id, name) {
@@ -1703,7 +1714,7 @@
         const select = document.createElement('select');
         select.style.display = state.mode === 'manual' ? 'block' : 'none';
         const manualRoles = sortedRoles();
-        manualRoles.forEach(role => {const option = new Option(`${role.title} — ${labelOrientation(role.orientation)}`, role.id); select.appendChild(option);});
+        appendGroupedRoles(select, manualRoles);
         select.value = player.roleId || manualRoles[0]?.id || '';
         select.addEventListener('change', e => player.roleId = e.target.value);
         row.appendChild(select);
