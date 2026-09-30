@@ -1421,6 +1421,9 @@
       return role && state.phase==='night' && state.night?.hiddenAllegiance?.includes(player.id) ? {...role,orientation:'neutral'} : role;
     }
 
+    function investigationSubject(player) { return player; }
+    function investigationRoleOf(player) { return effectiveRoleOf(investigationSubject(player)); }
+
     function normalizedRoleOptions(role) {
       return {
         visibleToRoleIds: Array.isArray(role?.visibleToRoleIds) ? role.visibleToRoleIds : [],
@@ -2530,11 +2533,6 @@
 
     function renderStandardAction(actor, role, living) {
       const area = $('nightActionArea');
-      if(needsReactionPlan(actor)){
-        const turn=reactionPlanTurn(actor);$('nightPrompt').textContent=turn.prompt;
-        turn.options.forEach(option=>area.appendChild(actionButton(option.name,option.id,()=>{recordReactionPlan(actor,option.id);updateNight();})));
-        return;
-      }
       const options = normalizedRoleOptions(role);
       const allowedTargets = validAbilityTargets(actor, role);
       const choose = target => area.appendChild(actionButton(target.name, target.id, () => setChoiceAndContinue(actor, target.id)));
@@ -3829,7 +3827,6 @@
         const night = state.night;
         if (night.round === 1) {
           if (!night.round1Players?.some(p => p.id === player.id)) return payload;
-          if(needsReactionPlan(player)){payload.turn=reactionPlanTurn(player);return payload;}
           if (night.round1Submitted?.[player.id]) {
             payload.turn = {type:'ack',prompt:'Your night ability is submitted. Wait for the other players.'};
             return payload;
@@ -4336,11 +4333,6 @@
     async function handleOnlineNightRound1(actor, value, actionType, commandUid=null, commandId=null) {
       const role = roleOf(actor), n = state.night;
       const dynamicAction = nightActionFor(actor);
-      if(needsReactionPlan(actor)){
-        try{recordReactionPlan(actor,value);ackOnlineCommand(commandUid,commandId,true,'Reaction preference recorded. Choose your night ability next.');}
-        catch(error){ackOnlineCommand(commandUid,commandId,false,error.message);}
-        await publishOnlineRoom();return;
-      }
       if (!n.round1Players?.some(p => p.id === actor.id)) { ackOnlineCommand(commandUid, commandId, false, 'You are not eligible for this night action.'); await publishOnlineRoom(); return; }
       n.round1Submitted = n.round1Submitted || {};
       n.round1Actions = n.round1Actions || {};
