@@ -120,11 +120,11 @@ function initializeExtraNight() {
   for(const p of state.players){
     p.dawnMessages=[];
     if(p.copiedAbility && p.copiedAbility.round < state.round)delete p.copiedAbility;
-    if(p.copiedAbility?.round===state.round && p.copiedAbility.action==='gambler')n.gamblerActions[p.id]=randomChoice(gamblerAbilityPool())||'none';
+    if(p.copiedAbility?.round===state.round && p.copiedAbility.action==='gambler')n.gamblerActions[p.id]=scheduledGamblerAbility(p);
     n.startAbilities[p.id]=nightActionFor(p);
     if(p.alive && n.startAbilities[p.id]==='seer'){
       const key=n.round1SeerTargets?'round1SeerTargets':'seerTargets';n[key]=n[key]||{};
-      if(n[key][p.id]==null)n[key][p.id]=randomChoice(playersAlive().filter(t=>t.id!==p.id))?.id??null;
+      if(n[key][p.id]==null)n[key][p.id]=scheduledSeerTarget(p, playersAlive().filter(t=>t.id!==p.id));
     }
     if(p.alive && isPassiveAbility(n.startAbilities[p.id]) && n.startAbilities[p.id]!=='seer')recordExtraChoice(p,n.startAbilities[p.id],{});
   }

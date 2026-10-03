@@ -1096,26 +1096,49 @@
       </div>
       <div id="players" class="players"></div>
 
+      <details id="hostSetupPanel" class="advanced-panel" hidden>
+        <summary>Host setup — individual player settings</summary>
+        <div class="advanced-body">
+          <p class="muted tiny">Private host settings apply in Manual mode, including players assigned None. Each setting applies when that player has the relevant ability. Unconfigured nights stay random. A Seer target who is no longer alive is replaced by a random living player. Players still choose how to use their abilities.</p>
+          <div id="hostPlayerSettings"></div>
+          <h4>Player recognition</h4>
+          <p class="muted tiny">Recognition reveals the other player's role privately. One-way recognition only adds knowledge for the first player. These links add to normal role visibility.</p>
+          <div class="grid2">
+            <label>Player<select id="recognitionFrom"></select></label>
+            <label>Recognises<select id="recognitionTo"></select></label>
+            <label>Direction<select id="recognitionDirection"><option value="oneway">One-way</option><option value="mutual">Both recognise each other</option></select></label>
+          </div>
+          <button type="button" class="ghost" onclick="addHostRecognition()">Add recognition</button>
+          <div id="recognitionList"></div>
+        </div>
+      </details>
+
       <details class="advanced-panel">
         <summary>Advanced role configuration</summary>
         <div class="advanced-body">
       <div class="divider"></div>
 
-      <div class="section-title">
-        <h3>Random-mode role pool</h3>
-      </div>
-      <div class="muted tiny">Select which roles can appear randomly and how many copies each role may have. Manual mode
-        ignores these counts.</div>
+      <details class="advanced-panel">
+      <summary>Random-mode role pool</summary>
+      <div class="advanced-body">
+      <div class="muted tiny">Select the roles and counts for random assignments. In Manual mode, players assigned None use this pool; manually assigned roles count towards the pool's counts and Evil minimums.</div>
       <div id="randomRolePool" class="role-list" style="margin-top:10px"></div>
+      </div>
+      </details>
 
       <div class="divider"></div>
 
+      <details class="advanced-panel">
+      <summary>Role library</summary>
+      <div class="advanced-body">
       <div class="section-title">
         <h3>Role library</h3>
         <div class="spacer"></div>
         <button id="newRoleBtn" class="ghost" type="button">Create role</button>
       </div>
       <div id="roleLibrary" class="role-list"></div>
+      </div>
+      </details>
 
       <div id="roleEditor" class="card hidden" style="margin:12px 0 0 0">
         <div class="section-title">
@@ -1326,6 +1349,7 @@
 
   <script src="reactions.js"></script>
   <script src="abilities.js"></script>
+  <script src="host-setup.js"></script>
   <script src="roles.js?v=20260930"></script>
   <script>
     // ---- State ---------------------------------------------------------------
@@ -1460,7 +1484,7 @@
     function ensurePolicemanIntel(player) {
       if (!player || !roleHasSpecialId(roleOf(player), 'policeman')) return null;
       if (player.policemanIntel?.targetId != null) return player.policemanIntel;
-      const target = randomChoice(state.players.filter(p => p.id !== player.id));
+      const target = hostTarget(player, 'policemanTarget', state.players.filter(p => p.id !== player.id));
       const targetRole = roleOf(target);
       player.policemanIntel = target && targetRole ? {targetId: target.id, roleId: targetRole.id, roleTitle: targetRole.title, orientation: targetRole.orientation} : null;
       return player.policemanIntel;
@@ -1660,6 +1684,7 @@
       // Eliminated players can see every other player's role.
       // Living players continue to follow each role's normal visibility rules.
       if (!viewer.alive) return true;
+      if (hostSettings(viewer).recognises?.includes(target.id)) return true;
 
       const viewerRole = roleOf(viewer);
       if ((roleHasSpecialId(viewerRole, 'policeman') && roleHasSpecialId(role, 'henchman')) || (roleHasSpecialId(viewerRole, 'henchman') && roleHasSpecialId(role, 'policeman'))) return true;
@@ -1690,7 +1715,7 @@
       el.innerHTML = `
     <div class="known-roles">
       <strong>Roles you know</strong>
-      <div class="muted tiny" style="margin-top:4px">These roles are visible to you because of their visibility setting.</div>
+      <div class="muted tiny" style="margin-top:4px">These roles are visible to you through role visibility or host recognition.</div>
       <div class="known-role-list">${known.map(target => {
         const role = roleOf(target);
         return `<div class="known-role"><strong>${escapeHtml(target.name)}</strong><div class="tiny muted" style="margin-top:4px">${escapeHtml(role?.title || 'Unknown')} ${rolePill(role)}</div></div>`;
@@ -1711,14 +1736,15 @@
       state.players.forEach((player, index) => {
         const row = document.createElement('div'); row.className = 'player-row';
         const name = document.createElement('input'); name.type = 'text'; name.value = player.name; name.dataset.playerIndex = String(index); name.setAttribute('aria-label', 'Player name');
-        name.addEventListener('input', e => player.name = e.target.value);
+        name.addEventListener('input', e => { player.name = e.target.value; renderHostSetup(); });
         row.appendChild(name);
 
         const select = document.createElement('select');
         select.style.display = state.mode === 'manual' ? 'block' : 'none';
         const manualRoles = sortedRoles();
+        const none = document.createElement('option'); none.value = ''; none.textContent = 'None'; select.appendChild(none);
         appendGroupedRoles(select, manualRoles);
-        select.value = player.roleId || manualRoles[0]?.id || '';
+        select.value = player.roleId || '';
         select.addEventListener('change', e => player.roleId = e.target.value);
         row.appendChild(select);
 
@@ -1726,6 +1752,7 @@
         remove.className = 'ghost'; remove.textContent = '×'; remove.title = 'Remove';
         remove.addEventListener('click', () => {
           if (state.players.length <= 2) {alert('Need at least 2 players.'); return;}
+          removeHostReferences(player.id);
           state.players.splice(index, 1);
           state.players.forEach((p, i) => p.id = i);
           renderSetup();
@@ -1783,7 +1810,7 @@
     function renderSetup() {
       $('roundMode').value = state.mode;
       if($('autoSideWinChecks')) $('autoSideWinChecks').checked = state.autoSideWinChecks !== false;
-      renderPlayers(); renderRandomRolePool(); renderRoleLibrary(); renderPresetSelect();
+      renderPlayers(); renderRandomRolePool(); renderRoleLibrary(); renderPresetSelect(); renderHostSetup();
     }
     function openRoleEditor(id = null) {
       state.editingRoleId = id;
@@ -1987,55 +2014,28 @@
     }
 
     function assignRoles() {
-      if (state.mode === 'manual') {
-        state.players.forEach(p => {if (!p.roleId) p.roleId = state.roles[0]?.id || null;});
-      } else {
-        // Random mode: selected role counts are used as minimums. Every selected
-        // evil role is guaranteed first, not just the default Mafia role. This
-        // also covers custom evil roles.
-        const playerCount = state.players.length;
-        const assigned = [];
-
-        state.roles.filter(role => role.id !== 'citizen' && role.orientation === 'evil' && role.randomEnabled !== false).forEach(role => {
-          const requested = Math.max(0, Math.floor(role.randomCount || 0));
-          const guaranteed = Math.min(requested, playerCount - assigned.length);
-          for (let i = 0; i < guaranteed; i++) assigned.push(role.id);
-        });
-
-        // Fill remaining slots from the other selected roles, including any
-        // remaining copies of evil roles beyond their guaranteed minimum.
-        let otherPool = [];
-        state.roles.forEach(role => {
-          if (role.id === 'citizen' || role.randomEnabled === false) return;
-          const count = Math.max(1, Math.floor(role.randomCount || 1));
-          for (let i = 0; i < count; i++) otherPool.push(role.id);
-        });
-
-        // Remove the copies already guaranteed above so they aren't duplicated
-        // merely because they were also present in the normal role pool.
-        const guaranteedCounts = {};
-        assigned.forEach(id => guaranteedCounts[id] = (guaranteedCounts[id] || 0) + 1);
-        Object.entries(guaranteedCounts).forEach(([id, count]) => {
-          for (let i = 0; i < count; i++) {
-            const index = otherPool.indexOf(id);
-            if (index >= 0) otherPool.splice(index, 1);
-          }
-        });
-
-        otherPool = shuffle(otherPool);
-        while (assigned.length < playerCount && otherPool.length) {
-          assigned.push(otherPool.shift());
-        }
-        while (assigned.length < playerCount) {
-          const citizenExists = state.roles.some(r => r.id === 'citizen');
-          if (citizenExists) assigned.push('citizen');
-          else if (state.roles.length) assigned.push(state.roles[0].id);
-          else assigned.push(null);
-        }
-
-        const shuffledAssigned = shuffle(assigned);
-        state.players.forEach((p, i) => {p.roleId = shuffledAssigned[i] || null;});
+      const fixed = state.mode === 'manual' ? state.players.filter(p => state.roles.some(r => r.id === p.roleId)) : [];
+      const pending = state.players.filter(p => !fixed.includes(p));
+      const fixedCounts = {};
+      fixed.forEach(p => fixedCounts[p.roleId] = (fixedCounts[p.roleId] || 0) + 1);
+      const assigned = [];
+      let pool = [];
+      for (const role of state.roles) {
+        if (role.id === 'citizen' || role.randomEnabled === false) continue;
+        const count = Math.max(1, Math.floor(role.randomCount || 1));
+        const remaining = Math.max(0, count - (fixedCounts[role.id] || 0));
+        const minimum = role.orientation === 'evil'
+          ? Math.max(0, Math.floor(role.randomCount || 0) - (fixedCounts[role.id] || 0)) : 0;
+        const guaranteed = Math.min(minimum, pending.length - assigned.length);
+        for (let i = 0; i < guaranteed; i++) assigned.push(role.id);
+        for (let i = guaranteed; i < remaining; i++) pool.push(role.id);
       }
+      pool = shuffle(pool);
+      while (assigned.length < pending.length && pool.length) assigned.push(pool.shift());
+      const fallback = state.roles.find(r => r.id === 'citizen')?.id || state.roles[0]?.id || null;
+      while (assigned.length < pending.length) assigned.push(fallback);
+      const shuffled = shuffle(assigned);
+      pending.forEach((p, i) => { p.roleId = shuffled[i]; });
       state.players.forEach(p => {setPlayerAlive(p, true); p.removed=false; p.used = {}; p.escaped = false; p.eliminatedByVote = false; p.framedRoleId = null; p.haterTargetId = null; p.policemanIntel = null; p.silenced = false;delete p.roleOverrides;delete p.copiedAbility;p.dawnMessages=[];p.pendingLetters=[];});
       state.players.forEach(p=>{delete p.fakeDeathReturnRound;delete p.pendingInheritance;delete p.inheritanceNotice;});
       state.players.filter(p => roleHasSpecialId(roleOf(p), 'policeman')).forEach(ensurePolicemanIntel);
@@ -2234,10 +2234,10 @@
       nightPlayers.forEach(player => {
         const role = roleOf(player);
         if (roleHasSpecialId(role, 'policeman')) ensurePolicemanIntel(player);
-        if (roleActiveNightAction(role) === 'gambler') state.night.gamblerActions[player.id] = randomChoice(gamblerAbilityPool()) || 'none';
+        if (roleActiveNightAction(role) === 'gambler') state.night.gamblerActions[player.id] = scheduledGamblerAbility(player);
         if (nightActionFor(player) === 'seer') {
           const possible = nightPlayers.filter(t => t.id !== player.id);
-          state.night.seerTargets[player.id] = randomChoice(possible)?.id ?? null;
+          state.night.seerTargets[player.id] = scheduledSeerTarget(player, possible);
         }
       });
       // Team-kill roles share one kill per night; Godfather coordinates the full evil team.
@@ -2426,13 +2426,13 @@
       }
 
       if (nightAction === 'hater') {
-        if (!actor.haterTargetId) {
+        if (actor.haterTargetId == null) {
           const possible = playersAlive().filter(p => p.id !== actor.id);
-          actor.haterTargetId = randomChoice(possible)?.id ?? null;
+          actor.haterTargetId = hostTarget(actor, 'haterTarget', possible)?.id ?? null;
           state.night.haterTargets[actor.id] = actor.haterTargetId;
         }
-        showNightResult(actor.haterTargetId
-          ? '<strong>Target recorded.</strong><br>Your random target has been assigned. It will be revealed during the night reactions.'
+        showNightResult(actor.haterTargetId != null
+          ? '<strong>Target recorded.</strong><br>Your target has been assigned. It will be revealed during the night reactions.'
           : 'No valid target could be assigned.');
         $('nightPrompt').textContent = 'Hater target recorded. Acknowledge and continue.';
         $('nightActionArea').innerHTML = '';
@@ -2588,7 +2588,7 @@
         case 'seer': {
           const target = playerOf(state.night.seerTargets?.[actor.id]);
           setPrompt(target
-            ? `A random living player was selected: ${target.name}. Their exact role will be revealed automatically during the night reactions.`
+            ? `Your selected living player is: ${target.name}. Their exact role will be revealed automatically during the night reactions.`
             : 'No valid target exists.');
           area.appendChild(actionButton('Continue', target?.id ?? 'ack', () => setChoiceAndContinue(actor, target?.id ?? 'ack')));
           break;
@@ -2599,10 +2599,10 @@
           area.appendChild(actionButton('Do not use this ability', 'skip', () => setChoiceAndContinue(actor, 'skip')));
           break;
         case 'hater': {
-          setPrompt(actor.haterTargetId
+          setPrompt(actor.haterTargetId != null
             ? 'Your Hater target is already recorded. It will be revealed during the night reactions.'
             : 'A random player will be assigned as your target now; the target is revealed during the night reactions. You may also choose not to use this ability tonight.');
-          area.appendChild(actionButton('Record random target', 'haterAssign', () => setChoiceAndContinue(actor, 'haterAssign')));
+          area.appendChild(actionButton('Record target', 'haterAssign', () => setChoiceAndContinue(actor, 'haterAssign')));
           area.appendChild(actionButton('Do not use this ability', 'skip', () => setChoiceAndContinue(actor, 'skip')));
           break;
         }
@@ -3852,9 +3852,9 @@
             payload.turn = {type:'nightRound1',action:'inspectOrientation',prompt:customNightPrompt||'Choose a living player to inspect, or choose not to use this ability tonight. Their orientation will be shown during night reactions.',options:playersAlive().filter(t => t.id !== player.id).map(t => ({id:t.id,name:t.name})).concat([{id:'skip',name:'Do not use this ability'}])};
           } else if (dynamicAction === 'seer') {
             const target = playerOf(night.round1SeerTargets?.[player.id]);
-            payload.turn = {type:'nightRound1',action:'seer',prompt:customNightPrompt||(target ? `A random player was selected: ${target.name}. Their exact role will be revealed during night reactions.` : 'No valid target exists. Press Done.'),options:[{id:'ack',name:'Continue'}]};
+            payload.turn = {type:'nightRound1',action:'seer',prompt:customNightPrompt||(target ? `Your selected player is: ${target.name}. Their exact role will be revealed during night reactions.` : 'No valid target exists. Press Done.'),options:[{id:'ack',name:'Continue'}]};
           } else if (dynamicAction === 'hater' && state.round === 1) {
-            payload.turn = {type:'nightRound1',action:'hater',prompt:customNightPrompt||'A random player will be assigned as your target now. The target is revealed during night reactions. You may also choose not to use this ability tonight.',options:[{id:'haterAssign',name:'Record target'},{id:'skip',name:'Do not use this ability'}]};
+            payload.turn = {type:'nightRound1',action:'hater',prompt:customNightPrompt||'Your target will be assigned now. The target is revealed during night reactions. You may also choose not to use this ability tonight.',options:[{id:'haterAssign',name:'Record target'},{id:'skip',name:'Do not use this ability'}]};
           } else if (['protect','roleblock','silence','track','watch'].includes(dynamicAction)) {
             const prompts={protect:'Choose a living player to protect from night kills.',roleblock:'Choose a living player whose night ability will be blocked.',silence:'Choose a living player who cannot vote tomorrow.',track:'Choose a living player; who they visited and which ability they used will be revealed during reactions.'};
             payload.turn={type:'nightRound1',action:dynamicAction,prompt:customNightPrompt||`${prompts[dynamicAction]} You may also choose not to use this ability tonight.`,options:playersAlive().filter(t=>t.id!==player.id).map(t=>({id:t.id,name:t.name})).concat([{id:'skip',name:'Do not use this ability'}])};
@@ -4361,16 +4361,16 @@
         await publishOnlineRoom(); await maybeFinishOnlineRound1(); return;
       }
       if (nightActionFor(actor) === 'hater' && state.round === 1 && value === 'ack') {
-        if (!actor.haterTargetId) {
+        if (actor.haterTargetId == null) {
           const possible = n.round1Players.filter(p => p.alive && p.id !== actor.id);
-          actor.haterTargetId = randomChoice(possible)?.id ?? null;
+          actor.haterTargetId = hostTarget(actor, 'haterTarget', possible)?.id ?? null;
         }
         n.haterTargets = n.haterTargets || {};
         n.haterTargets[actor.id] = actor.haterTargetId;
         n.round1Actions[actor.id] = {action:'hater',targetId:actor.haterTargetId};
         n.round1Submitted[actor.id] = true;
         ackOnlineCommand(commandUid, commandId, true, 'Your Hater target was assigned.');
-        setPrivateResult(actor.id, 'Your random target has been assigned. The target will be revealed during night reactions.');
+        setPrivateResult(actor.id, 'Your target has been assigned. The target will be revealed during night reactions.');
         await publishOnlineRoom(); await maybeFinishOnlineRound1(); return;
       }
       if (n.round1Submitted[actor.id]) {
@@ -4487,9 +4487,9 @@
           setPrivateResult(actor.id, 'You chose not to use your night ability tonight.');
           await publishOnlineRoom(); await maybeFinishOnlineRound1(); return;
         }
-        if (!actor.haterTargetId) {
+        if (actor.haterTargetId == null) {
           const possible = n.round1Players.filter(p => p.alive && p.id !== actor.id);
-          actor.haterTargetId = randomChoice(possible)?.id ?? null;
+          actor.haterTargetId = hostTarget(actor, 'haterTarget', possible)?.id ?? null;
         }
         n.haterTargets[actor.id] = actor.haterTargetId;
         n.round1Actions[actor.id] = {action:'hater',targetId:actor.haterTargetId};
@@ -4809,8 +4809,8 @@
       state.phase='night';
       await setOnlineJoinable(false);
       bumpOnlineVersion(); const nightPlayers=playersAlive().slice(); const round1SeerTargets={}; const gamblerActions={};
-      const gamblerPool=gamblerAbilityPool();
-      nightPlayers.forEach(p=>{const role=roleOf(p), active=roleActiveNightAction(role);p.framedRoleId=null; if(roleHasSpecialId(role,'policeman')) ensurePolicemanIntel(p); if(active==='gambler') gamblerActions[p.id]=randomChoice(gamblerPool)||'none'; if((gamblerActions[p.id]||active)==='seer'){const choices=nightPlayers.filter(t=>t.id!==p.id);round1SeerTargets[p.id]=randomChoice(choices)?.id??null;}});
+      
+      nightPlayers.forEach(p=>{const role=roleOf(p), active=roleActiveNightAction(role);p.framedRoleId=null; if(roleHasSpecialId(role,'policeman')) ensurePolicemanIntel(p); if(active==='gambler') gamblerActions[p.id]=scheduledGamblerAbility(p); if((gamblerActions[p.id]||active)==='seer'){const choices=nightPlayers.filter(t=>t.id!==p.id);round1SeerTargets[p.id]=scheduledSeerTarget(p, choices);}});
       const queue = getConfiguredNightOrder(nightPlayers);
       state.night={round:1,queue,index:0,busy:false,usedTeamKillRoleIds:[],pendingAttacks:[],reactionQueue:[],reactionCompleted:[],reactionFollowups:{},round1Players:nightPlayers,round1Submitted:{},round1SeerTargets,round1InspectTargets:{},framerTargetId:null,framerRoleChooserId:null,roleChangeActorId:null,roleChangeTargetId:null,haterTargets:{},protectedIds:[],blockedIds:[],trackTargets:{},watchTargets:{},actionRecords:{},round1Actions:{},gamblerActions,onlineAckNeeded:false,onlineResults:{},onlineSeerTargetId:null};
       initializeExtraNight();
