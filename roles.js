@@ -65,6 +65,11 @@ const DEFAULT_ROLES = [
     visibility: 'nobody', nightAction: 'seer'
   },
   {
+    id: 'samurai', title: 'Samurai', orientation: 'good',
+    description: 'Kill independently during the night.',
+    visibility: 'nobody', nightAction: 'seer'
+  },  
+  {
     id: 'traitor', title: 'Traitor', orientation: 'good',
     description: 'If the Mafia target you, you join the Mafia instead of dying. Your orientation becomes evil from that point onward.',
     visibility: 'evil', nightAction: 'none', nightReaction: 'traitor'
