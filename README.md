@@ -1,6 +1,6 @@
 # Mafia
 
-A customisable Mafia game for friends, with private roles, day voting, night abilities and special reactions.
+A customisable Mafia game for friends, with private roles, day voting, night abilities and special reactions to said abilities.
 
 Play together using one shared device, or create an online room so everyone can use their own device. This is a personally crafted version of Mafia with its own rules and unusual roles. You can edit the role library to suit your group.
 
