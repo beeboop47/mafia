@@ -1096,10 +1096,11 @@
       </div>
       <div id="players" class="players"></div>
 
-      <details id="hostSetupPanel" class="advanced-panel" hidden>
+      <details id="hostSetupPanel" class="advanced-panel">
         <summary>Host setup — individual player settings</summary>
         <div class="advanced-body">
-          <p class="muted tiny">Private host settings apply in Manual mode, including players assigned None. Each setting applies when that player has the relevant ability. Unconfigured nights stay random. A Seer target who is no longer alive is replaced by a random living player. Players still choose how to use their abilities.</p>
+          <div id="hostPlayerControls">
+          <p class="muted tiny">Private host settings apply in both Random and Manual modes. Each setting applies when that player has the relevant ability, including roles assigned from the random pool. Recognition applies regardless of their role. Unconfigured nights stay random. A Seer target who is no longer alive is replaced by a random living player. Players still choose how to use their abilities.</p>
           <div id="hostPlayerSettings"></div>
           <h4>Player recognition</h4>
           <p class="muted tiny">Recognition reveals the other player's role privately. One-way recognition only adds knowledge for the first player. These links add to normal role visibility.</p>
@@ -1110,6 +1111,7 @@
           </div>
           <button type="button" class="ghost" onclick="addHostRecognition()">Add recognition</button>
           <div id="recognitionList"></div>
+          </div>
         </div>
       </details>
 
@@ -1121,8 +1123,17 @@
       <details class="advanced-panel">
       <summary>Random-mode role pool</summary>
       <div class="advanced-body">
-      <div class="muted tiny">Select the roles and counts for random assignments. In Manual mode, players assigned None use this pool; manually assigned roles count towards the pool's counts and Evil minimums.</div>
+      <div class="muted tiny">Enable the roles that can be drawn and set the available copies. All alignments are drawn together; Evil roles are not assigned first. In Manual mode, players assigned None use the remaining pool after manually assigned copies are deducted.</div>
       <div id="randomRolePool" class="role-list" style="margin-top:10px"></div>
+      <label class="setting-toggle" style="margin-top:12px" for="requireEvil">
+        <input id="requireEvil" type="checkbox">
+        <span class="setting-copy"><strong>Require at least one Evil player</strong><span class="muted tiny" style="display:block;margin-top:4px">Reserve an Evil role from the enabled pool unless one is manually assigned. Off by default.</span></span>
+      </label>
+      <label class="setting-toggle" style="margin-top:12px" for="requireNeutral">
+        <input id="requireNeutral" type="checkbox">
+        <span class="setting-copy"><strong>Require at least one Neutral player</strong><span class="muted tiny" style="display:block;margin-top:4px">Reserve a Neutral role from the enabled pool unless one is manually assigned. Off by default. Both minimums can be enabled together.</span></span>
+      </label>
+      <p class="muted tiny">Godfather is prioritised for the first Evil role drawn when an enabled copy is available. Random mode keeps Evil below half of all players to prevent an immediate Evil win. Two-player random games cannot include Evil because of the two-player win rule.</p>
       </div>
       </details>
 
@@ -1166,7 +1177,7 @@
             <option value="henchman">Henchman — recognises Policeman</option>
             <option value="godfather">Godfather — shares the Evil team kill</option>
             <option value="jester">Jester — converts when Evil is eliminated</option>
-            <option value="serial_killer">Serial Killer — Jester conversion target</option>
+            <option value="serial_killer">Serial Killer — independent killer</option>
           </select>
           <div class="muted tiny" style="margin-top:5px">Most roles should stay on <strong>Default</strong>. IDs only enable hard-coded behaviour that cannot be expressed by the normal ability/visibility settings. Renaming a role does not change its ID.</div>
         </div>
@@ -1241,7 +1252,7 @@
       <div class="divider"></div>
 
       <div class="notice">
-        <strong>Win logic:</strong> Role-specific win conditions are checked first. The normal Good/no-Evil and Evil-majority checks are controlled by <strong>Automatic side wins</strong> above. When those checks are enabled, neutral roles can keep a no-Evil game running and a surviving Jester converts to Serial Killer instead of ending the game. The two-player safeguard described above is always active regardless of that setting.
+        <strong>Win logic:</strong> Role-specific win conditions are checked first. The normal Good/no-Evil and Evil-majority checks are controlled by <strong>Automatic side wins</strong> above. When those checks are enabled, neutral roles can keep a no-Evil game running. The two-player safeguard described above is always active regardless of that setting.
       </div>
 
       <div class="row" style="justify-content:flex-end;margin-top:14px">
@@ -1369,6 +1380,8 @@
       processedCommandIds: {},
       onlineCommandAcks: {},
       autoSideWinChecks: true,
+      requireEvil: false,
+      requireNeutral: false,
     };
 
     const $ = id => document.getElementById(id);
@@ -1635,8 +1648,8 @@
       renderSetup();
     }
     function selectedPresetDefinition() { const value=$('presetSelect')?.value||''; const [kind,id]=value.split(':'); return kind==='builtin'?BUILTIN_PRESETS[id]:readCustomPresets()[id]; }
-    function saveConfigLocal() { const payload={roles:state.roles,players:state.players.map(p=>({...p,alive:true,used:{},escaped:false,eliminatedByVote:false,framedRoleId:null,haterTargetId:null,policemanIntel:null,silenced:false})),mode:state.mode,nightOrder:$('nightOrder')?.value||'player',autoSideWinChecks:state.autoSideWinChecks!==false,customPresets:readCustomPresets()}; localStorage.setItem(CONFIG_STORAGE_KEY,JSON.stringify(payload)); $('configStatus').textContent='Saved players, roles, presets and settings on this device.'; }
-    function loadConfigLocal() { try{const p=JSON.parse(localStorage.getItem(CONFIG_STORAGE_KEY)||'null');if(!p)throw new Error();state.roles=Array.isArray(p.roles)?p.roles:structuredClone(DEFAULT_ROLES);state.players=Array.isArray(p.players)&&p.players.length?p.players:state.players;state.mode=p.mode||'random';state.autoSideWinChecks=p.autoSideWinChecks!==false;if(p.customPresets&&typeof p.customPresets==='object')writeCustomPresets(p.customPresets);renderSetup();if($('nightOrder'))$('nightOrder').value=p.nightOrder||'player';$('configStatus').textContent='Saved configuration loaded.';}catch{$('configStatus').textContent='No valid saved configuration found.';} }
+    function saveConfigLocal() { const payload={roles:state.roles,players:state.players.map(p=>({...p,alive:true,used:{},escaped:false,eliminatedByVote:false,framedRoleId:null,haterTargetId:null,policemanIntel:null,silenced:false})),mode:state.mode,nightOrder:$('nightOrder')?.value||'player',autoSideWinChecks:state.autoSideWinChecks!==false,requireEvil:!!state.requireEvil,requireNeutral:!!state.requireNeutral,customPresets:readCustomPresets()}; localStorage.setItem(CONFIG_STORAGE_KEY,JSON.stringify(payload)); $('configStatus').textContent='Saved players, roles, presets and settings on this device.'; }
+    function loadConfigLocal() { try{const p=JSON.parse(localStorage.getItem(CONFIG_STORAGE_KEY)||'null');if(!p)throw new Error();state.roles=Array.isArray(p.roles)?p.roles:structuredClone(DEFAULT_ROLES);state.players=Array.isArray(p.players)&&p.players.length?p.players:state.players;state.mode=p.mode||'random';state.requireEvil=!!p.requireEvil;state.requireNeutral=!!p.requireNeutral;state.autoSideWinChecks=p.autoSideWinChecks!==false;if(p.customPresets&&typeof p.customPresets==='object')writeCustomPresets(p.customPresets);renderSetup();if($('nightOrder'))$('nightOrder').value=p.nightOrder||'player';$('configStatus').textContent='Saved configuration loaded.';}catch{$('configStatus').textContent='No valid saved configuration found.';} }
     function exportConfigLocal() {
       saveConfigLocal();
       const file = new Blob([localStorage.getItem(CONFIG_STORAGE_KEY)], {type:'application/json'});
@@ -1810,6 +1823,8 @@
     function renderSetup() {
       $('roundMode').value = state.mode;
       if($('autoSideWinChecks')) $('autoSideWinChecks').checked = state.autoSideWinChecks !== false;
+      $('requireEvil').checked = !!state.requireEvil;
+      $('requireNeutral').checked = !!state.requireNeutral;
       renderPlayers(); renderRandomRolePool(); renderRoleLibrary(); renderPresetSelect(); renderHostSetup();
     }
     function openRoleEditor(id = null) {
@@ -1995,6 +2010,8 @@
       state.processedCommandIds = {};
       state.onlineCommandAcks = parsed.onlineCommandAcks || {};
       state.autoSideWinChecks = parsed.autoSideWinChecks !== false;
+      state.requireEvil = !!parsed.requireEvil;
+      state.requireNeutral = !!parsed.requireNeutral;
       const byId = new Map(state.players.map(p => [Number(p.id), p]));
       for (const key of ['queue','reactionQueue','round1Players','reactionCompleted']) {
         if (!Array.isArray(state.night[key])) continue;
@@ -2009,7 +2026,9 @@
         handoffIndex: state.handoffIndex, handoffRevealed: state.handoffRevealed, round: state.round,
         day: state.day, night: state.night, logs: state.logs.slice(0, 250),
         onlineVersion: state.onlineVersion, onlineCommandAcks: state.onlineCommandAcks,
-        autoSideWinChecks: state.autoSideWinChecks !== false
+        autoSideWinChecks: state.autoSideWinChecks !== false,
+        requireEvil: !!state.requireEvil,
+        requireNeutral: !!state.requireNeutral
       }));
     }
 
@@ -2020,19 +2039,51 @@
       fixed.forEach(p => fixedCounts[p.roleId] = (fixedCounts[p.roleId] || 0) + 1);
       const assigned = [];
       let pool = [];
+      const evilLimit = state.mode === 'random' ? Math.max(0, Math.floor((state.players.length - 1) / 2)) : Infinity;
+      let evilCount = fixed.filter(p => roleOf(p)?.orientation === 'evil').length;
+      const orientationOf = id => state.roles.find(r => r.id === id)?.orientation;
+      const preferredGodfather = ids => ids.find(id => orientationOf(id) === 'evil' && roleHasSpecialId(state.roles.find(r => r.id === id), 'godfather'));
       for (const role of state.roles) {
         if (role.id === 'citizen' || role.randomEnabled === false) continue;
         const count = Math.max(1, Math.floor(role.randomCount || 1));
         const remaining = Math.max(0, count - (fixedCounts[role.id] || 0));
-        const minimum = role.orientation === 'evil'
-          ? Math.max(0, Math.floor(role.randomCount || 0) - (fixedCounts[role.id] || 0)) : 0;
-        const guaranteed = Math.min(minimum, pending.length - assigned.length);
-        for (let i = 0; i < guaranteed; i++) assigned.push(role.id);
-        for (let i = guaranteed; i < remaining; i++) pool.push(role.id);
+        for (let i = 0; i < remaining; i++) pool.push(role.id);
+      }
+      for (const [orientation, required] of [['evil', state.requireEvil], ['neutral', state.requireNeutral]]) {
+        if (!required || fixed.some(p => roleOf(p)?.orientation === orientation)) continue;
+        const eligible = pool.filter(id => orientationOf(id) === orientation);
+        if (assigned.length >= pending.length || !eligible.length || (orientation === 'evil' && evilCount >= evilLimit)) {
+          alert(`Cannot meet the ${orientation === 'evil' ? 'Evil' : 'Neutral'} minimum. Enable a role of that alignment and provide an unassigned seat. Random games require at least three players to include Evil without an immediate win.`);
+          return false;
+        }
+        const selected = orientation === 'evil' && evilCount === 0
+          ? preferredGodfather(eligible) || randomChoice(eligible) : randomChoice(eligible);
+        assigned.push(selected);
+        if (orientation === 'evil') evilCount++;
+        pool.splice(pool.indexOf(selected), 1);
       }
       pool = shuffle(pool);
-      while (assigned.length < pending.length && pool.length) assigned.push(pool.shift());
-      const fallback = state.roles.find(r => r.id === 'citizen')?.id || state.roles[0]?.id || null;
+      while (assigned.length < pending.length && pool.length) {
+        let id = pool.shift();
+        if (orientationOf(id) === 'evil') {
+          if (evilCount >= evilLimit) continue;
+          if (evilCount === 0) {
+            const godfather = preferredGodfather([id, ...pool]);
+            if (godfather && godfather !== id) {
+              // Swap copies to preserve counts without adding Evil assignments.
+              pool[pool.indexOf(godfather)] = id;
+              id = godfather;
+            }
+          }
+          evilCount++;
+        }
+        assigned.push(id);
+      }
+      const fallback = (state.roles.find(r => r.id === 'citizen' && r.orientation !== 'evil') || state.roles.find(r => r.orientation !== 'evil'))?.id;
+      if (assigned.length < pending.length && !fallback) {
+        alert('Add a Good or Neutral role to fill the remaining seats without an immediate Evil win.');
+        return false;
+      }
       while (assigned.length < pending.length) assigned.push(fallback);
       const shuffled = shuffle(assigned);
       pending.forEach((p, i) => { p.roleId = shuffled[i]; });
@@ -3197,17 +3248,6 @@
       if (state.autoSideWinChecks !== false) {
         const neutrals = living.filter(p => roleOf(p)?.orientation === 'neutral');
         if (evil === 0) {
-          const livingJester = living.find(p => roleHasSpecialId(roleOf(p), 'jester'));
-          if (livingJester) {
-            const sk = state.roles.find(r => roleHasSpecialId(r, 'serial_killer'));
-            if (sk) {
-              livingJester.roleId = sk.id;
-              livingJester.framedRoleId = null;
-              livingJester.eliminatedByVote = false;
-              addLog(`${livingJester.name} was the last neutral Jester when evil was eliminated and became a Serial Killer.`);
-              return {done: false};
-            }
-          }
           if (neutrals.length) return {done: false};
           return {done: true, winner: 'Good', reason: 'All evil players have been eliminated and no neutral players remain.'};
         }
@@ -3314,6 +3354,8 @@
     });
     $('roundMode').addEventListener('change', e => {state.mode = e.target.value; renderSetup();});
     $('autoSideWinChecks').addEventListener('change', e => {state.autoSideWinChecks = e.target.checked;});
+    $('requireEvil').addEventListener('change', e => {state.requireEvil = e.target.checked;});
+    $('requireNeutral').addEventListener('change', e => {state.requireNeutral = e.target.checked;});
     $('newRoleBtn').addEventListener('click', () => openRoleEditor());
     $('cancelRoleBtn').addEventListener('click', closeRoleEditor);
     $('saveRoleBtn').addEventListener('click', () => {
@@ -3357,7 +3399,7 @@
     $('startBtn').addEventListener('click', () => {
       if (online.mode === 'host') {startOnlineGameAsHost(); return;}
       if (state.players.length < 2) {alert('Need at least 2 players.'); return;}
-      assignRoles(); state.logs = []; $('gameLog').innerHTML = ''; state.round = 1; addLog('Game started. Roles are being handed out privately.'); renderGameLog(); beginHandoff();
+      if (assignRoles() === false) return; state.logs = []; $('gameLog').innerHTML = ''; state.round = 1; addLog('Game started. Roles are being handed out privately.'); renderGameLog(); beginHandoff();
     });
     $('revealRoleBtn').addEventListener('click', () => {state.handoffRevealed = true; updateHandoff();});
     $('handoffNextBtn').addEventListener('click', () => {
@@ -4875,7 +4917,7 @@
         const entries=publicOnlinePlayers().filter(p=>p&&p.uid).sort((a,b)=>a.seatId-b.seatId);
         if(entries.length<2){alert('Need at least 2 connected players.');return;}
         state.players=entries.map((p,i)=>{const existing=state.players.find(x=>x.uid===p.uid); return existing?{...existing,id:i,uid:p.uid,name:p.name}:{...createPlayer(i,p.name||`Player ${i+1}`),uid:p.uid};});
-        assignRoles(); state.logs=[]; state.round=1; state.phase='day'; state.day={secondBallot:false,votes:{},tiedCandidates:[]}; state.night={}; state.processedCommandIds={}; state.onlineCommandAcks={}; state.onlineVersion=1;
+        if (assignRoles() === false) return; state.logs=[]; state.round=1; state.phase='day'; state.day={secondBallot:false,votes:{},tiedCandidates:[]}; state.night={}; state.processedCommandIds={}; state.onlineCommandAcks={}; state.onlineVersion=1;
         online.roomStatus='started';
         hide('setupScreen','onlineLobby');show('onlineGame');hide('onlineGameOver');show('onlineActionCard','onlineAdminPanel');
         const {dbMod}=online.api; const statusRef=dbMod.ref(online.db,`rooms/${online.roomCode}/meta/status`);

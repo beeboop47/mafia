@@ -3,7 +3,7 @@ const EXTRA_ABILITIES = {
   hideAllegiance: {label:'Hide Allegiance', category:'Deceitful', prompt:'Choose a player to appear Neutral to allegiance investigations tonight.'},
   fakeVisit: {label:'Fake Visit', category:'Deceitful', second:'player', prompt:'Choose a player and the visitor destination that Track should report tonight.'},
   hideActivity: {label:'Hide Activity', category:'Deceitful', prompt:'Hide a player from Track and Check Activity tonight.'},
-  fakeActivity: {label:'Fake Activity', category:'Deceitful', prompt:'Make Check Activity report that a player used an ability tonight.'},
+  fakeActivity: {label:'Fake Activity', category:'Deceitful', prompt:'Choose a player to make Check Activity report that they used an ability tonight, even if they did nothing. This does not invent visits for Track. Hide Activity overrides this effect.'},
   reverseComparison: {label:'Reverse Comparison', category:'Deceitful', prompt:'Reverse comparison results involving this player tonight. Two reversed players cancel each other out.'},
   swapRoles: {label:'Swap Roles', category:'Transformative', second:'player', prompt:'Choose two players to exchange their roles just before reactions.'},
   changeAllegiance: {label:'Change Allegiance', category:'Transformative', second:'allegiance', prompt:'Choose a player and their new permanent allegiance.'},

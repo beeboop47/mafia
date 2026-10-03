@@ -1,6 +1,6 @@
 // Host configuration belongs to each player and is saved with the roster.
 function hostSettings(player) {
-  return state.mode === 'manual' ? player?.hostSetup || {} : {};
+  return player?.hostSetup || {};
 }
 function hostTarget(actor, key, candidates) {
   const configured = hostSettings(actor)[key];
@@ -33,7 +33,7 @@ function removeHostReferences(id) {
 }
 function renderHostSetup() {
   const panel = $('hostSetupPanel');
-  panel.hidden = state.mode !== 'manual';
+  panel.hidden = false;
   const container = $('hostPlayerSettings');
   container.replaceChildren();
   const option = (select, value, label) => {
