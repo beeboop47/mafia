@@ -120,6 +120,16 @@ function narratorAdvanceTransition(transition) {
   const night = state.night;
   night.handoffReady = false;
   if (transition.kind === 'mafiaMeeting') {
+    // Recheck at execution, including a queued meeting from an older page or
+    // a player eliminated/removed during the announcement delay.
+    const evil = state.players.filter(player => player.alive && !player.removed && roleOf(player)?.orientation === 'evil');
+    if (evil.length < 2) {
+      night.narratorMeetingDone = true;
+      night.narratorHasWoken = true;
+      night.turnRevealed = false;
+      updateNight();
+      return;
+    }
     document.getElementById('nightTitle').textContent = 'Mafia discussion';
     document.getElementById('nightProgress').textContent = 'All living Evil players';
     narratorSpeak('Mafia, open your eyes. Discuss your plans together. When you are ready, everyone will close their eyes and each role will take its own turn.');

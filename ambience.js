@@ -4,13 +4,32 @@
   const toggle = document.getElementById('narratorAmbienceToggle');
   const volume = document.getElementById('narratorAmbienceVolume');
   const label = document.getElementById('narratorAmbienceLabel');
-  let context, master, nightGain, nightSource, bed, timer, phase = '', muted = false;
+  let context, master, nightGain, bed, timer, phase = '', muted = false;
   const activeCalls = new Set();
   const nightAudio = new Audio('assets/audio/suburban-night-loop.wav');
   nightAudio.loop = true;
   nightAudio.preload = 'auto';
   nightAudio.volume = 0;
   let dayMix = 0, nightMix = 0, fadeTimer, revision = 0;
+  let nightBuffer, nightLoading, nightBed;
+  const hosted = ['http:', 'https:'].includes(window.location?.protocol);
+  const enable = document.getElementById('narratorAmbienceEnable');
+  function stopNight() {
+    if (nightBed) { nightBed.stop(); nightBed.disconnect(); nightBed = null; }
+    nightAudio.pause();
+  }
+  function loadNight() {
+    if (!nightLoading) {
+      nightLoading = fetch('assets/audio/suburban-night-loop.wav').then(response => {
+        if (!response.ok) throw new Error('Night recording missing');
+        return response.arrayBuffer();
+      }).then(bytes => context.decodeAudioData(bytes)).then(buffer => { nightBuffer = buffer; return buffer; }).catch(error => {
+        nightLoading = null;
+        throw error;
+      });
+    }
+    return nightLoading;
+  }
 
   function targetPhase() {
     return state.narratorMode && online.mode === 'offline' &&
@@ -69,10 +88,26 @@
       dayMix = nightMix = 0;
       updateVolume();
       stop();
-      nightAudio.pause();
+      stopNight();
       return;
     }
     if (phase === 'night') {
+      if (hosted && context) {
+        if (context.state !== 'running') { enable.textContent = 'Tap to enable ambience sound'; return; }
+        loadNight().then(() => {
+          if (current !== revision || muted || document.hidden || phase !== 'night') return;
+          if (!nightBed) {
+            nightBed = context.createBufferSource();
+            nightBed.buffer = nightBuffer;
+            nightBed.loop = true;
+            nightBed.connect(nightGain);
+            nightBed.start();
+          }
+          enable.textContent = 'Ambience sound enabled';
+          crossfade('night');
+        }).catch(() => { if (current === revision) enable.textContent = 'Night audio could not load · tap to retry'; });
+        return;
+      }
       nightAudio.play().then(() => {
         if (current === revision) crossfade('night');
         else if (phase !== 'night' || muted || document.hidden) nightAudio.pause();
@@ -98,7 +133,7 @@
       if (progress === 1) {
         clearInterval(fadeTimer);
         if (next !== 'day') stop();
-        if (next !== 'night') nightAudio.pause();
+        if (next !== 'night') stopNight();
       }
     };
     fadeTimer = setInterval(tick, 30);
@@ -143,23 +178,25 @@
         master = context.createGain();
         master.gain.value = 0;
         master.connect(context.destination);
-        // iOS ignores media-element volume. Use Web Audio gain on hosted pages;
-        // local file pages retain media playback to avoid opaque-origin CORS.
-        if (context.createMediaElementSource && window.location?.protocol !== 'file:') {
+        // Hosted recordings use decoded buffers and gain in the same unlocked
+        // context. Local file pages retain media playback for opaque origins.
+        if (hosted) {
           nightGain = context.createGain();
           nightGain.gain.value = 0;
-          nightSource = context.createMediaElementSource(nightAudio);
-          nightSource.connect(nightGain).connect(context.destination);
-          nightAudio.volume = 1;
+          nightGain.connect(context.destination);
         }
       }
       const resume = context.state !== 'running' ? context.resume() : Promise.resolve();
       // Call play before awaiting anything; prime the recording even during day.
-      const prime = nightAudio.paused ? nightAudio.play() : Promise.resolve();
+      // A missing/blocked night recording must never prevent daytime playback.
+      if (!hosted && nightAudio.paused) nightAudio.play().then(() => {
+        if (phase !== 'night' || muted || document.hidden) nightAudio.pause();
+      }).catch(() => { if (phase === 'night') enable.textContent = 'Night audio could not load · tap to retry'; });
       await resume;
-      await prime;
-      if (phase !== 'night' || muted || document.hidden) nightAudio.pause();
-      if (phase && !muted && !document.hidden && (phase === 'night' ? nightMix === 0 : !bed)) start();
+      if (phase && !muted && !document.hidden) {
+        if (phase === 'night' ? hosted ? !nightBed : nightMix === 0 : !bed || dayMix === 0) start();
+        if (phase === 'day') enable.textContent = 'Ambience sound enabled';
+      }
     } catch {
       label.textContent = 'Tap to enable ambience sound';
     }
@@ -171,6 +208,14 @@
     start();
   });
   volume.addEventListener('input', updateVolume);
+  enable.addEventListener('click', event => {
+    event?.stopPropagation();
+    muted = false;
+    toggle.textContent = 'Mute ambience';
+    toggle.setAttribute('aria-pressed', 'false');
+    if (Number(volume.value) === 0) volume.value = '25';
+    return unlock();
+  });
   // Clicks and keyboard activation unlock browser audio after phase-changing actions.
   document.addEventListener('click', unlock);
   document.addEventListener('change', sync);

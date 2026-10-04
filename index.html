@@ -1409,7 +1409,7 @@
   <script src="reactions.js"></script>
   <script src="abilities.js"></script>
   <script src="host-setup.js"></script>
-  <script src="narrator.js"></script>
+  <script src="narrator.js?v=20261004-discussion-count"></script>
   <script src="roles.js?v=20260930"></script>
   <script>
     // ---- State ---------------------------------------------------------------
@@ -2393,7 +2393,7 @@
       } else hide('narratorControls');
       hide('dayCard', 'handoffCard'); show('nightCard');
       setPhase('Night', 'Night actions — Round 1');
-      if (state.narratorMode && nightPlayers.some(player => roleOf(player)?.orientation === 'evil')) {
+      if (state.narratorMode && nightPlayers.filter(player => roleOf(player)?.orientation === 'evil').length > 1) {
         narratorBeginTransition('mafiaMeeting');
         return;
       }
