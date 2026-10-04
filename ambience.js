@@ -4,7 +4,7 @@
   const toggle = document.getElementById('narratorAmbienceToggle');
   const volume = document.getElementById('narratorAmbienceVolume');
   const label = document.getElementById('narratorAmbienceLabel');
-  let context, master, bed, timer, phase = '', muted = false;
+  let context, master, nightGain, nightSource, bed, timer, phase = '', muted = false;
   const activeCalls = new Set();
   const nightAudio = new Audio('assets/audio/suburban-night-loop.wav');
   nightAudio.loop = true;
@@ -25,7 +25,11 @@
       master.gain.cancelScheduledValues(context.currentTime);
       master.gain.setTargetAtTime(level() * dayMix, context.currentTime, .04);
     }
-    nightAudio.volume = level() / .16 * .3 * nightMix;
+    const nightLevel = level() / .16 * .3 * nightMix;
+    if (nightGain) {
+      nightGain.gain.cancelScheduledValues(context.currentTime);
+      nightGain.gain.setTargetAtTime(nightLevel, context.currentTime, .04);
+    } else nightAudio.volume = nightLevel;
   }
   function stop() {
     clearTimeout(timer);
@@ -124,13 +128,10 @@
     if (next !== phase) { phase = next; start(); }
   }
   async function unlock() {
-    const previous = phase;
     sync();
-    if (!phase || muted || document.hidden) return;
-    if (phase === 'night') {
-      if (previous === phase && nightAudio.paused) start();
-      return;
-    }
+    // Unlock both audio engines in the tap itself, including setup/handoff taps.
+    // Mobile browsers do not carry a gesture into later timers or observers.
+    if (!state.narratorMode || online.mode !== 'offline' || muted || document.hidden) return;
     const AudioContext = window.AudioContext || window.webkitAudioContext;
     if (!AudioContext) {
       label.textContent = 'Ambience audio is unavailable in this browser';
@@ -142,10 +143,23 @@
         master = context.createGain();
         master.gain.value = 0;
         master.connect(context.destination);
-        start();
+        // iOS ignores media-element volume. Use Web Audio gain on hosted pages;
+        // local file pages retain media playback to avoid opaque-origin CORS.
+        if (context.createMediaElementSource && window.location?.protocol !== 'file:') {
+          nightGain = context.createGain();
+          nightGain.gain.value = 0;
+          nightSource = context.createMediaElementSource(nightAudio);
+          nightSource.connect(nightGain).connect(context.destination);
+          nightAudio.volume = 1;
+        }
       }
-      if (context.state !== 'running') { await context.resume(); start(); }
-      else if (!bed) start();
+      const resume = context.state !== 'running' ? context.resume() : Promise.resolve();
+      // Call play before awaiting anything; prime the recording even during day.
+      const prime = nightAudio.paused ? nightAudio.play() : Promise.resolve();
+      await resume;
+      await prime;
+      if (phase !== 'night' || muted || document.hidden) nightAudio.pause();
+      if (phase && !muted && !document.hidden && (phase === 'night' ? nightMix === 0 : !bed)) start();
     } catch {
       label.textContent = 'Tap to enable ambience sound';
     }
