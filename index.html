@@ -3695,8 +3695,7 @@
         if (!online.app) online.app = appMod.initializeApp(FIREBASE_CONFIG);
         if (!online.auth) {
           online.auth = authMod.getAuth(online.app);
-          // NONE/in-memory persistence keeps each browser tab independent.
-          // Once a tab has a UID, reuse it for subsequent room operations.
+          // Save and share the player identity across this browser's tabs.
           await authMod.setPersistence(online.auth, authMod.browserLocalPersistence);
         }
 
@@ -3905,10 +3904,10 @@
       const gameStarted=online.roomStatus==='started' || state.phase!=='setup';
       entries.sort(([,a],[,b])=>a.uid===online.uid?-1:b.uid===online.uid?1:Number(a.joinedAt||0)-Number(b.joinedAt||0));
       const used=new Set((state.players||[]).map(p=>Number(p.id)).filter(Number.isInteger));
-      entries.forEach(([,p])=>{const n=Number(p.seatId); if(Number.isInteger(n)&&n>=0) used.add(n);});
+      entries.forEach(([,p])=>{const n=p.seatId; if(Number.isInteger(n)&&n>=0) used.add(n);});
       let next=0;
       for(const [uid,p] of entries){
-        if(!Number.isInteger(Number(p.seatId)) || Number(p.seatId)<0){
+        if(!Number.isInteger(p.seatId) || p.seatId<0){
           while(used.has(next)) next++;
           p.seatId=next++; used.add(p.seatId);
           online.api.dbMod.update(online.api.dbMod.ref(online.db,`rooms/${online.roomCode}/players/${uid}`),{seatId:p.seatId}).catch(console.error);
@@ -3931,7 +3930,7 @@
 
     function admitPendingOnlinePlayers(){
       if(!online.isHost || !online.roomCode) return;
-      const members=Object.values(online.playersCache||{}).filter(p=>p&&p.uid&&Number.isInteger(Number(p.seatId)));
+      const members=Object.values(online.playersCache||{}).filter(p=>p&&p.uid&&Number.isInteger(p.seatId)&&p.seatId>=0);
       const known=new Set(state.players.map(p=>p.uid).filter(Boolean));
       const pending=members.filter(p=>!known.has(p.uid));
       pending.sort((a,b)=>a.seatId-b.seatId).forEach(member=>{
