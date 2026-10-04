@@ -36,8 +36,31 @@
     }
 
     .wrap {
+      position: relative;
+      z-index: 1;
       max-width: 1080px;
       margin: 0 auto
+    }
+
+    body::before {
+      content: '';
+      position: fixed;
+      inset: 0;
+      pointer-events: none;
+      z-index: 0;
+      opacity: 0;
+      transition: opacity 2s ease, background 2s ease;
+    }
+    body[data-narrator-ambience="day"]::before {
+      background: radial-gradient(ellipse at 20% 0%, rgba(238, 179, 83, .24), transparent 65%);
+      opacity: 1;
+    }
+    body[data-narrator-ambience="night"]::before {
+      background: radial-gradient(ellipse at 80% 0%, rgba(99, 123, 223, .22), transparent 65%);
+      opacity: 1;
+    }
+    @media (prefers-reduced-motion: reduce) {
+      body::before { transition: none; }
     }
 
     h1,
@@ -1079,7 +1102,7 @@
       <div class="notice" style="margin-top:12px">
         <label class="setting-toggle" for="narratorMode">
           <input id="narratorMode" type="checkbox">
-          <span class="setting-copy"><strong>Spoken Narrator mode</strong><span class="muted tiny" style="display:block;margin-top:4px">Offline play with a narrated night sequence. Blocking, role changes and protection happen before kills. Attack reactions follow immediately; Janitor and Doctor act next, followed by investigations. Track and activity results wait for all choices. Deaths are announced at dawn. Only one of each special Good or Neutral role; Citizens and ordinary Mafia may repeat. Remaining seats fill with Citizens.</span></span>
+          <span class="setting-copy"><strong>Spoken Narrator mode</strong><span class="muted tiny" style="display:block;margin-top:4px">Offline play with a narrated night sequence. All Evil players wake together to discuss their plans, then close their eyes before individual ability turns. Blocking, role changes and protection happen before kills. Attack reactions follow immediately; Janitor and Doctor act next, followed by investigations. Track and activity results wait for all choices. Deaths are announced at dawn. Only one of each special role; Citizens and ordinary Mafia may repeat. Remaining seats fill with Citizens.</span></span>
         </label>
       </div>
 
@@ -1266,6 +1289,15 @@
     </section>
 
     <section id="gameScreen" class="hidden">
+      <div id="narratorAmbienceControls" class="notice hidden">
+        <div class="row">
+          <span id="narratorAmbienceLabel">Day ambience</span>
+          <button id="narratorAmbienceToggle" class="ghost" type="button" aria-pressed="false">Mute ambience</button>
+          <label for="narratorAmbienceVolume" style="margin:0">Ambience volume</label>
+          <input id="narratorAmbienceVolume" type="range" min="0" max="100" value="25" style="width:120px" aria-label="Ambience volume">
+          <a class="muted tiny" href="https://freesound.org/people/jodybruchon/sounds/459464/" target="_blank" rel="noopener noreferrer">Night recording by jodybruchon · CC0</a>
+        </div>
+      </div>
       <div class="card">
         <div class="row">
           <div>
@@ -1455,9 +1487,8 @@
     function roleOf(player) {
       const role=player ? state.roles.find(r => r.id === player.roleId) : null;
       const effective = role && player.roleOverrides ? {...role,...player.roleOverrides} : role;
-      if (state.narratorMode && effective?.orientation === 'evil') {
-        const mafia = state.roles.find(r => r.id === 'mafia');
-        return {...(mafia || effective),orientation:'evil',title:'Mafia',specialId:'default',nightAction:'teamKill',nightReaction:'none',visibility:'evil',winCondition:'none',description:'You are Mafia. Wake together and choose one shared kill each night.'};
+      if (state.narratorMode && effective?.id === 'mafia' && effective.orientation === 'evil' && effective.nightAction === 'none') {
+        return {...effective,nightAction:'teamKill',description:'You are Mafia. Coordinate with the Evil team and choose one shared kill each night.'};
       }
       return effective;
     }
@@ -1581,7 +1612,6 @@
     function nightActionFor(player) {
       if (!player) return 'none';
       const role = roleOf(player);
-      if (state.narratorMode && role?.orientation === 'evil') return 'teamKill';
       const base=(player.copiedAbility?.round===state.round ? player.copiedAbility.action : null) || roleActiveNightAction(role);
       return base==='gambler' ? state.night?.gamblerActions?.[player.id] || base : base;
     }
@@ -2144,9 +2174,6 @@
       }
       state.players.forEach(p => {setPlayerAlive(p, true); p.removed=false; p.used = {}; p.escaped = false; p.eliminatedByVote = false; p.framedRoleId = null; p.haterTargetId = null; p.policemanIntel = null; p.silenced = false;delete p.roleOverrides;delete p.copiedAbility;p.dawnMessages=[];p.pendingLetters=[];});
       state.players.forEach(p=>{delete p.fakeDeathReturnRound;delete p.pendingInheritance;delete p.inheritanceNotice;});
-      if (state.narratorMode) state.players.filter(p => roleOf(p)?.orientation === 'evil').forEach(p => {
-        p.roleOverrides = {nightAction:'teamKill',nightReaction:'none',visibility:'evil',specialId:'default',winCondition:'none',description:'You are Mafia. Wake together and choose one shared kill each night.'};
-      });
       state.players.filter(p => roleHasSpecialId(roleOf(p), 'policeman')).forEach(ensurePolicemanIntel);
     }
 
@@ -2288,7 +2315,7 @@
     }
 
     function teamKillGroupKey(role) {
-      return roleHasSpecialId(role, 'godfather') ? 'evil' : role?.id;
+      return roleHasSpecialId(role, 'godfather') || (state.narratorMode && role?.orientation === 'evil' && role.nightAction === 'teamKill') ? 'evil' : role?.id;
     }
 
     function getConfiguredNightOrder(players) {
@@ -2365,6 +2392,10 @@
       } else hide('narratorControls');
       hide('dayCard', 'handoffCard'); show('nightCard');
       setPhase('Night', 'Night actions — Round 1');
+      if (state.narratorMode && nightPlayers.some(player => roleOf(player)?.orientation === 'evil')) {
+        narratorBeginTransition('mafiaMeeting');
+        return;
+      }
       if (!state.night.queue.length) {beginReactionRound(); return;}
       updateNight();
     }
@@ -2408,7 +2439,10 @@
       if (!state.narratorMode && result.done) {endGame(result); return;}
       state.night.handoffReady = true;
       if (state.narratorMode) {
-        narratorSpeak(`${state.night.narratorWakeRoleName || narratorRoleName(playerOf(state.night.currentActorId))}, close your eyes.`);
+        if (state.night.narratorWakeRoleName) {
+          narratorSpeak(`${state.night.narratorWakeRoleName}, close your eyes.`);
+          state.night.narratorWakeRoleName = null;
+        }
         $('nightKnownRoles').innerHTML = '';
       }
       updateNightHandoffGate();
@@ -2677,10 +2711,10 @@
       button.className = 'action-btn';
       button.textContent = label;
       if (state.narratorMode && label === 'Acknowledge & continue') {
-        button.hidden = !state.narratorPaused;
         button.dataset.narratorAcknowledgement = 'true';
-        // Keep private results visible briefly; other completion screens are skipped.
+        // Private information waits for the reader; action confirmations still skip.
         button.dataset.narratorImmediate = String(!['infoAcknowledge','genericInfoAcknowledge','haterInfoAcknowledge','janitorAcknowledge'].includes(value));
+        button.hidden = button.dataset.narratorImmediate === 'true' && !state.narratorPaused;
       }
       button.dataset.narratorAuto = String(
         ['narratorWake','nightHandoff','beginReactionRound','finishNight','revealTurn'].includes(value) ||
@@ -2837,11 +2871,11 @@
       }
 
       const actor = queue[night.index];
-      if (state.narratorMode && (!actor.alive || (!night.narratorReporting && nightActionFor(actor)==='none' && !findPendingAttacksFor(actor.id).length && !roleHasSpecialId(roleOf(actor),'policeman')))) {
+      if (state.narratorMode && (!actor.alive || narratorSkipBlockedTurn(actor) || (!night.narratorReporting && nightActionFor(actor)==='none' && !findPendingAttacksFor(actor.id).length))) {
         advanceNightActor(); return;
       }
       night.currentActorId = actor.id;
-      if (state.narratorMode && !night.narratorReporting) night.narratorTurnIsMafia = roleOf(actor)?.orientation === 'evil';
+      if (state.narratorMode && !night.narratorReporting) night.narratorTurnIsMafia = roleOf(actor)?.orientation === 'evil' && nightActionFor(actor) === 'teamKill';
       night.handoffReady = false;
       $('nightTitle').textContent = state.narratorMode ? 'Night' : `Night — ${actor.name}`;
       $('nightProgress').textContent = `${night.index + 1} / ${queue.length}`;
@@ -2879,12 +2913,6 @@
           renderNightKnownRoles(actor);
           showNightResult('Your private night information is shown above.');
           $('nightActionArea').appendChild(actionButton('Acknowledge & continue','genericInfoAcknowledge',()=>completeNightTurn()));
-          return;
-        }
-        if (state.narratorMode && night.blockedIds?.includes(actor.id) && !isPassiveAbility(nightActionFor(actor))) {
-          renderNightKnownRoles(actor);
-          showNightResult('Your night ability was blocked. You cannot use it tonight.');
-          $('nightActionArea').appendChild(actionButton('Acknowledge & continue','blockedAcknowledge',()=>completeNightTurn()));
           return;
         }
         if (state.narratorMode && findPendingAttacksFor(actor.id).length) {renderReactionTurn(actor);return;}
@@ -3083,7 +3111,7 @@
       if (isLimitedInvestigation(infoAction)) {
         showNightResult(escapeHtml(limitedInvestigationResult(actor)));
         $('nightPrompt').textContent = 'Your investigation result is shown below.';
-        $('nightActionArea').appendChild(actionButton('Acknowledge & continue', 'ack', () => completeNightTurn()));
+        $('nightActionArea').appendChild(actionButton('Acknowledge & continue', 'infoAcknowledge', () => completeNightTurn()));
         return;
       }
       if (infoAction === 'hater' && state.round === 1) {
@@ -5192,6 +5220,7 @@
       hide('onlineStatus');
     })();
   </script>
+  <script src="ambience.js"></script>
 </body>
 
 </html>

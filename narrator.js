@@ -18,7 +18,9 @@ function narratorRefreshAuto() {
   if (status) status.textContent = '';
   if (!state.narratorMode || state.phase !== 'night') return;
   const area = document.getElementById('nightActionArea');
-  for (const acknowledgement of area.querySelectorAll('button[data-narrator-acknowledgement="true"]')) acknowledgement.hidden = !state.narratorPaused;
+  for (const acknowledgement of area.querySelectorAll('button[data-narrator-acknowledgement="true"]')) {
+    acknowledgement.hidden = acknowledgement.dataset.narratorImmediate === 'true' && !state.narratorPaused;
+  }
   if (state.narratorPaused) return;
   const night = state.night, index = night.index, round = night.round;
   if (night.narratorTransition) {
@@ -40,7 +42,9 @@ function narratorRefreshAuto() {
   }
   if (button.dataset.narratorAcknowledgement === 'true') {
     const prompt=document.getElementById('nightPrompt');
-    if (prompt) prompt.textContent='Your private result is shown below.';
+    if (prompt) prompt.textContent='Take your time to read your private result, then acknowledge and continue.';
+    if (status) status.textContent = 'Waiting for your acknowledgement.';
+    return;
   }
   if (status) status.textContent = 'Continuing automatically in 5 seconds…';
   narratorAutoTimer = setTimeout(() => {
@@ -68,12 +72,19 @@ function narratorSpeak(text) {
   window.speechSynthesis.speak(utterance);
 }
 function narratorRoleName(actor) {
-  return roleOf(actor)?.orientation === 'evil' ? 'Mafia' : roleOf(actor)?.title || 'Player';
+  const role = roleOf(actor);
+  if (role?.id === 'mafia' && state.players.some(player => player.alive && !player.removed && roleOf(player)?.orientation === 'evil' && roleOf(player)?.id !== 'mafia')) return 'Ordinary Mafia';
+  return role?.title || (role?.id === 'mafia' ? 'Mafia' : 'Player');
 }
 function narratorWakeRole(actor) {
   state.night.narratorWakeRoleName = narratorRoleName(actor);
   state.night.narratorHasWoken = true;
   narratorSpeak(`${state.night.narratorWakeRoleName}, open your eyes.`);
+}
+function narratorSkipBlockedTurn(actor) {
+  return !state.night.narratorReporting && state.night.narratorReactionActorId == null &&
+    state.night.blockedIds?.includes(actor.id) && !isPassiveAbility(nightActionFor(actor)) &&
+    !findPendingAttacksFor(actor.id).length;
 }
 function narratorBeginTransition(kind = 'continue') {
   narratorCancelAuto();
@@ -108,8 +119,33 @@ function narratorOpenPendingReaction() {
 function narratorAdvanceTransition(transition) {
   const night = state.night;
   night.handoffReady = false;
+  if (transition.kind === 'mafiaMeeting') {
+    document.getElementById('nightTitle').textContent = 'Mafia discussion';
+    document.getElementById('nightProgress').textContent = 'All living Evil players';
+    narratorSpeak('Mafia, open your eyes. Discuss your plans together. When you are ready, everyone will close their eyes and each role will take its own turn.');
+    document.getElementById('nightPrompt').textContent = 'All living Evil players may coordinate. Finish the discussion when everyone is ready.';
+    document.getElementById('nightActionArea').appendChild(actionButton('Finish Mafia discussion', 'mafiaDiscussion', () => {
+      if (state.phase !== 'night' || state.night !== night || night.narratorMeetingDone) return;
+      night.narratorMeetingDone = true;
+      narratorSpeak('Mafia, close your eyes.');
+      narratorBeginTransition('afterMafiaMeeting');
+    }));
+    narratorRefreshAuto();
+    return;
+  }
+  if (transition.kind === 'afterMafiaMeeting') {
+    night.narratorHasWoken = true;
+    night.turnRevealed = false;
+    updateNight();
+    return;
+  }
   if (transition.kind === 'wake') {
     const actor = night.queue[night.index];
+    if (actor && narratorSkipBlockedTurn(actor)) {
+      night.turnRevealed = false;
+      updateNight();
+      return;
+    }
     if (actor?.alive) narratorWakeRole(actor);
     night.turnRevealed = true;
     updateNight();
@@ -131,7 +167,7 @@ function narratorPriority(player) {
   if (['protect','takeAttack','blockReaction','removeSilence','framer','hideAllegiance','hideActivity','fakeActivity','fakeVisit','reverseComparison'].includes(action)) return 30;
   // Prediction, silence and messages are submitted before anybody can die.
   if (['silence','forceAnswer','sendNote','sendSignal','revealSelf','predictDeath','hater'].includes(action)) return 40;
-  if (roleOf(player)?.orientation === 'evil') return 50;
+  if (roleOf(player)?.orientation === 'evil' && action === 'teamKill') return 50;
   if (['teamKill','kill'].includes(action)) return 60;
   // Inspect bodies before a revival removes them from the dead-player list.
   if (action === 'janitor') return 70;
@@ -148,18 +184,19 @@ function narratorDeferredInfo(action) {
 function narratorActionQueue(players) {
   let mafiaAdded = false;
   const candidates = players.filter(player => !player.removed && !state.night?.narratorCompleted?.includes(player.id));
-  const mafia = candidates.filter(player => roleOf(player)?.orientation === 'evil');
+  const mafia = candidates.filter(player => roleOf(player)?.orientation === 'evil' && nightActionFor(player) === 'teamKill');
   // One blocked/dead representative must not cancel an unblocked team's turn.
-  const representative = mafia.find(player => player.alive && !state.night?.blockedIds?.includes(player.id)) || mafia.find(player => player.alive) || mafia[0];
+  const available = mafia.filter(player => player.alive && !state.night?.blockedIds?.includes(player.id));
+  const representative = available.find(player => roleHasSpecialId(roleOf(player), 'godfather')) || available[0] || mafia.find(player => player.alive) || mafia[0];
   return narratorOrder(candidates.filter(player => {
     const role = roleOf(player), action = nightActionFor(player);
-    if (role?.orientation === 'evil') {
+    if (role?.orientation === 'evil' && action === 'teamKill') {
       if (state.night?.narratorMafiaDone || mafiaAdded || player !== representative) return false;
       mafiaAdded = true; return true;
     }
     // These passives work automatically; their information is delivered at the end.
     if (isPassiveAbility(action) && action !== 'seer') return false;
-    return action !== 'none' || roleHasSpecialId(role,'policeman');
+    return action !== 'none';
   }));
 }
 function narratorRefreshRemainingQueue() {
@@ -167,7 +204,7 @@ function narratorRefreshRemainingQueue() {
   const actor = n.queue[n.index];
   n.narratorCompleted ||= [];
   if (actor && !n.narratorCompleted.includes(actor.id)) n.narratorCompleted.push(actor.id);
-  if (n.narratorTurnIsMafia ?? (roleOf(actor)?.orientation === 'evil')) n.narratorMafiaDone = true;
+  if (n.narratorTurnIsMafia ?? (roleOf(actor)?.orientation === 'evil' && nightActionFor(actor) === 'teamKill')) n.narratorMafiaDone = true;
   n.narratorTurnIsMafia = null;
   const players = n.round1Players || n.queue;
   // A transformation can give an idle player an action, or change an upcoming
@@ -230,8 +267,7 @@ function narratorReactionQueue(players) {
     if (!player.alive) return false;
     const action = nightActionFor(player);
     return findPendingAttacksFor(player.id).length || newReactionTurn(player) ||
-      hasReactionRoundInfo(action) || extraNoticesFor(player) ||
-      (roleHasSpecialId(roleOf(player),'policeman'));
+      hasReactionRoundInfo(action) || extraNoticesFor(player);
   }), true);
 }
 function assignNarratorRoles() {
@@ -246,11 +282,8 @@ function assignNarratorRoles() {
   const counts = {};
   for (const player of fixed) {
     const role = roles.find(r => r.id === player.roleId);
-    if (role.orientation === 'evil' && role.id !== mafia.id) {
-      alert('Narrator mode only permits ordinary Mafia as Evil. Change the assigned special Evil roles to Mafia or None.'); return false;
-    }
     counts[role.id] = (counts[role.id] || 0)+1;
-    if (role.orientation !== 'evil' && role.id !== 'citizen' && counts[role.id] > 1) {
+    if (!['mafia','citizen'].includes(role.id) && counts[role.id] > 1) {
       alert(`Narrator mode permits only one ${role.title}.`); return false;
     }
   }
@@ -260,9 +293,13 @@ function assignNarratorRoles() {
   if (citizen && !counts[citizen.id] && !pool.includes(citizen.id)) pool.push(citizen.id);
   const evilEnabled = roles.some(r => r.orientation === 'evil' && r.randomEnabled !== false);
   const evilLimit = Math.max(0, Math.floor((state.players.length-1)/2));
-  let evilCount = counts[mafia.id] || 0;
+  let evilCount = fixed.filter(player => roleOf(player)?.orientation === 'evil').length;
   if (evilCount > evilLimit) { alert('Narrator mode needs fewer Mafia to avoid an immediate Evil win.'); return false; }
-  if (evilEnabled) for (let i=evilCount; i<evilLimit; i++) pool.push(mafia.id);
+  if (evilEnabled) {
+    const evilPool = roles.filter(role => role.orientation === 'evil' && role.id !== mafia.id && role.randomEnabled !== false && !counts[role.id]).map(role => role.id);
+    if (mafia.randomEnabled !== false) for (let i=evilCount; i<evilLimit; i++) evilPool.push(mafia.id);
+    pool.push(...shuffle(evilPool).slice(0, evilLimit - evilCount));
+  }
   const assigned = [];
   for (const [orientation, required] of [['evil',state.requireEvil],['neutral',state.requireNeutral]]) {
     if (!required || fixed.some(p => roleOf(p)?.orientation === orientation)) continue;
