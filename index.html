@@ -1361,7 +1361,7 @@
           <div id="narratorCaption" aria-live="polite"></div>
           <div id="narratorAutoStatus" class="muted tiny"></div>
           <div class="preset-actions">
-            <button type="button" class="ghost" onclick="narratorSpeak(narratorLastPrompt)">Replay announcement</button>
+            <button type="button" class="ghost" onclick="narratorSpeak(narratorLastPrompt, true)">Replay announcement</button>
             <label><input type="checkbox" onchange="state.narratorMuted=this.checked;if(this.checked && window.speechSynthesis)window.speechSynthesis.cancel();"> Mute narrator</label>
             <label><input type="checkbox" onchange="state.narratorPaused=this.checked;narratorRefreshAuto();"> Pause auto progression</label>
           </div>
@@ -1409,7 +1409,7 @@
   <script src="reactions.js"></script>
   <script src="abilities.js"></script>
   <script src="host-setup.js"></script>
-  <script src="narrator.js?v=20261004-discussion-count"></script>
+  <script src="narrator.js?v=20261004-needed-turns"></script>
   <script src="roles.js?v=20260930"></script>
   <script>
     // ---- State ---------------------------------------------------------------
@@ -2388,7 +2388,7 @@
       if (state.narratorMode) {
         state.night.queue = narratorActionQueue(nightPlayers);
         show('narratorControls');
-        narratorSpeak('Everyone, close your eyes.');
+        narratorSpeak('Everyone, close your eyes.', true);
         narratorStartAuto();
       } else hide('narratorControls');
       hide('dayCard', 'handoffCard'); show('nightCard');
@@ -2440,10 +2440,11 @@
       if (!state.narratorMode && result.done) {endGame(result); return;}
       state.night.handoffReady = true;
       if (state.narratorMode) {
-        if (state.night.narratorWakeRoleName) {
+        if (state.night.narratorWakeRoleName && state.night.narratorWakeActorId === state.night.currentActorId) {
           narratorSpeak(`${state.night.narratorWakeRoleName}, close your eyes.`);
-          state.night.narratorWakeRoleName = null;
         }
+        state.night.narratorWakeRoleName = null;
+        state.night.narratorWakeActorId = null;
         $('nightKnownRoles').innerHTML = '';
       }
       updateNightHandoffGate();
@@ -2872,7 +2873,7 @@
       }
 
       const actor = queue[night.index];
-      if (state.narratorMode && (!actor.alive || narratorSkipBlockedTurn(actor) || (!night.narratorReporting && nightActionFor(actor)==='none' && !findPendingAttacksFor(actor.id).length))) {
+      if (state.narratorMode && (!actor.alive || actor.removed || narratorSkipEmptyTurn(actor))) {
         advanceNightActor(); return;
       }
       night.currentActorId = actor.id;
@@ -3143,7 +3144,7 @@
       }
 
       if (infoAction === 'doctor') {
-        const deadThisNight = state.night.round1Players.filter(p => !p.alive && !p.fakeDeathReturnRound);
+        const deadThisNight = state.night.round1Players.filter(p => !p.alive && !p.removed && !p.fakeDeathReturnRound);
         if (actor.used.doctor) {
           $('nightPrompt').innerHTML = '<strong>You already used your revival.</strong> You cannot revive again.';
           showNightResult('Your one-time revival has already been used.');
@@ -3182,7 +3183,7 @@
       }
 
       if (infoAction === 'janitor') {
-        const deadThisNight = (state.night.round1Players || []).filter(p => !p.alive && !p.fakeDeathReturnRound);
+        const deadThisNight = (state.night.round1Players || []).filter(p => !p.alive && !p.removed && !p.fakeDeathReturnRound);
         if (!deadThisNight.length) {
           showNightResult('No one was killed tonight, so there is no body to inspect.');
           $('nightPrompt').textContent = 'No body was available. Acknowledge and continue.';

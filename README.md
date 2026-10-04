@@ -24,3 +24,5 @@ Each night begins with “Mafia, open your eyes” for all living Evil players. 
 Equal priorities use roster order. Gambler uses the priority of its assigned ability. Role changes refresh the remaining queue, including newly active Citizens, but a player who already acted or had their turn skipped does not get another regular action. Blocking one Mafia member leaves an unblocked member able to submit the shared kill; blocking every member stops it.
 
 Private information results (including Seer, investigations, Hater targets, Janitor inspections and end-of-night reports) wait for **Acknowledge & continue** in narrator mode. There is no reading timeout. Kill and team-kill confirmations still progress automatically.
+
+Narrator mode silently skips blocked or unavailable ability turns. Doctor and Janitor stay asleep when there is no body from that night; a Doctor who has spent their revival also stays asleep. Normal spoken announcements queue in order so a closing announcement cannot cut off the matching wake prompt.

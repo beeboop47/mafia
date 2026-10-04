@@ -61,12 +61,13 @@ function narratorStartAuto() {
   }
   narratorRefreshAuto();
 }
-function narratorSpeak(text) {
+function narratorSpeak(text, interrupt = false) {
   narratorLastPrompt = text;
   const label = document.getElementById('narratorCaption');
   if (label) label.textContent = text;
   if (state.narratorMuted || !window.speechSynthesis || !window.SpeechSynthesisUtterance) return;
-  window.speechSynthesis.cancel();
+  // Normal announcements play in order; a fast completion must not erase wake.
+  if (interrupt) window.speechSynthesis.cancel();
   const utterance = new SpeechSynthesisUtterance(text);
   utterance.rate = 0.75;
   window.speechSynthesis.speak(utterance);
@@ -78,6 +79,7 @@ function narratorRoleName(actor) {
 }
 function narratorWakeRole(actor) {
   state.night.narratorWakeRoleName = narratorRoleName(actor);
+  state.night.narratorWakeActorId = actor.id;
   state.night.narratorHasWoken = true;
   narratorSpeak(`${state.night.narratorWakeRoleName}, open your eyes.`);
 }
@@ -85,6 +87,20 @@ function narratorSkipBlockedTurn(actor) {
   return !state.night.narratorReporting && state.night.narratorReactionActorId == null &&
     state.night.blockedIds?.includes(actor.id) && !isPassiveAbility(nightActionFor(actor)) &&
     !findPendingAttacksFor(actor.id).length;
+}
+function narratorSkipEmptyTurn(actor) {
+  const night = state.night;
+  // Real attack reactions and private reports remain separate from abilities.
+  if (night.narratorReporting || night.narratorReactionActorId != null || findPendingAttacksFor(actor.id).length) return false;
+  if (narratorSkipBlockedTurn(actor)) return true;
+  const action = nightActionFor(actor);
+  if (action === 'none' || (action === 'hater' && state.round !== 1)) return true;
+  if ((action === 'doctor' && actor.used?.doctor) ||
+      (!isPassiveAbility(action) && actionUsesLeft(actor) <= 0)) return true;
+  if (action === 'doctor' || action === 'janitor') {
+    return !(night.round1Players || state.players).some(player => !player.alive && !player.removed && !player.fakeDeathReturnRound);
+  }
+  return false;
 }
 function narratorBeginTransition(kind = 'continue') {
   narratorCancelAuto();
@@ -151,7 +167,7 @@ function narratorAdvanceTransition(transition) {
   }
   if (transition.kind === 'wake') {
     const actor = night.queue[night.index];
-    if (actor && narratorSkipBlockedTurn(actor)) {
+    if (actor && (!actor.alive || actor.removed || narratorSkipEmptyTurn(actor))) {
       night.turnRevealed = false;
       updateNight();
       return;
