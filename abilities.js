@@ -225,19 +225,22 @@ function prepareExtraAttacks() {
   const attempted=new Set((n.pendingAttacks||[]).map(a=>a.targetId));
   for(const attack of n.pendingAttacks||[]){
     const escort=playerOf(n.escorts?.[attack.targetId]);
-    if(escort?.alive && !n.protectedIds?.includes(attack.targetId)){attack.targetId=escort.id;attempted.add(escort.id);}
+    if(escort?.alive && !attack.escortRedirected && !n.protectedIds?.includes(attack.targetId)){attack.targetId=escort.id;attack.escortRedirected=true;attempted.add(escort.id);}
     if(n.deathSources)n.deathSources[attack.targetId]=attack.attackerId;
   }
   n.pendingAttacks=(n.pendingAttacks||[]).filter(attack=>{
     const target=playerOf(attack.targetId);
     return !target || n.protectedIds?.includes(target.id) || !survivePassiveAttack(target);
   });
-  for(const [id,action] of Object.entries(n.startAbilities||{})){
+  if (state.narratorMode) n.attackAttemptedIds = [...new Set([...(n.attackAttemptedIds || []), ...attempted])];
+  else for(const [id,action] of Object.entries(n.startAbilities||{})){
     if(action==='detectAttack')extraNotice(id,attempted.has(Number(id))?'Someone attempted to attack you tonight.':'No one attempted to attack you tonight.');
   }
   for(const [id,targetId] of Object.entries(n.randomAllegianceTargets||{})){
+    if (state.narratorMode && n.narratorRandomInfoShown?.includes(id)) continue;
     const target=targetId==null?null:playerOf(targetId);
     extraNotice(id,target?`${target.name} is ${labelOrientation(investigationRoleOf(target)?.orientation)}.`:'No other living player was available.');
+    if (state.narratorMode) (n.narratorRandomInfoShown ||= []).push(id);
   }
 }
 

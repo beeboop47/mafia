@@ -2,7 +2,7 @@ const DEFAULT_ROLES = [
   {
     id: 'bodyguard', title: 'Bodyguard', orientation: 'good',
     description: 'Defend a chosen player from attacks.',
-    visibility: 'nobody', nightAction: 'protect', nightReaction: 'none', randomEnabled: false, randomCount: 1
+    visibility: 'nobody', nightAction: 'protect', nightReaction: 'none'
   },
   {
     id: 'citizen', title: 'Citizen', orientation: 'good',
@@ -24,6 +24,11 @@ const DEFAULT_ROLES = [
     description: 'If the Mafia target you, you get a chance to escape by literally running away from the Mafia. You have 15 seconds to survive the kill.',
     visibility: 'nobody', nightAction: 'none', nightReaction: 'escape'
   },
+  { // the Gentry is designed for narrator mode. however, it would also work in pass-and-play to see if 2 players communicate. 
+    id: 'gentry', title: 'Gentry', orientation: 'good',
+    description: 'Remain vigilant while the Mafia converse. Watch out though; if you are caught, you get to sleep with the fishes.',
+    visibility: 'nobody', nightAction: 'none'
+  },
   {
     id: 'janitor', title: 'Janitor', orientation: 'good',
     description: 'During the night reactions, while cleaning up a body, choose one player killed that night and learn their exact role.',
@@ -37,7 +42,7 @@ const DEFAULT_ROLES = [
   {
     id: 'lookout', title: 'Lookout', orientation: 'good',
     description: 'Track a player to learn who they visited and which ability they used that night.',
-    visibility: 'nobody', nightAction: 'track', nightReaction: 'none', randomEnabled: false, randomCount: 1
+    visibility: 'nobody', nightAction: 'track', nightReaction: 'none'
   },
   {
     id: 'monkey', title: 'Monkey', orientation: 'good',
@@ -51,8 +56,13 @@ const DEFAULT_ROLES = [
   },
   {
     id: 'policeman', specialId: 'policeman', title: 'Policeman', orientation: 'good',
-    description: 'When you first reveal this role, you are assigned one permanent intelligence target and learn that player’s exact role and alignment. You may hint at what you know, but you must never directly claim that you are the Policeman. Your intelligence is repeated privately every night.',
-    visibility: 'nobody', nightAction: 'none', randomEnabled: false, randomCount: 1
+    description: 'When you first reveal this role, you are assigned one permanent intelligence target and learn that player\'s exact role and alignment. You may hint at what you know, but you must never directly claim that you are the Policeman. Your intelligence is repeated privately every night.',
+    visibility: 'nobody', nightAction: 'none'
+  },
+  {
+    id: 'samurai', title: 'Samurai', orientation: 'good',
+    description: 'Kill independently during the night.',
+    visibility: 'nobody', nightAction: 'kill'
   },
   {
     id: 'scapegoat', title: 'Scapegoat', orientation: 'good',
@@ -65,18 +75,13 @@ const DEFAULT_ROLES = [
     visibility: 'nobody', nightAction: 'seer'
   },
   {
-    id: 'samurai', title: 'Samurai', orientation: 'good',
-    description: 'Kill independently during the night.',
-    visibility: 'nobody', nightAction: 'seer'
-  },  
-  {
     id: 'traitor', title: 'Traitor', orientation: 'good',
     description: 'If the Mafia target you, you join the Mafia instead of dying. Your orientation becomes evil from that point onward.',
     visibility: 'evil', nightAction: 'none', nightReaction: 'traitor'
   },
   {
     id: 'framer', title: 'Framer', orientation: 'neutral',
-    description: 'At the beginning of the night, choose any player, including yourself. That player chooses any role for the night. Detectives and Seers will treat that player as their chosen role.',
+    description: 'At the beginning of the night, frame any player so they appear to be a different role for that night. Investigators will perceive that player as the chosen role.',
     visibility: 'nobody', nightAction: 'framer'
   },
   {
@@ -85,14 +90,14 @@ const DEFAULT_ROLES = [
     visibility: 'nobody', nightAction: 'gambler'
   },
   {
-    id: 'jester', specialId: 'jester', title: 'Jester', orientation: 'neutral',
+    id: 'jester', title: 'Jester', orientation: 'neutral',
     description: 'Try to get voted out by the Citizens during the day. You win immediately when the town votes you out.',
     visibility: 'nobody', nightAction: 'none', winCondition: 'votedOut'
   },
   {
     id: 'leader', title: 'Leader', orientation: 'neutral',
     description: 'Each night, choose a living player and permanently replace their role with another role from the library. Their allegiance, visibility, ability and special win condition all become those of the new role.',
-    visibility: 'nobody', nightAction: 'changeRole', randomEnabled: false, randomCount: 1
+    visibility: 'nobody', nightAction: 'changeRole'
   },
   {
     id: 'persuader', title: 'Persuader', orientation: 'neutral',
@@ -100,14 +105,14 @@ const DEFAULT_ROLES = [
     visibility: 'nobody', nightAction: 'silence'
   },
   {
-    id: 'serial_killer', specialId: 'serial_killer', title: 'Serial Killer', orientation: 'neutral',
+    id: 'serial_killer', title: 'Serial Killer', orientation: 'neutral',
     description: 'Each night, choose one living player to kill.',
     visibility: 'nobody', nightAction: 'kill'
   },
   {
     id: 'anaesthetist', title: 'Anaesthetist', orientation: 'evil',
     description: 'Drug a player with anaesthesia to prevent them using their ability that night.',
-    visibility: 'evil', nightAction: 'roleblock', nightReaction: 'none', randomEnabled: false, randomCount: 1
+    visibility: 'evil', nightAction: 'roleblock', nightReaction: 'none'
   },
   {
     id: 'godfather', specialId: 'godfather', title: 'Godfather', orientation: 'evil',
@@ -116,7 +121,7 @@ const DEFAULT_ROLES = [
   },
   {
     id: 'hacker', title: 'Hacker', orientation: 'evil',
-    description: 'Each night, hack one living player so they appear to be a different role for that night. Detectives and Seers will treat that player as the hacked role until morning.',
+    description: 'Each night, hack one living player so they appear to be a different role for that night. Investigators will perceive that player as the hacked role until morning.',
     visibility: 'evil', nightAction: 'framer'
   },
   {
@@ -127,17 +132,22 @@ const DEFAULT_ROLES = [
   {
     id: 'henchman', specialId: 'henchman', title: 'Henchman', orientation: 'evil',
     description: 'If a Policeman is in the game, you and the Policeman recognise each other. You may pressure the Policeman in real life and try to make them act or speak the way you want, but normal game rules still apply.',
-    visibility: 'evil', nightAction: 'none', randomEnabled: false, randomCount: 1
+    visibility: 'evil', nightAction: 'none'
   },
   {
     id: 'mafia', title: 'Mafia', orientation: 'evil',
     description: 'You are a Mafia member. You have no special ability, but you are part of the evil side.',
     visibility: 'evil', nightAction: 'none'
+  },
+  {
+    id: 'propagandist', title: 'Propagandist', orientation: 'evil',
+    description: 'Spread propaganda to tank a player\'s reputation for the day.',
+    visibility: 'evil', nightAction: 'silence'
   }
 ];
 
 // Legacy saves may identify a special role by its original role ID.
-const SPECIAL_ROLE_IDS = new Set(['policeman', 'henchman', 'godfather', 'jester', 'serial_killer']);
+const SPECIAL_ROLE_IDS = new Set(['policeman', 'henchman', 'godfather']);
 function specialRoleId(role) {
   if (!role) return 'default';
   if (SPECIAL_ROLE_IDS.has(role.specialId)) return role.specialId;
