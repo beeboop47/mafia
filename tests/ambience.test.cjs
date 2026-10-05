@@ -4,7 +4,7 @@ const fs = require('node:fs');
 const vm = require('node:vm');
 const path = require('node:path');
 
-function setup(AudioContext) {
+function setup(AudioContext, hosted = false) {
   const elements = new Map();
   const events = {};
   let sync;
@@ -29,9 +29,9 @@ function setup(AudioContext) {
   const context = {state: {narratorMode: false, phase: 'day'}, online: {mode: 'offline'},
     document: {body: {dataset: {}}, hidden: false, getElementById: element,
       addEventListener: (name, fn) => { events[name] = fn; }},
-    window: {AudioContext, addEventListener: (name, fn) => { events[name] = fn; }},
+    window: {location: {protocol: hosted ? 'https:' : 'file:'}, AudioContext, addEventListener: (name, fn) => { events[name] = fn; }},
     MutationObserver: class {constructor(fn) { sync = fn; } observe() {}},
-    Audio, performance: {now: () => clock},
+    Audio, fetch: async () => ({ok: true, arrayBuffer: async () => new ArrayBuffer(4)}), performance: {now: () => clock},
     setInterval(fn) { intervals.set(++intervalId, fn); return intervalId; },
     clearInterval(id) { intervals.delete(id); },
     clearTimeout() {}, setTimeout() {}};
@@ -122,6 +122,39 @@ test('leaving narrator play while the night recording starts cannot restart soun
   await Promise.resolve();
   assert.equal(recordings[0].paused, true);
   assert.equal(recordings[0].volume, 0);
+});
+
+test('mobile setup tap unlocks a single audio engine for hosted night playback', async () => {
+  const gains = [];
+  let resumeCalled = false, finishResume, nightStarted = false;
+  class AudioContext {
+    constructor() { this.state = 'suspended'; this.currentTime = 0; }
+    createGain() {
+      const gain = {value: 0, cancelScheduledValues() {}, setTargetAtTime(value) { this.value = value; }};
+      gains.push(gain);
+      return {gain, connect() { return this; }};
+    }
+    decodeAudioData() { return Promise.resolve({}); }
+    createBufferSource() { return {connect() {}, start() { nightStarted = true; }, stop() {}, disconnect() {}}; }
+    resume() {
+      resumeCalled = true;
+      return new Promise(resolve => { finishResume = () => { this.state = 'running'; resolve(); }; });
+    }
+  }
+  const {context: c, events, recordings, sync, advance} = setup(AudioContext, true);
+  c.state.narratorMode = true; c.state.phase = 'handoff';
+  const night = recordings[0];
+  night.play = () => { throw new Error('Hosted playback must not depend on media play permission'); };
+  const unlocking = events.click();
+  assert.equal(resumeCalled, true);
+  finishResume();
+  await unlocking;
+  assert.equal(night.paused, true, 'priming stays silent outside gameplay');
+  c.state.phase = 'night'; sync();
+  for (let i=0;i<12;i++) await Promise.resolve();
+  assert.equal(nightStarted, true);
+  advance(3000);
+  assert.equal(gains[1].value, .25 * .3, 'night volume is controlled through Web Audio');
 });
 
 test('bundled night loop is gapless PCM with a continuous seam and no silent padding', () => {

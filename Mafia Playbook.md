@@ -88,6 +88,16 @@ Neutrals are strongest when they can make both sides hesitate. If Good thinks yo
 
 **Synergies:** Janitor can confirm dead roles. Detective can combine alignment with exact-role results. Doctor protection is very valuable once you have a strong result.
 
+### Signal Receiver
+
+**Goal:** Use one private, truthful hint received at dawn to narrow the possible explanations for the current round.
+
+**Strategy:** Your hint may describe counts, identities, abilities, visits, attacks, protection, blocks, deception, changes, revivals, comparisons, groups, neighbours or communications. Pay attention to its time and wording: a recorded ability use does not guarantee success, and a player's allegiance at the start of the night may differ from their allegiance at dawn. Compare signals across rounds and share useful deductions with Good.
+
+**Counters:** Framing, hidden allegiance/activity, fake visits/activity and reversed comparisons cannot alter your signal. Real transformations can change the truth, and a lethal attack can prevent delivery unless you are revived before dawn. Other players can still lie about what your signal means.
+
+**Synergies:** Investigators can compare their potentially deceived results with your truthful clues. Protection and revival keep your information arriving. A Judge can use your clues to choose a safer verdict.
+
 ### Doctor
 
 **Goal:** Revive one player killed that night, once per game.
@@ -167,6 +177,16 @@ Neutrals are strongest when they can make both sides hesitate. If Good thinks yo
 **Counters:** Day votes bypass your ability. Evil may choose safer targets if they suspect you.
 
 **Synergies:** If you survive, Good gains a strong clue that someone tried to kill you. Pair that with voting patterns to find who wanted you gone.
+
+### Judge
+
+**Goal:** Decide who is voted out while avoiding a verdict against Good.
+
+**Strategy:** Everyone knows a Judge is present. You alone may skip voting or choose one other living player to vote out. Listen to the discussion and consider a skip when the evidence is weak. If your target's actual allegiance is Good, you are voted out alongside them and ordinary voting resumes the following day. Voting out Evil or Neutral leaves you alive, but special win conditions such as Jester's still apply.
+
+**Counters:** No ability can target you: kills, protection, roleblocks, deception, investigations, transformations, messages, random assignments and redirected attacks all exclude you. Social deception can still persuade you to choose a Good player. You also share the Good side's normal loss conditions.
+
+**Synergies:** Signal Receiver supplies clues that deceitful abilities cannot falsify. Other investigators can build a case, but their information may have been tampered with. Citizens can scrutinise claims and advise you even though they do not cast ballots while you remain alive.
 
 ### Traitor
 

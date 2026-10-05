@@ -28,6 +28,7 @@ function game(){
     setPhase:()=>{},renderNightKnownRoles:()=>{},renderNewReaction:()=>false,newReactionTurn:()=>null,
     settleUnhandledExtraAttacks:()=>{},isLimitedInvestigation:()=>false,survivePassiveAttack:()=>false,
     changesPrevented:()=>false,roleHasSpecialId:(role,id)=>role?.id===id,
+    isPassiveAbility:()=>false,recordExtraChoice:()=>{},
     labelOrientation:value=>value,roleActiveNightAction:role=>role?.nightAction||'none',
     roleNightReaction:role=>role?.nightReaction||'none',NIGHT_ACTIONS:{none:{label:'None'}},NIGHT_REACTIONS:{none:{label:'None'}},
     NIGHT_REACTION_ACTIONS:new Set(['monkey','escape','traitor']),EXTRA_REACTIONS:{},
@@ -40,7 +41,9 @@ function game(){
   c.roleOf=p=>c.state.roles.find(role=>role.id===p?.roleId);
   c.nightActionFor=p=>c.roleOf(p)?.nightAction||'none';
   c.nightReactionFor=p=>c.roleOf(p)?.nightReaction||'none';
+  for (const file of ['judge.js','signal-receiver.js']) vm.runInContext(fs.readFileSync(path.join(__dirname,'..',file),'utf8'),c);
   c.playerOf=id=>c.state.players.find(p=>p.id===Number(id));
+  c.playersAlive=()=>c.state.players.filter(p=>p.alive&&!p.removed);
   c.roleByIdOrRestore=id=>c.state.roles.find(role=>role.id===id);
   c.recordNightAction=()=>{};
   c.showNightResult=text=>{c.$('nightResult').innerHTML=text;};

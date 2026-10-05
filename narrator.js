@@ -241,7 +241,7 @@ function narratorRefreshRemainingQueue() {
     if (nightActionFor(player) === 'gambler') n.gamblerActions[player.id] = scheduledGamblerAbility(player);
     if (nightActionFor(player) === 'seer') {
       n.seerTargets ||= {};
-      if (n.seerTargets[player.id] == null) n.seerTargets[player.id] = scheduledSeerTarget(player, playersAlive().filter(target => target.id !== player.id));
+      if (n.seerTargets[player.id] == null) n.seerTargets[player.id] = scheduledSeerTarget(player, playersAlive().filter(target => target.id !== player.id && canAbilityTarget(target)));
     }
     const action = nightActionFor(player), previous = n.extraActions?.[player.id];
     if (previous && isPassiveAbility(previous.action) && previous.action !== action) delete n.extraActions[player.id];

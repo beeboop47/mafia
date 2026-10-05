@@ -6,12 +6,13 @@ const path=require('node:path');
 function setup(){
   const c=vm.createContext({state:{mode:'random',players:[],roles:[]},online:{mode:'offline'},alert:()=>{},
     shuffle:list=>[...list],randomChoice:list=>list[0],EXTRA_ABILITIES:{fakeActivity:{}},
-    isPassiveAbility:a=>a==='seer',document:{getElementById:()=>({})},window:{},
+    isPassiveAbility:a=>a==='seer',actionUsesLeft:()=>Infinity,document:{getElementById:()=>({})},window:{},
     newReactionTurn:()=>null,extraNoticesFor:()=>'',hasReactionRoundInfo:a=>['seer','doctor','janitor','inspectOrientation'].includes(a),
     findPendingAttacksFor:id=>id===2?[{targetId:2}]:[],roleHasSpecialId:(r,id)=>r?.id===id});
   c.nightReactionFor=()=> 'none';
   c.roleOf=p=>c.state.roles.find(r=>r.id===p?.roleId);
   c.nightActionFor=p=>c.roleOf(p)?.nightAction||'none';
+  for (const file of ['judge.js','signal-receiver.js']) vm.runInContext(fs.readFileSync(path.join(__dirname,'..',file),'utf8'),c);
   vm.runInContext(fs.readFileSync(path.join(__dirname,'../narrator.js'),'utf8'),c);
   c.state.roles=[{id:'mafia',orientation:'evil',nightAction:'teamKill'},
     {id:'godfather',orientation:'evil',nightAction:'teamKill'},
@@ -192,7 +193,7 @@ function reactionGame(roleId='monkey'){
   c.NIGHT_REACTION_ACTIONS=new Set(['monkey','escape','scapegoat','traitor']);c.EXTRA_REACTIONS={};
   c.state.night={round:1,index:0,queue:c.narratorActionQueue(c.state.players),currentActorId:0,
     pendingAttacks:[{attackerId:0,targetId:2,sourceAction:'teamKill'}],protectedIds:[],extraActions:{},
-    reactionQueue:[],reactionCompleted:[],narratorHasWoken:true,narratorWakeRoleName:'Mafia',turnRevealed:true};
+    reactionQueue:[],reactionCompleted:[],narratorHasWoken:true,narratorWakeRoleName:'Mafia',narratorWakeActorId:0,turnRevealed:true};
   c.setPlayerAlive=(p,alive)=>p.alive=alive;
   c.checkWin=()=>({done:false});c.addLog=()=>{};c.setPhase=()=>{};
   c.narratorSpeak=text=>spoken.push(text);
@@ -399,6 +400,31 @@ test('special Evil abilities and faction kill are distinct, with passive Henchma
   assert.equal(g.c.narratorActionQueue(g.c.state.players).find(player=>g.c.nightActionFor(player)==='teamKill').id,0);
 });
 
+test('queued discussion skips when other Evil players are dead or removed',()=>{
+  for(const excluded of ['dead','removed']) {
+    const g=mechanicsGame(['mafia','anaesthetist','citizen','citizen']);
+    if(excluded==='dead')g.c.playerOf(1).alive=false;
+    else g.c.playerOf(1).removed=true;
+    g.c.state.night.queue=g.c.narratorActionQueue(g.c.state.players.filter(player=>player.alive&&!player.removed));
+    g.c.state.night.narratorWakeRoleName=null;
+    g.c.narratorBeginTransition('mafiaMeeting');g.fire();
+    assert.equal(g.spoken.some(text=>/Discuss your plans/.test(text)),false);
+    assert.equal(g.c.$('nightActionArea').children.some(button=>button.textContent==='Finish Mafia discussion'),false);
+  }
+});
+
+test('one living Evil player skips discussion and goes directly to narrator ability turns',()=>{
+  const g=mechanicsGame(['mafia','citizen','citizen']);
+  for(const name of ['startNight','getConfiguredNightOrder','buildNightActionQueue'])loadGameFunction(g.c,name);
+  g.c.clearDaySilence=()=>{};g.c.show=()=>{};g.c.hide=()=>{};
+  g.c.narratorStartAuto=()=>g.c.narratorRefreshAuto();
+  g.c.startNight();
+  assert.equal(g.c.state.night.narratorTransition.kind,'wake');
+  g.fire();
+  assert.equal(g.spoken[1],'Mafia, open your eyes.');
+  assert.equal(g.c.$('nightActionArea').children.some(button=>button.textContent==='Finish Mafia discussion'),false);
+});
+
 test('passive Policeman has no narrator night turn or eye announcements',()=>{
   const g=mechanicsGame(['policeman','citizen']);
   assert.equal(g.c.narratorActionQueue(g.c.state.players).length,0);
@@ -412,6 +438,63 @@ test('completion without a wake announcement cannot invent a close-eyes announce
   g.c.state.night.narratorWakeRoleName=null;
   g.c.completeNightTurn();
   assert.deepEqual(g.spoken,[]);
+});
+
+test('Doctor and Janitor stay asleep when there are no bodies, including the first turn',()=>{
+  for(const roles of [['doctor','citizen'],['janitor','citizen'],['doctor','janitor','citizen']]) {
+    const g=mechanicsGame(roles);
+    g.c.finishNight=()=>{g.c.narratorSpeak('Everyone, open your eyes.');g.c.state.phase='day';};
+    g.c.narratorSpeak('Everyone, close your eyes.');
+    g.start();
+    assert.deepEqual(g.spoken,['Everyone, close your eyes.','Everyone, open your eyes.']);
+    assert.equal(g.timers.size,0);
+    assert.equal(g.c.$('nightActionArea').children.length,0);
+  }
+});
+
+test('protected night attacks do not create a Doctor or Janitor wake',()=>{
+  const g=mechanicsGame(['mafia','bodyguard','doctor','janitor','citizen']);g.start();
+  g.choose(1,4);g.choose(0,4);
+  assert.equal(g.c.playerOf(4).alive,true);
+  assert.equal(g.spoken.some(text=>/^(Doctor|Janitor), (open|close) your eyes/.test(text)),false);
+  assert.equal(g.c.state.phase,'day');
+});
+
+test('a spent Doctor skips while Janitor still waits to inspect a fresh body',()=>{
+  const g=mechanicsGame(['mafia','doctor','janitor','citizen']);
+  g.c.playerOf(1).used.doctor=true;
+  g.start();g.choose(0,3);
+  assert.equal(g.c.state.night.currentActorId,2);
+  assert.equal(g.spoken.includes('Janitor, open your eyes.'),true);
+  assert.equal(g.spoken.includes('Janitor, close your eyes.'),false);
+  assert.equal(g.timers.size,0);
+  g.c.$('nightActionArea').children.find(button=>button.textContent==='Inspect Player 3').click();
+  assert.equal(g.c.$('nightActionArea').children[0].hidden,false);
+  assert.equal(g.timers.size,0,'inspection result waits for acknowledgement');
+  g.acknowledge();g.fire();
+  assert.equal(g.spoken.some(text=>/^Doctor, (open|close) your eyes/.test(text)),false);
+});
+
+test('a stale wake label cannot close a different actor',()=>{
+  const g=reactionGame();
+  g.c.state.night.narratorWakeRoleName='Janitor';
+  g.c.state.night.narratorWakeActorId=99;
+  g.c.completeNightTurn();
+  assert.deepEqual(g.spoken,[]);
+});
+
+test('normal spoken announcements queue without cancelling an earlier wake',()=>{
+  const c=setup();let cancels=0;
+  const spoken=[];
+  c.window.speechSynthesis={cancel:()=>cancels++,speak:u=>spoken.push(u.text)};
+  c.window.SpeechSynthesisUtterance=true;
+  c.SpeechSynthesisUtterance=function(text){this.text=text;};
+  c.narratorSpeak('Janitor, open your eyes.');
+  c.narratorSpeak('Janitor, close your eyes.');
+  assert.deepEqual(spoken,['Janitor, open your eyes.','Janitor, close your eyes.']);
+  assert.equal(cancels,0);
+  c.narratorSpeak('Janitor, close your eyes.',true);
+  assert.equal(cancels,1,'explicit replay can interrupt');
 });
 
 test('Bodyguard protection stops Mafia and independent kills, even if Bodyguard later dies',()=>{
@@ -600,4 +683,27 @@ test('Random Allegiance reports once, after deception and deaths have settled',(
   g.choose(1,3);
   assert.deepEqual(Array.from(g.c.state.night.extraNotices[0]),['Player 1 is Good.']);
   g.acknowledge();g.fire();assert.equal(g.c.state.night.extraNotices[0].length,1);
+});
+
+test('Signal Receiver stays asleep and receives a dawn hint after a narrated revival',()=>{
+  const g=mechanicsGame(['signal_receiver','doctor','mafia','citizen']);
+  g.c.finishNight=()=>{g.c.finishExtraNight();g.c.state.phase='day';};
+  g.start();g.choose(2,3);
+  assert.equal(g.c.playerOf(0).dawnMessages.length,0);
+  g.c.$('nightActionArea').children.find(b=>b.textContent==='Revive Player 3').click();
+  g.acknowledge();g.fire();
+  assert.equal(g.c.state.phase,'day');
+  assert.equal(g.c.playerOf(0).dawnMessages.length,1);
+  assert.equal(g.spoken.includes('Signal Receiver, open your eyes.'),false);
+  assert.ok(g.c.signalHintPool(g.c.playerOf(0)).deaths.some(h=>h.message==='Player 3 died during tonight and was revived.'));
+});
+
+test('narrator excludes Judge from attack choices and automatically assigned Seer targets',()=>{
+  const g=mechanicsGame(['judge','seer','mafia','citizen']);
+  g.c.playerOf(1).hostSetup={seerSchedule:{1:0}};g.start();
+  assert.notEqual(g.c.state.night.seerTargets[1],0);
+  assert.equal(g.c.state.night.currentActorId,2);
+  assert.ok(!g.c.$('nightActionArea').children.some(b=>b.textContent==='Player 0'));
+  g.choose(2,3);
+  assert.equal(g.c.playerOf(0).alive,true);
 });

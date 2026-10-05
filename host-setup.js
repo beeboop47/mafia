@@ -3,10 +3,12 @@ function hostSettings(player) {
   return player?.hostSetup || {};
 }
 function hostTarget(actor, key, candidates) {
+  candidates = candidates.filter(canAbilityTarget);
   const configured = hostSettings(actor)[key];
   return candidates.find(p => p.id === configured) || randomChoice(candidates) || null;
 }
 function scheduledSeerTarget(actor, candidates) {
+  candidates = candidates.filter(canAbilityTarget);
   const id = hostSettings(actor).seerSchedule?.[state.round];
   return (candidates.find(p => p.id === id) || randomChoice(candidates))?.id ?? null;
 }

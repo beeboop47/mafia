@@ -19,6 +19,8 @@ function game() {
     normalizedWinCondition: role => role?.winCondition || 'none',
     setPlayerAlive: (p, alive) => {p.alive = alive;},
   });
+  vm.runInContext(fs.readFileSync(path.join(root, 'judge.js'), 'utf8'), context);
+  vm.runInContext(fs.readFileSync(path.join(root, 'signal-receiver.js'), 'utf8'), context);
   vm.runInContext(fs.readFileSync(path.join(root, 'host-setup.js'), 'utf8'), context);
   for (const name of ['assignRoles', 'ensurePolicemanIntel', 'visibleTo', 'resolveLimitedInvestigations', 'checkWin', 'trackReport']) {
     const start = html.indexOf(`    function ${name}(`);
@@ -227,6 +229,9 @@ function activityGame(actions, blockedIds=[]) {
   c.state.players=Array.from({length:4},(_,id)=>({id,name:`Player ${id}`,alive:true}));
   c.state.night={extraActions:actions,blockedIds,limitedInvestigations:{2:{action:'audit',ids:[0]}},actionRecords:{}};
   const source=fs.readFileSync(path.join(root,'abilities.js'),'utf8');
+  const helper=source.indexOf('function extraTargetsAvailable(');
+  vm.runInContext(source.slice(helper,source.indexOf('\nfunction ',helper+1)),c);
+  c.EXTRA_ABILITIES={fakeActivity:{},hideActivity:{}};
   const start=source.indexOf('function resolveExtraEffects()');
   vm.runInContext(source.slice(start,source.indexOf('\nfunction ',start+1)),c);
   c.resolveExtraEffects(); c.resolveLimitedInvestigations(); return c;

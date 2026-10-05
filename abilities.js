@@ -1,5 +1,6 @@
 // Additional abilities share selection, validation and resolution in both modes.
 const EXTRA_ABILITIES = {
+  signalReceiver: {label:'Receive a truthful hint', category:'Passive', prompt:'Automatically receive one random hint about this round at dawn. Deceitful abilities cannot tamper with the hint.'},
   hideAllegiance: {label:'Hide Allegiance', category:'Deceitful', prompt:'Choose a player to appear Neutral to allegiance investigations tonight.'},
   fakeVisit: {label:'Fake Visit', category:'Deceitful', second:'player', prompt:'Choose a player and the visitor destination that Track should report tonight.'},
   hideActivity: {label:'Hide Activity', category:'Deceitful', prompt:'Hide a player from Track and Check Activity tonight.'},
@@ -117,14 +118,18 @@ function recordExtraChoice(actor, action, choice) {
 
 function initializeExtraNight() {
   const n=state.night;n.startAbilities={};n.extraNotices={};n.extraActions={};
+  n.gamblerActions ||= {};
   for(const p of state.players){
-    p.dawnMessages=[];
     if(p.copiedAbility && p.copiedAbility.round < state.round)delete p.copiedAbility;
     if(p.copiedAbility?.round===state.round && p.copiedAbility.action==='gambler')n.gamblerActions[p.id]=scheduledGamblerAbility(p);
+  }
+  initializeSignalNight();
+  for(const p of state.players){
+    p.dawnMessages=[];
     n.startAbilities[p.id]=nightActionFor(p);
     if(p.alive && n.startAbilities[p.id]==='seer'){
       const key=n.round1SeerTargets?'round1SeerTargets':'seerTargets';n[key]=n[key]||{};
-      if(n[key][p.id]==null)n[key][p.id]=scheduledSeerTarget(p, playersAlive().filter(t=>t.id!==p.id));
+      if(n[key][p.id]==null)n[key][p.id]=scheduledSeerTarget(p, playersAlive().filter(t=>t.id!==p.id && canAbilityTarget(t)));
     }
     if(p.alive && isPassiveAbility(n.startAbilities[p.id]) && n.startAbilities[p.id]!=='seer')recordExtraChoice(p,n.startAbilities[p.id],{});
   }
@@ -140,17 +145,17 @@ function extraNoticesFor(player) {
 }
 
 function changesPrevented(player) {
-  return state.phase==='night' && (state.night?.changeProtected?.includes(player.id) || nightActionFor(player)==='resistChanges');
+  return isJudge(player) || (state.phase==='night' && (state.night?.changeProtected?.includes(player.id) || nightActionFor(player)==='resistChanges'));
 }
 
 function resolveExtraDefenses() {
   const n=state.night;if(n.extraDefensesResolved)return;n.extraDefensesResolved=true;
-  const entries=Object.entries(n.extraActions||{});
+  const entries=Object.entries(n.extraActions||{}).filter(([,c])=>extraTargetsAvailable(c));
   n.harmProtected=[];n.changeProtected=[];n.escorts={};n.reactionBlocked=[];
   // Full protection resolves first, including protection from roleblock.
   for(const [,c] of entries)if(c.action==='blockHarm')n.harmProtected.push(c.targetId);
-  for(const block of n.localRoleblocks||[])if(!n.harmProtected.includes(block.targetId))n.blockedIds.push(block.targetId);
-  n.blockedIds=(n.blockedIds||[]).filter(id=>!n.harmProtected.includes(id));
+  for(const block of n.localRoleblocks||[])if(canAbilityTarget(playerOf(block.targetId)) && !n.harmProtected.includes(block.targetId))n.blockedIds.push(block.targetId);
+  n.blockedIds=(n.blockedIds||[]).filter(id=>canAbilityTarget(playerOf(id)) && !n.harmProtected.includes(id));
   for(const [id,c] of entries){
     if(n.blockedIds.includes(Number(id)) && !isPassiveAbility(c.action))continue;
     if(c.action==='preventChanges')n.changeProtected.push(c.targetId);
@@ -168,6 +173,7 @@ function resolveExtraDefenses() {
       if(record?.action==='silence' && playerOf(record.targetId))playerOf(record.targetId).silenced=false;
       if(record?.action==='framer' && playerOf(record.targetId))playerOf(record.targetId).framedRoleId=null;
       for(const key of ['inspectTargets','seerTargets','trackTargets','watchTargets'])if(n[key])delete n[key][id];
+      // Keep truthful submission history even when a late block cancels it.
       if(n.actionRecords)delete n.actionRecords[id];
     }
     n.pendingAttacks=(n.pendingAttacks||[]).filter(a=>!n.blockedIds.includes(a.attackerId));
@@ -179,6 +185,7 @@ function resolveExtraEffects() {
   n.hiddenActivity=[];n.fakeActivity=[];n.fakeVisits={};n.hiddenAllegiance=[];n.reversedComparison=[];
   for(const [id,c] of Object.entries(n.extraActions||{})){
     const actor=playerOf(id),target=playerOf(c.targetId);
+    if(!extraTargetsAvailable(c))continue;
     if(n.blockedIds?.includes(Number(id)) && !isPassiveAbility(c.action)){extraNotice(id,'Your ability was blocked.');continue;}
     if(['hideActivity','fakeActivity','hideAllegiance','reverseComparison'].includes(c.action)){
       const key={hideActivity:'hiddenActivity',fakeActivity:'fakeActivity',hideAllegiance:'hiddenAllegiance',reverseComparison:'reversedComparison'}[c.action];n[key].push(c.targetId);
@@ -196,6 +203,7 @@ function resolveExtraEffects() {
     }
     if(['changeAllegiance','changeAbility','changeReaction'].includes(c.action) && target?.alive && !changesPrevented(target)){
       const field={changeAllegiance:'orientation',changeAbility:'nightAction',changeReaction:'nightReaction'}[c.action];
+      recordSignalChange(target, {orientation:'orientation',nightAction:'ability',nightReaction:'reaction'}[field], roleOf(target)?.[field], c.second);
       target.roleOverrides={...(target.roleOverrides||{}),[field]:c.second};
       const label=field==='orientation'?labelOrientation(c.second):(NIGHT_ACTIONS[c.second]||NIGHT_REACTIONS[c.second])?.label;
       extraNotice(target.id,`${EXTRA_ABILITIES[c.action].label}: you now have ${label}.`);
@@ -208,7 +216,7 @@ function resolveExtraEffects() {
     if(c.action==='sendSignal' && target)extraNotice(target.id,`${actor.name} requests this signal tomorrow: ${c.text}`);
     if(c.action==='sendNote' && target)extraNotice(target.id,`Anonymous note: ${c.text}`);
     if(c.action==='randomAllegiance'){
-      const random=randomChoice(playersAlive().filter(p=>p.id!==actor.id));
+      const random=randomChoice(playersAlive().filter(p=>p.id!==actor.id && canAbilityTarget(p)));
       // Final allegiance is evaluated after all transformations and deception.
       n.randomAllegianceTargets=n.randomAllegianceTargets||{};n.randomAllegianceTargets[id]=random?.id??null;
     }
@@ -216,16 +224,18 @@ function resolveExtraEffects() {
   for(const [id,c] of Object.entries(n.extraActions||{})){
     if(c.action!=='revealSelf'||n.blockedIds?.includes(Number(id)))continue;
     const actor=playerOf(id),target=playerOf(c.targetId),role=roleOf(actor);
-    if(actor && target && role)extraNotice(target.id,`${actor.name} revealed their true role to you: ${role.title} (${labelOrientation(role.orientation)}).`);
+    if(actor && canAbilityTarget(target) && role)extraNotice(target.id,`${actor.name} revealed their true role to you: ${role.title} (${labelOrientation(role.orientation)}).`);
   }
 }
 
 function prepareExtraAttacks() {
   const n=state.night;if(n.extraAttacksPrepared)return;n.extraAttacksPrepared=true;
+  n.pendingAttacks=(n.pendingAttacks||[]).filter(a=>canAbilityTarget(playerOf(a.targetId)));
   const attempted=new Set((n.pendingAttacks||[]).map(a=>a.targetId));
   for(const attack of n.pendingAttacks||[]){
+    recordSignalAttack(attack);
     const escort=playerOf(n.escorts?.[attack.targetId]);
-    if(escort?.alive && !attack.escortRedirected && !n.protectedIds?.includes(attack.targetId)){attack.targetId=escort.id;attack.escortRedirected=true;attempted.add(escort.id);}
+    if(escort?.alive && canAbilityTarget(escort) && !attack.escortRedirected && !n.protectedIds?.includes(attack.targetId)){attack.redirectedFrom=attack.targetId;attack.targetId=escort.id;attack.escortRedirected=true;attempted.add(escort.id);recordSignalAttack(attack);}
     if(n.deathSources)n.deathSources[attack.targetId]=attack.attackerId;
   }
   n.pendingAttacks=(n.pendingAttacks||[]).filter(attack=>{
@@ -247,6 +257,7 @@ function prepareExtraAttacks() {
 function survivePassiveAttack(target) {
   if(nightActionFor(target)!=='surviveOnce'||target.used?.surviveOnce)return false;
   target.used=target.used||{};target.used.surviveOnce=true;
+  (state.night.signalSurvivals ||= []).push(target.id);
   extraNotice(target.id,'Survive Once saved you from a lethal attack. It is now used up.');
   return true;
 }
@@ -257,6 +268,13 @@ function finishExtraNight() {
     const target=playerOf(c.targetId),actor=playerOf(id);if(actor)actor.dawnMessages=[...(actor.dawnMessages||[]),`Prediction: ${target?.name||'Your target'} ${target&&!target.alive?'was dead at dawn. Correct.':'was alive at dawn. Incorrect.'}`];
   }
   for(const p of state.players){for(const letter of p.pendingLetters||[])p.dawnMessages=[...(p.dawnMessages||[]),`Anonymous note: ${letter.text}`];p.pendingLetters=[];}
+  deliverSignalHints();
+}
+
+function extraTargetsAvailable(choice) {
+  if(isPassiveAbility(choice.action))return true;
+  if(!canAbilityTarget(playerOf(choice.targetId)))return false;
+  return EXTRA_ABILITIES[choice.action]?.second!=='player' || canAbilityTarget(playerOf(choice.second));
 }
 
 function showLocalDawnMessages() {

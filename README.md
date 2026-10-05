@@ -1,5 +1,19 @@
 A website to play Mafia pass-and-play with friends.
 
+## Signal Receiver and Judge
+
+**Signal Receiver (Good)** has the selectable passive ability **Receive a truthful hint**. One private signal arrives at dawn after attacks, reactions, changes and revivals resolve. Its 20 hint families cover allegiance counts, individual allegiances, roles, current abilities/reactions, activity, visits, targets, attacks, survival/protection, blocking, deception, transformations, deaths/revivals, comparisons, groups, living roster neighbours, round statistics, connections between actions, private communications and personal clues. Hints use true roles and actual recorded events; framing, hidden allegiance/activity, fake visits/activity and reversed comparisons cannot tamper with them. Passive abilities do not count as visits. Use and success are distinguished, times are explicit, exact reveals are less common, and recent exact repeats are avoided. Notes' text is not revealed. The ability also works on custom roles and through Gambler, copying or ability changes.
+
+**Judge (Good)** is a unique special role. Everyone is told a Judge is present. The Judge cannot be targeted by any ability, including friendly abilities, random information assignments, either target of a two-player ability, transformations and redirected attacks. While a living Judge is present, only their verdict counts: skip, or vote out one other living player. Voting out a player whose actual allegiance is Good eliminates both that player and the Judge as voted-out players; ordinary voting resumes the following day. An Evil or Neutral verdict leaves the Judge alive, and existing special win conditions still apply. The Judge shares the Good side's normal win/loss conditions. These rules apply to offline, narrator and online games; online authority is enforced by the host.
+
+## Online night reactions
+
+Escape is a two-device tapping contest between the target and attacker. Both select Ready, a three-second countdown begins, then each gets 15 seconds to tap the large button (or left-click). The host compares totals; the target survives if they have more taps. A tie restarts the contest. The room clock synchronizes the window, and the host allows 1.5 seconds for final counts to arrive.
+
+Rock, Paper, Scissors takes place on each participant's device. Choices lock privately until both have chosen; the host scores each round. First to two wins, with tied rounds replayed. The target survives a match win and dies on a match loss, as in the previous reaction rules.
+
+Confrontation immediately announces the attacker and victim to the entire room. Joining the Mafia and redirecting an attack retain their existing choices. These changes apply only to online mode.
+
 This is a very personally-crafted website, it may not suit your style, but it comes with the ability to create, delete and edit roles to your heart's content.
 
 # Made with Generative AI (ChatGPT).

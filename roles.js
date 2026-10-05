@@ -40,6 +40,11 @@ const DEFAULT_ROLES = [
     visibility: 'nobody', nightAction: 'none', nightReaction: 'rps'
   },
   {
+    id: 'judge', specialId: 'judge', title: 'Judge', orientation: 'good',
+    description: 'Everyone knows a Judge is present. No ability can target you, including random abilities and redirected attacks. You alone decide whether to skip the day or vote out one living player. If you vote out a Good player, you are voted out alongside them. You still share the Good side\'s win and loss conditions.',
+    visibility: 'nobody', nightAction: 'none'
+  },
+  {
     id: 'lookout', title: 'Lookout', orientation: 'good',
     description: 'Track a player to learn who they visited and which ability they used that night.',
     visibility: 'nobody', nightAction: 'track', nightReaction: 'none'
@@ -73,6 +78,11 @@ const DEFAULT_ROLES = [
     id: 'seer', title: 'Seer', orientation: 'good',
     description: 'Each night, see the exact role of one random living player other than yourself.',
     visibility: 'nobody', nightAction: 'seer'
+  },
+  {
+    id: 'signal_receiver', title: 'Signal Receiver', orientation: 'good',
+    description: 'Receive one random, truthful hint about the current round at dawn. Hints span allegiances, roles, abilities, visits, attacks, protection, blocking, deception, changes, deaths, revivals, comparisons, groups, seating and private communications. Deceitful abilities cannot alter your hints. Actual changes are reported truthfully.',
+    visibility: 'nobody', nightAction: 'signalReceiver'
   },
   {
     id: 'traitor', title: 'Traitor', orientation: 'good',
@@ -147,7 +157,7 @@ const DEFAULT_ROLES = [
 ];
 
 // Legacy saves may identify a special role by its original role ID.
-const SPECIAL_ROLE_IDS = new Set(['policeman', 'henchman', 'godfather']);
+const SPECIAL_ROLE_IDS = new Set(['policeman', 'henchman', 'godfather', 'judge']);
 function specialRoleId(role) {
   if (!role) return 'default';
   if (SPECIAL_ROLE_IDS.has(role.specialId)) return role.specialId;
