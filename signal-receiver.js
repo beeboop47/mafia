@@ -81,28 +81,28 @@ function signalHintPool(receiver) {
   for (const orientation of labels) {
     const count = living.filter(p => alignment(p) === orientation).length;
     const deaths = all.filter(p => died(p) && alignment(p) === orientation).length;
-    add('allegianceCounts', `There are exactly ${count} living ${trueLabel(orientation)} players at dawn.`);
+    add('allegianceCounts', `There are exactly ${count} living ${trueLabel(orientation)} players when this signal was received.`);
     if (count) add('allegianceCounts', `At least ${count} living players are ${trueLabel(orientation)}.`);
     add('allegianceCounts', `${deaths} ${trueLabel(orientation)} players died during tonight, including any who were revived.`);
     for (const other of labels.filter(o => o !== orientation)) {
       const otherCount = living.filter(p => alignment(p) === other).length;
-      if (count > otherCount) add('allegianceCounts', `There are more living ${trueLabel(orientation)} players than ${trueLabel(other)} players at dawn.`);
+      if (count > otherCount) add('allegianceCounts', `There are more living ${trueLabel(orientation)} players than ${trueLabel(other)} players when this signal was received.`);
     }
   }
 
   for (const p of subjects) {
     const role = actual(p), initial = start(p), action = nightActionFor(p);
     if (!role) continue;
-    add('allegiances', `${p.name} is ${trueLabel(role.orientation)} at dawn.`, true);
+    add('allegiances', `${p.name} is ${trueLabel(role.orientation)} when this signal was received.`, true);
     for (const other of labels.filter(o => o !== role.orientation)) {
-      add('allegiances', `${p.name} is not ${trueLabel(other)} at dawn.`);
-      add('allegiances', `${p.name} is either ${labels.filter(o => o !== other).map(trueLabel).join(' or ')} at dawn.`);
+      add('allegiances', `${p.name} is not ${trueLabel(other)} when this signal was received.`);
+      add('allegiances', `${p.name} is either ${labels.filter(o => o !== other).map(trueLabel).join(' or ')} when this signal was received.`);
     }
     if (initial.orientation) add('allegiances', `${p.name} was ${trueLabel(initial.orientation)} at the start of tonight.`, true);
-    add('roles', `${p.name} is ${role.title} at dawn.`, true);
+    add('roles', `${p.name} is ${role.title} when this signal was received.`, true);
     for (const other of state.roles.filter(r => r.id !== role.id)) {
-      add('roles', `${p.name} is not ${other.title} at dawn.`);
-      add('roles', `${p.name} is either ${role.title} or ${other.title} at dawn.`);
+      add('roles', `${p.name} is not ${other.title} when this signal was received.`);
+      add('roles', `${p.name} is either ${role.title} or ${other.title} when this signal was received.`);
     }
     add('capabilities', `${p.name}'s current night ability is ${abilityName(action)}.`, true);
     if (category(action)) add('capabilities', `${p.name} currently has a ${category(action)} night ability.`);
@@ -132,7 +132,7 @@ function signalHintPool(receiver) {
       const target = playerOf(id);
       if (!target) continue;
       add('visits', `${p.name} visited ${target.name} tonight.`, true);
-      add('visits', `${p.name} visited someone who is ${trueLabel(alignment(target))} at dawn.`);
+      add('visits', `${p.name} visited someone who is ${trueLabel(alignment(target))} when this signal was received.`);
       if (id === p.id) add('visits', `${p.name} visited themselves tonight.`);
     }
     const arrivals = visitors(p);
@@ -141,7 +141,7 @@ function signalHintPool(receiver) {
     for (const r of arrivals) {
       add('targets', `${p.name} was targeted by ${abilityName(r.action)} tonight. This describes the action, not its success.`);
       const actor = playerOf(r.actorId);
-      add('targets', `A player who is ${trueLabel(alignment(actor))} at dawn visited ${p.name} tonight.`);
+      add('targets', `A player who is ${trueLabel(alignment(actor))} when this signal was received visited ${p.name} tonight.`);
     }
     const types = [...new Set(arrivals.map(r => category(r.action)).filter(Boolean))];
     if (types.length > 1) add('targets', `${p.name} received visits from ${types.length} different ability categories tonight.`);
@@ -150,7 +150,7 @@ function signalHintPool(receiver) {
     if (p.silenced) add('targets', `${p.name} is silenced for the coming day.`);
 
     if (attacked(p)) add('attacks', `${p.name} was targeted by at least one real attack tonight.`);
-    if (attacked(p) && p.alive) add('survival', `${p.name} was attacked tonight and is alive at dawn.`);
+    if (attacked(p) && p.alive) add('survival', `${p.name} was attacked tonight and is alive when this signal was received.`);
     if (n.protectedIds?.includes(p.id)) {
       add('survival', `${p.name} was protected from attacks tonight.`);
       if (!attacked(p)) add('survival', `${p.name} was protected, but no real attack targeted them tonight.`);
@@ -183,27 +183,27 @@ function signalHintPool(receiver) {
     if (p.copiedAbility?.round === state.round + 1) add('changes', `${p.name} copied ${abilityName(p.copiedAbility.action)} for the next night.`);
     if (died(p)) add('deaths', `${p.name} died during tonight${revived(p) ? ' and was revived' : ''}.`);
     if (revived(p)) add('deaths', `${p.name} was revived tonight.`);
-    if (revived(p)) add('deaths', `Someone revived tonight is ${trueLabel(alignment(p))} at dawn.`);
+    if (revived(p)) add('deaths', `Someone revived tonight is ${trueLabel(alignment(p))} when this signal was received.`);
     if (died(p) && !record) add('deaths', `${p.name} died tonight without making a recorded active ability use.`);
   }
 
   for (const role of state.roles) {
     const count = living.filter(p => actual(p)?.id === role.id).length;
-    add('roles', `There are ${count} living players with the role ${role.title} at dawn.`, count > 0);
+    add('roles', `There are ${count} living players with the role ${role.title} when this signal was received.`, count > 0);
     if (count) add('roles', `At least one living player is ${role.title}.`, true);
     else add('roles', `No living player is ${role.title}.`);
-    if (all.some(p => died(p) && actual(p)?.id === role.id)) add('deaths', `Someone who died tonight has the role ${role.title} at dawn.`, true);
+    if (all.some(p => died(p) && actual(p)?.id === role.id)) add('deaths', `Someone who died tonight has the role ${role.title} when this signal was received.`, true);
   }
 
   for (let i = 0; i < livingSubjects.length; i++) for (const q of livingSubjects.slice(i + 1)) {
     const p = livingSubjects[i], pair = `${p.name} and ${q.name}`;
-    add('comparisons', `${pair} have ${alignment(p) === alignment(q) ? 'the same allegiance' : 'different allegiances'} at dawn.`);
-    add('comparisons', `${pair} have ${actual(p)?.id === actual(q)?.id ? 'the same role' : 'different roles'} at dawn.`);
-    add('comparisons', `${pair} have ${nightActionFor(p) === nightActionFor(q) ? 'the same night ability' : 'different night abilities'} at dawn.`);
+    add('comparisons', `${pair} have ${alignment(p) === alignment(q) ? 'the same allegiance' : 'different allegiances'} when this signal was received.`);
+    add('comparisons', `${pair} have ${actual(p)?.id === actual(q)?.id ? 'the same role' : 'different roles'} when this signal was received.`);
+    add('comparisons', `${pair} have ${nightActionFor(p) === nightActionFor(q) ? 'the same night ability' : 'different night abilities'} when this signal was received.`);
     for (const orientation of labels) {
       const count = [p, q].filter(t => alignment(t) === orientation).length;
-      if (count === 1) add('comparisons', `Exactly one of ${pair} is ${trueLabel(orientation)} at dawn.`);
-      if (count === 0) add('comparisons', `Neither ${p.name} nor ${q.name} is ${trueLabel(orientation)} at dawn.`);
+      if (count === 1) add('comparisons', `Exactly one of ${pair} is ${trueLabel(orientation)} when this signal was received.`);
+      if (count === 0) add('comparisons', `Neither ${p.name} nor ${q.name} is ${trueLabel(orientation)} when this signal was received.`);
     }
     if (recordFor(p) && recordFor(q)) add('comparisons', `Both ${p.name} and ${q.name} made recorded active ability uses tonight.`);
     if (visitors(p).length && visitors(q).length) add('comparisons', `Both ${p.name} and ${q.name} received recorded visits tonight.`);
@@ -218,8 +218,8 @@ function signalHintPool(receiver) {
     const names = group.map(p => p.name).join(', ');
     for (const orientation of labels) {
       const count = group.filter(p => alignment(p) === orientation).length;
-      add('groups', `Exactly ${count} of these players are ${trueLabel(orientation)} at dawn: ${names}.`);
-      if (count) add('groups', `At least one of these players is ${trueLabel(orientation)} at dawn: ${names}.`);
+      add('groups', `Exactly ${count} of these players are ${trueLabel(orientation)} when this signal was received: ${names}.`);
+      if (count) add('groups', `At least one of these players is ${trueLabel(orientation)} when this signal was received: ${names}.`);
     }
     add('groups', `Exactly ${group.filter(recordFor).length} of these players made recorded active ability uses tonight: ${names}.`);
     for (const p of group) add('groups', `A living ${actual(p)?.title} is among these players: ${names}.`, true);
@@ -233,10 +233,10 @@ function signalHintPool(receiver) {
     const neighbours = [...new Set([living[(index - 1 + living.length) % living.length], living[(index + 1) % living.length]])].filter(t => t && t.id !== p.id);
     for (const orientation of labels) {
       const count = neighbours.filter(t => alignment(t) === orientation).length;
-      add('seating', `In living roster order at dawn, ${p.name} has ${count} ${trueLabel(orientation)} neighbours.`);
+      add('seating', `In living roster order when this signal was received, ${p.name} has ${count} ${trueLabel(orientation)} neighbours.`);
     }
-    if (neighbours.length === 2) add('seating', `In living roster order at dawn, ${p.name}'s neighbours have ${alignment(neighbours[0]) === alignment(neighbours[1]) ? 'the same allegiance' : 'different allegiances'}.`);
-    if (neighbours.some(t => visitors(p).some(r => r.actorId === t.id))) add('seating', `A living neighbour of ${p.name} visited them tonight, using roster order at dawn.`);
+    if (neighbours.length === 2) add('seating', `In living roster order when this signal was received, ${p.name}'s neighbours have ${alignment(neighbours[0]) === alignment(neighbours[1]) ? 'the same allegiance' : 'different allegiances'}.`);
+    if (neighbours.some(t => visitors(p).some(r => r.actorId === t.id))) add('seating', `A living neighbour of ${p.name} visited them tonight, using roster order when this signal was received.`);
   }
 
   add('attacks', `${attacks.length} real attacks were attempted tonight.`);
@@ -247,8 +247,8 @@ function signalHintPool(receiver) {
     const actor = playerOf(a.actorId), target = playerOf(a.targetId);
     if (!actor || !target || !canAbilityTarget(actor)) continue;
     if (actor.id !== receiver.id && target.id !== receiver.id) add('attacks', `${actor.name} attempted an attack against ${target.name} tonight.`, true);
-    add('attacks', `A player who is ${trueLabel(alignment(actor))} at dawn attempted an attack tonight.`);
-    add('attacks', `An attack targeted someone who is ${trueLabel(alignment(target))} at dawn.`);
+    add('attacks', `A player who is ${trueLabel(alignment(actor))} when this signal was received attempted an attack tonight.`);
+    add('attacks', `An attack targeted someone who is ${trueLabel(alignment(target))} when this signal was received.`);
     if (a.redirected) add('survival', `An attack originally aimed at ${playerOf(a.originalTargetId)?.name} was redirected to ${target.name} tonight.`);
     if (died(actor)) add('connections', `Someone attempted an attack and died during tonight.`);
     if (blocked(target.id)) add('connections', `An attack targeted a roleblocked player tonight.`);
@@ -268,16 +268,16 @@ function signalHintPool(receiver) {
   add('blocking', `${new Set(n.blockedIds || []).size} players were successfully roleblocked tonight.`);
   add('deaths', `${all.filter(died).length} players died during tonight.`);
   add('deaths', `${all.filter(revived).length} players were revived tonight.`);
-  add('deaths', `${all.filter(p => start(p).alive && !p.alive).length} players who began tonight alive remain dead at dawn.`);
+  add('deaths', `${all.filter(p => start(p).alive && !p.alive).length} players who began tonight alive remain dead when this signal was received.`);
   const duplicateRole = living.some((p, i) => living.slice(i + 1).some(q => actual(p)?.id === actual(q)?.id));
-  if (duplicateRole) add('roles', `At least two living players share the same role at dawn.`);
+  if (duplicateRole) add('roles', `At least two living players share the same role when this signal was received.`);
   if (!changes.length && all.every(p => start(p).roleId === actual(p)?.id)) add('changes', `No player's role changed tonight.`);
   if (records.some(r => destinations(r).includes(r.actorId))) add('statistics', `Someone made a recorded visit to themselves tonight.`);
 
   for (const r of records) {
     const actor = playerOf(r.actorId);
     if (!actor) continue;
-    if (category(r.action)) add('activity', `A player who is ${trueLabel(alignment(actor))} at dawn used a ${category(r.action)} ability tonight.`);
+    if (category(r.action)) add('activity', `A player who is ${trueLabel(alignment(actor))} when this signal was received used a ${category(r.action)} ability tonight.`);
     for (const id of destinations(r)) {
       const target = playerOf(id), targetAction = recordFor(target);
       if (!target) continue;
@@ -300,10 +300,10 @@ function signalHintPool(receiver) {
       const sent = {sendNote:'an anonymous note', sendSignal:'a signal', revealSelf:'a private true-role reveal'}[c.action];
       if (actor.id !== receiver.id && canAbilityTarget(actor)) add('communications', `${actor.name} sent ${sent} tonight.`);
       if (target.id !== receiver.id) add('communications', `${target.name} received ${sent} tonight.`);
-      add('communications', `A player who is ${trueLabel(alignment(target))} at dawn received ${sent} tonight.`);
+      add('communications', `A player who is ${trueLabel(alignment(target))} when this signal was received received ${sent} tonight.`);
     }
     if (c.action === 'predictDeath') add('communications', `Someone's death prediction tonight was ${target.alive ? 'incorrect' : 'correct'}.`);
-    if (category(c.action) === 'Deceitful' && alignment(actor) === 'evil' && alignment(target) === 'evil') add('deception', `An Evil player applied deception to another player who is Evil at dawn.`);
+    if (category(c.action) === 'Deceitful' && alignment(actor) === 'evil' && alignment(target) === 'evil') add('deception', `An Evil player applied deception to another player who is Evil when this signal was received.`);
   }
   for (const p of subjects) {
     if (p.haterTargetId != null && canAbilityTarget(playerOf(p.haterTargetId))) add('communications', `${playerOf(p.haterTargetId).name} is ${p.name}'s Hater target.`, true);
@@ -315,13 +315,13 @@ function signalHintPool(receiver) {
     add('personal', `${arrivals.length} players made recorded visits to you tonight.`);
     if (!arrivals.length) add('personal', `Nobody made a recorded visit to you tonight.`);
     for (const r of arrivals) {
-      add('personal', `A player who is ${trueLabel(alignment(playerOf(r.actorId)))} at dawn visited you tonight.`);
+      add('personal', `A player who is ${trueLabel(alignment(playerOf(r.actorId)))} when this signal was received visited you tonight.`);
       add('personal', `You were targeted by ${abilityName(r.action)} tonight.`);
     }
     if (attacked(receiver)) add('personal', `Someone attempted to attack you tonight.`);
     if (n.protectedIds?.includes(receiver.id)) add('personal', `You were protected from attacks tonight.`);
     if (deceptionTargets.has(receiver.id)) add('personal', `Someone applied a deceitful investigation effect to you tonight.`);
-    for (const p of livingSubjects) add('personal', `You and ${p.name} have ${alignment(receiver) === alignment(p) ? 'the same allegiance' : 'different allegiances'} at dawn.`);
+    for (const p of livingSubjects) add('personal', `You and ${p.name} have ${alignment(receiver) === alignment(p) ? 'the same allegiance' : 'different allegiances'} when this signal was received.`);
   }
   for (const family of SIGNAL_HINT_FAMILIES) {
     const seen = new Set();
@@ -343,14 +343,25 @@ function chooseSignalHint(receiver) {
   return {family: selected.family, message: hint.message};
 }
 
-function deliverSignalHints() {
+function deliverSignalHints(receiver = null) {
   const n = state.night;
   n.signalHints ||= {};
   for (const p of state.players) {
+    if (receiver && p.id !== receiver.id) continue;
     if (!p.alive || p.removed || isJudge(p) || nightActionFor(p) !== 'signalReceiver' || n.signalHints[p.id]) continue;
     const hint = chooseSignalHint(p);
     n.signalHints[p.id] = {...hint, round: state.round};
     p.signalHintHistory = [...(p.signalHintHistory || []), hint.message].slice(-50);
-    p.dawnMessages = [...(p.dawnMessages || []), `Signal Receiver — night ${state.round}: ${hint.message}`];
   }
+}
+
+function signalHintFor(player) {
+  deliverSignalHints(player);
+  const hint = state.night.signalHints?.[player.id];
+  return hint ? `Signal Receiver — night ${hint.round}: ${hint.message}` : 'No signal is available tonight.';
+}
+
+function signalReactionOrder(players) {
+  return [...players.filter(p => nightActionFor(p) !== 'signalReceiver'),
+    ...players.filter(p => nightActionFor(p) === 'signalReceiver')];
 }

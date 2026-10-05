@@ -1409,13 +1409,13 @@
   </div>
 
   <script src="reactions.js"></script>
-  <script src="abilities.js?v=20261005-signal-judge"></script>
+  <script src="abilities.js?v=20261005-signal-reactions"></script>
   <script src="judge.js?v=20261005"></script>
-  <script src="signal-receiver.js?v=20261005"></script>
+  <script src="signal-receiver.js?v=20261005-reactions"></script>
   <script src="host-setup.js?v=20261005-judge"></script>
-  <script src="narrator.js?v=20261005-signal-judge"></script>
+  <script src="narrator.js?v=20261005-signal-reactions"></script>
   <script src="online-reactions.js?v=20261004"></script>
-  <script src="roles.js?v=20261005-signal-judge"></script>
+  <script src="roles.js?v=20261005-signal-reactions"></script>
   <script>
     // ---- State ---------------------------------------------------------------
     const state = {
@@ -1666,7 +1666,7 @@
       return Object.keys(NIGHT_ACTIONS).filter(action => !['none', 'gambler', 'janitor', ...NIGHT_REACTION_ACTIONS].includes(action));
     }
     function hasReactionRoundInfo(action) {
-      return ['compare', 'exclude', 'audit', 'hater', 'inspectOrientation', 'seer', 'doctor', 'janitor', 'track', 'watch'].includes(action);
+      return ['compare', 'exclude', 'audit', 'hater', 'inspectOrientation', 'seer', 'doctor', 'janitor', 'track', 'watch', 'signalReceiver'].includes(action);
     }
     function playerOf(id) {return state.players.find(p => p.id === Number(id));}
     function labelOrientation(value) {return value ? value[0].toUpperCase() + value.slice(1) : '';}
@@ -2396,7 +2396,7 @@
       // other role stay in their normal position; no role priority is applied.
       const players = state.night.round1Players ? state.night.round1Players : playersAlive();
       if (state.narratorMode) return narratorReactionQueue(players);
-      return getConfiguredNightOrder(players);
+      return signalReactionOrder(getConfiguredNightOrder(players));
     }
 
     function startNight() {
@@ -2780,7 +2780,7 @@
       if (state.narratorMode && label === 'Acknowledge & continue') {
         button.dataset.narratorAcknowledgement = 'true';
         // Private information waits for the reader; action confirmations still skip.
-        button.dataset.narratorImmediate = String(!['infoAcknowledge','genericInfoAcknowledge','haterInfoAcknowledge','janitorAcknowledge'].includes(value));
+        button.dataset.narratorImmediate = String(!['infoAcknowledge','genericInfoAcknowledge','haterInfoAcknowledge','janitorAcknowledge','signalAcknowledge'].includes(value));
         button.hidden = button.dataset.narratorImmediate === 'true' && !state.narratorPaused;
       }
       button.dataset.narratorAuto = String(
@@ -2976,7 +2976,7 @@
       if (night.round === 1) {
         setPhase('Night', state.narratorMode ? 'Narrated night' : 'Night actions — Round 1');
         if (state.narratorMode && night.narratorReporting) {
-          if (narratorDeferredInfo(nightActionFor(actor))) {renderReactionTurn(actor);return;}
+          if (narratorDeferredInfo(nightActionFor(actor)) || nightActionFor(actor) === 'signalReceiver') {renderReactionTurn(actor);return;}
           renderNightKnownRoles(actor);
           showNightResult('Your private night information is shown above.');
           $('nightActionArea').appendChild(actionButton('Acknowledge & continue','genericInfoAcknowledge',()=>completeNightTurn()));
@@ -3175,6 +3175,12 @@
 
       // Detective and Seer results are intentionally revealed only in Round 2.
       const infoAction = nightActionFor(actor);
+      if (infoAction === 'signalReceiver') {
+        showNightResult(escapeHtml(signalHintFor(actor)));
+        $('nightPrompt').textContent = 'Read your private signal, then acknowledge and continue.';
+        $('nightActionArea').appendChild(actionButton('Acknowledge & continue', 'signalAcknowledge', () => completeNightTurn()));
+        return;
+      }
       if (isLimitedInvestigation(infoAction)) {
         showNightResult(escapeHtml(limitedInvestigationResult(actor)));
         $('nightPrompt').textContent = 'Your investigation result is shown below.';
@@ -4209,6 +4215,10 @@
           }
           const infoAction = dynamicAction;
           if (!player.alive) payload.turn = {type:'ack',prompt:'You were killed during the night. Your Detective/Seer result is withheld.'};
+          else if (infoAction === 'signalReceiver') {
+            payload.result = signalHintFor(player);
+            payload.turn = {type:'reaction',action:'signalReceiver',prompt:'Read your private signal, then acknowledge and continue.',options:[{id:'ack',name:'Acknowledge & continue'}]};
+          }
           else if (infoAction === 'hater' && state.round === 1) { const target=playerOf(night.haterTargets?.[player.id] ?? player.haterTargetId); payload.turn={type:'reaction',action:'hater',prompt:target ? `${target.name} is your Hater target. If they are voted out, the evil side wins.` : 'No valid Hater target was assigned.',options:[{id:'ack',name:'Acknowledge & continue'}]}; }
           else if (isLimitedInvestigation(infoAction)) { payload.turn={type:'reaction',action:infoAction,prompt:limitedInvestigationResult(player),options:[{id:'ack',name:'Acknowledge & continue'}]}; }
           else if (['track','watch'].includes(infoAction)) { const target=playerOf((infoAction==='track' ? night.trackTargets : night.watchTargets)?.[player.id]); payload.turn={type:'reaction',action:infoAction,prompt:trackReport(target, player),options:[{id:'ack',name:'Acknowledge & continue'}]}; }
@@ -5218,7 +5228,7 @@
       state.night.round=2;
       bumpOnlineVersion();
       const base = state.night.round1Players ? state.night.round1Players : playersAlive();
-      state.night.reactionQueue = getConfiguredNightOrder(base);
+      state.night.reactionQueue = signalReactionOrder(getConfiguredNightOrder(base));
       state.night.index=0;state.night.onlineAckNeeded=false;state.night.onlineResults={}; await publishOnlineRoom();
     }
 

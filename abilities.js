@@ -1,6 +1,6 @@
 // Additional abilities share selection, validation and resolution in both modes.
 const EXTRA_ABILITIES = {
-  signalReceiver: {label:'Receive a truthful hint', category:'Passive', prompt:'Automatically receive one random hint about this round at dawn. Deceitful abilities cannot tamper with the hint.'},
+  signalReceiver: {label:'Receive a truthful hint', category:'Passive', prompt:'Receive one random truthful hint during your night reaction turn, after the other reactions. Deceitful abilities cannot tamper with the hint.'},
   hideAllegiance: {label:'Hide Allegiance', category:'Deceitful', prompt:'Choose a player to appear Neutral to allegiance investigations tonight.'},
   fakeVisit: {label:'Fake Visit', category:'Deceitful', second:'player', prompt:'Choose a player and the visitor destination that Track should report tonight.'},
   hideActivity: {label:'Hide Activity', category:'Deceitful', prompt:'Hide a player from Track and Check Activity tonight.'},
@@ -268,7 +268,6 @@ function finishExtraNight() {
     const target=playerOf(c.targetId),actor=playerOf(id);if(actor)actor.dawnMessages=[...(actor.dawnMessages||[]),`Prediction: ${target?.name||'Your target'} ${target&&!target.alive?'was dead at dawn. Correct.':'was alive at dawn. Incorrect.'}`];
   }
   for(const p of state.players){for(const letter of p.pendingLetters||[])p.dawnMessages=[...(p.dawnMessages||[]),`Anonymous note: ${letter.text}`];p.pendingLetters=[];}
-  deliverSignalHints();
 }
 
 function extraTargetsAvailable(choice) {

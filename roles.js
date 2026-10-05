@@ -81,7 +81,7 @@ const DEFAULT_ROLES = [
   },
   {
     id: 'signal_receiver', title: 'Signal Receiver', orientation: 'good',
-    description: 'Receive one random, truthful hint about the current round at dawn. Hints span allegiances, roles, abilities, visits, attacks, protection, blocking, deception, changes, deaths, revivals, comparisons, groups, seating and private communications. Deceitful abilities cannot alter your hints. Actual changes are reported truthfully.',
+    description: 'Receive one random, truthful hint about the current round during night reactions. Hints span allegiances, roles, abilities, visits, attacks, protection, blocking, deception, changes, deaths, revivals, comparisons, groups, seating and private communications. Deceitful abilities cannot alter your hints. Actual changes are reported truthfully.',
     visibility: 'nobody', nightAction: 'signalReceiver'
   },
   {

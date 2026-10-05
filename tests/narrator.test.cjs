@@ -685,16 +685,20 @@ test('Random Allegiance reports once, after deception and deaths have settled',(
   g.acknowledge();g.fire();assert.equal(g.c.state.night.extraNotices[0].length,1);
 });
 
-test('Signal Receiver stays asleep and receives a dawn hint after a narrated revival',()=>{
+test('Signal Receiver wakes for a private reaction hint after a narrated revival',()=>{
   const g=mechanicsGame(['signal_receiver','doctor','mafia','citizen']);
   g.c.finishNight=()=>{g.c.finishExtraNight();g.c.state.phase='day';};
   g.start();g.choose(2,3);
   assert.equal(g.c.playerOf(0).dawnMessages.length,0);
   g.c.$('nightActionArea').children.find(b=>b.textContent==='Revive Player 3').click();
   g.acknowledge();g.fire();
+  assert.equal(g.c.state.phase,'night');
+  assert.match(g.c.$('nightResult').innerHTML,/Signal Receiver — night 1:/);
+  assert.equal(g.c.playerOf(0).dawnMessages.length,0);
+  assert.equal(g.spoken.includes('Signal Receiver, open your eyes.'),true);
+  g.acknowledge();g.fire();
   assert.equal(g.c.state.phase,'day');
-  assert.equal(g.c.playerOf(0).dawnMessages.length,1);
-  assert.equal(g.spoken.includes('Signal Receiver, open your eyes.'),false);
+  assert.equal(g.c.playerOf(0).dawnMessages.length,0);
   assert.ok(g.c.signalHintPool(g.c.playerOf(0)).deaths.some(h=>h.message==='Player 3 died during tonight and was revived.'));
 });
 

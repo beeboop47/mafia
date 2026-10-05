@@ -90,11 +90,11 @@ Neutrals are strongest when they can make both sides hesitate. If Good thinks yo
 
 ### Signal Receiver
 
-**Goal:** Use one private, truthful hint received at dawn to narrow the possible explanations for the current round.
+**Goal:** Use one private, truthful hint received during night reactions to narrow the possible explanations for the current round.
 
-**Strategy:** Your hint may describe counts, identities, abilities, visits, attacks, protection, blocks, deception, changes, revivals, comparisons, groups, neighbours or communications. Pay attention to its time and wording: a recorded ability use does not guarantee success, and a player's allegiance at the start of the night may differ from their allegiance at dawn. Compare signals across rounds and share useful deductions with Good.
+**Strategy:** Your hint may describe counts, identities, abilities, visits, attacks, protection, blocks, deception, changes, revivals, comparisons, groups, neighbours or communications. Pay attention to its time and wording: a recorded ability use does not guarantee success, and a player's allegiance at the start of the night may differ from their allegiance when you receive your signal. Compare signals across rounds and share useful deductions with Good.
 
-**Counters:** Framing, hidden allegiance/activity, fake visits/activity and reversed comparisons cannot alter your signal. Real transformations can change the truth, and a lethal attack can prevent delivery unless you are revived before dawn. Other players can still lie about what your signal means.
+**Counters:** Framing, hidden allegiance/activity, fake visits/activity and reversed comparisons cannot alter your signal. Real transformations can change the truth, and a lethal attack can prevent delivery unless you are revived before their reaction turn. Other players can still lie about what your signal means.
 
 **Synergies:** Investigators can compare their potentially deceived results with your truthful clues. Protection and revival keep your information arriving. A Judge can use your clues to choose a safer verdict.
 

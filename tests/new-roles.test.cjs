@@ -65,9 +65,9 @@ test('Signal Receiver is Good and its matching passive ability is available for 
 test('signals reveal true allegiance and role despite framing and hidden allegiance',()=>{
   const c=game();c.playerOf(1).framedRoleId='citizen';c.state.night.hiddenAllegiance=[1];
   assert.equal(c.investigationRoleOf(c.playerOf(1)).orientation,'neutral');
-  assert.ok(messages(c,'allegiances').includes('Player 1 is Evil at dawn.'));
-  assert.ok(messages(c,'roles').includes('Player 1 is Mafia at dawn.'));
-  assert.ok(!messages(c,'roles').includes('Player 1 is Citizen at dawn.'));
+  assert.ok(messages(c,'allegiances').includes('Player 1 is Evil when this signal was received.'));
+  assert.ok(messages(c,'roles').includes('Player 1 is Mafia when this signal was received.'));
+  assert.ok(!messages(c,'roles').includes('Player 1 is Citizen when this signal was received.'));
 });
 
 test('signals retain real visits and activity despite fake visits and hidden or fabricated activity',()=>{
@@ -81,12 +81,12 @@ test('signals retain real visits and activity despite fake visits and hidden or 
 
 test('signals ignore reversed comparisons and use actual post-change allegiances',()=>{
   const c=game();c.state.night.reversedComparison=[1];
-  assert.ok(messages(c,'comparisons').includes('Player 1 and Player 2 have different allegiances at dawn.'));
+  assert.ok(messages(c,'comparisons').includes('Player 1 and Player 2 have different allegiances when this signal was received.'));
   c.state.night.extraActions[5]={action:'changeAllegiance',targetId:1,second:'good'};
   c.resolveExtraEffects();
-  assert.ok(messages(c,'allegiances').includes('Player 1 is Good at dawn.'));
+  assert.ok(messages(c,'allegiances').includes('Player 1 is Good when this signal was received.'));
   assert.ok(messages(c,'allegiances').includes('Player 1 was Evil at the start of tonight.'));
-  assert.ok(messages(c,'comparisons').includes('Player 1 and Player 2 have the same allegiance at dawn.'));
+  assert.ok(messages(c,'comparisons').includes('Player 1 and Player 2 have the same allegiance when this signal was received.'));
 });
 
 test('a late roleblock cancels visits but leaves truthful submission history',()=>{
@@ -105,7 +105,7 @@ test('attack, protection, death and revival hints use final outcomes and keep re
   c.setPlayerAlive(c.playerOf(4),false);c.setPlayerAlive(c.playerOf(4),true);
   assert.ok(messages(c,'survival').includes('Protection stopped an attack against Player 2 tonight.'));
   assert.ok(messages(c,'deaths').includes('Player 4 died during tonight and was revived.'));
-  assert.ok(messages(c,'deaths').includes('0 players who began tonight alive remain dead at dawn.'));
+  assert.ok(messages(c,'deaths').includes('0 players who began tonight alive remain dead when this signal was received.'));
 });
 
 test('all 20 hint families produce usable hints in a round with varied events',()=>{
@@ -121,24 +121,25 @@ test('all 20 hint families produce usable hints in a round with varied events',(
   assert.ok(!Object.values(pool).flat().some(h=>h.message.includes('Secret contents')));
 });
 
-test('one private signal arrives at dawn, resists blocking, avoids repeats and survives saving',()=>{
+test('one private reaction signal resists blocking, avoids repeats and survives saving without dawn delivery',()=>{
   const c=game();c.state.night.blockedIds=[0];
-  c.finishExtraNight();const first=c.playerOf(0).dawnMessages[0];
-  assert.equal(c.playerOf(0).dawnMessages.length,1);assert.match(first,/Signal Receiver — night 1:/);
-  c.finishExtraNight();assert.equal(c.playerOf(0).dawnMessages.length,1);
-  c.state.night=JSON.parse(JSON.stringify(c.state.night));c.finishExtraNight();
-  assert.equal(c.playerOf(0).dawnMessages.length,1);
-  c.state.round=2;c.initializeExtraNight();delete c.state.night.extraFinished;c.finishExtraNight();
-  assert.notEqual(c.playerOf(0).dawnMessages[0],first);
+  const first=c.signalHintFor(c.playerOf(0));
+  assert.equal(c.playerOf(0).dawnMessages.length,0);assert.match(first,/Signal Receiver — night 1:/);
+  assert.equal(c.signalHintFor(c.playerOf(0)),first);
+  c.state.night=JSON.parse(JSON.stringify(c.state.night));
+  assert.equal(c.signalHintFor(c.playerOf(0)),first);
+  c.finishExtraNight();assert.equal(c.playerOf(0).dawnMessages.length,0);
+  c.state.round=2;c.initializeExtraNight();
+  assert.notEqual(c.signalHintFor(c.playerOf(0)),first);
   assert.equal(c.playerOf(0).signalHintHistory.length,2);
 });
 
 test('a dead Receiver receives no signal and a newly created living Receiver can receive one',()=>{
   const c=game();c.setPlayerAlive(c.playerOf(0),false);
   assert.equal(c.applyPermanentRoleChange(c.playerOf(2),'signal_receiver',c.playerOf(5)),true);
-  c.finishExtraNight();
-  assert.equal(c.playerOf(0).dawnMessages.length,0);
-  assert.equal(c.playerOf(2).dawnMessages.length,1);
+  c.deliverSignalHints();
+  assert.equal(c.state.night.signalHints[0],undefined);
+  assert.ok(c.state.night.signalHints[2]);
 });
 
 test('Judge is excluded from primary and secondary ability targets, even for self-targeting roles',()=>{
@@ -241,15 +242,36 @@ test('only one Judge can be assigned or created, including edited special IDs',(
 
 test('the hint ability works through a copied ability, Gambler and permanent ability changes',()=>{
   const copied=game();copied.playerOf(2).copiedAbility={action:'signalReceiver',round:1};
-  copied.finishExtraNight();assert.equal(copied.playerOf(2).dawnMessages.length,1);
+  copied.deliverSignalHints();assert.ok(copied.state.night.signalHints[2]);
   const gambler=game();gambler.playerOf(2).roleId='gambler';gambler.state.night.gamblerActions[2]='signalReceiver';
-  gambler.initializeExtraNight();gambler.finishExtraNight();assert.equal(gambler.playerOf(2).dawnMessages.length,1);
+  gambler.initializeExtraNight();gambler.deliverSignalHints();assert.ok(gambler.state.night.signalHints[2]);
   const changed=game();changed.state.night.extraActions[5]={action:'changeAbility',targetId:2,second:'signalReceiver'};
-  changed.resolveExtraEffects();changed.finishExtraNight();assert.equal(changed.playerOf(2).dawnMessages.length,1);
+  changed.resolveExtraEffects();changed.deliverSignalHints();assert.ok(changed.state.night.signalHints[2]);
 });
 
 test('signals do not leak individual role or allegiance clues about an immune Judge',()=>{
   const c=game();
   for(const family of ['roles','allegiances','capabilities','activity','visits','targets','attacks','blocking','deception','changes','deaths','comparisons','groups','communications'])
     assert.ok(!messages(c,family).some(text=>text.includes('Player 3')),family);
+});
+
+test('Receivers are scheduled after other reactions without changing the other players’ order',()=>{
+  const c=game();
+  assert.deepEqual(Array.from(c.signalReactionOrder([c.playerOf(0),c.playerOf(4),c.playerOf(1)]),p=>p.id),[4,1,0]);
+});
+
+test('online hints stay private and are generated only on the Receiver’s reaction turn',()=>{
+  const c=game();c.state.night.round=2;c.state.night.index=0;
+  c.state.night.reactionQueue=[c.playerOf(1),c.playerOf(0)];
+  assert.equal(c.onlinePrivatePayloadFor(c.playerOf(0)).result,null);
+  assert.equal(c.state.night.signalHints[0],undefined);
+  c.state.night.index=1;
+  const own=c.onlinePrivatePayloadFor(c.playerOf(0));
+  assert.match(own.result,/Signal Receiver — night 1:/);
+  assert.equal(own.turn.action,'signalReceiver');
+  assert.equal(c.onlinePrivatePayloadFor(c.playerOf(1)).result,null);
+  assert.equal(c.onlinePublicSnapshot().signalHints,undefined);
+  assert.equal(c.onlinePrivatePayloadFor(c.playerOf(0)).result,own.result);
+  assert.equal(c.playerOf(0).signalHintHistory.length,1);
+  assert.equal(c.playerOf(0).dawnMessages.length,0);
 });

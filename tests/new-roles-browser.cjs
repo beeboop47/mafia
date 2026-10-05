@@ -52,14 +52,11 @@ const {chromium} = require('C:/Users/gerar/.cache/codex-runtimes/codex-primary-r
       setPlayerAlive(state.players[2],true);recordNightAction(state.players[3],'doctor',2);
       state.players[1].framedRoleId='citizen';state.night.hiddenAllegiance=[1];
       window.randomChoiceSaved=randomChoice;randomChoice=list=>list[0];
-      finishExtraNight();state.round++;hide('nightCard');startDay();randomChoice=window.randomChoiceSaved;
+      hide('dayCard');show('nightCard');renderReactionTurn(state.players[0]);randomChoice=window.randomChoiceSaved;
     });
-    assert.equal(await host.locator('dialog[open]').count(),1);
-    await host.getByRole('button',{name:'Reveal private messages',exact:true}).click();
-    assert.match(await host.locator('dialog[open]').innerText(),/Signal Receiver — night 1:/);
-    assert.equal(await host.evaluate(()=>state.players[0].dawnMessages.length),1);
-    assert.equal(await host.evaluate(()=>state.players[0].dawnMessages[0].includes('3 living Good players')),false);
-    await host.getByRole('button',{name:'Hide & pass',exact:true}).click();
+    assert.match(await host.locator('#nightResult').innerText(),/Signal Receiver — night 1:/);
+    assert.equal(await host.evaluate(()=>state.players[0].dawnMessages.length),0);
+    await host.evaluate(()=>{finishExtraNight();state.round++;startDay();});
     assert.equal(await host.locator('dialog[open]').count(),0);
 
     const commands=[],updates={};
@@ -114,12 +111,15 @@ const {chromium} = require('C:/Users/gerar/.cache/codex-runtimes/codex-primary-r
       state.players[1].roleId='citizen';state.players[0].alive=true;
       state.players[4].roleId='signal_receiver';initializeExtraNight();
       recordNightAction(state.players[2],'framer',3);state.players[3].framedRoleId='mafia';
-      return finishOnlineNightOnline();
+      state.night.round=2;state.night.reactionQueue=[state.players[4]];state.night.index=0;
+      state.night.onlineAckNeeded=false;return publishOnlineRoom();
     });
     await flush();
     assert.equal(await host.evaluate(()=>onlinePublicSnapshot().signalHints),undefined);
     const receiverPrivate=updates['rooms/TEST/private/uid-4'];
-    assert.equal(receiverPrivate.dawnMessages.length,1);
+    assert.match(receiverPrivate.result,/Signal Receiver — night/);
+    assert.equal(receiverPrivate.turn.action,'signalReceiver');
+    assert.equal(receiverPrivate.dawnMessages.length,0);
     assert.equal(updates['rooms/TEST/private/uid-1'].dawnMessages.length,0);
     // Private hints remain visible after the same-day command acknowledgement.
     await guest.evaluate(({pub,priv})=>{
@@ -128,6 +128,6 @@ const {chromium} = require('C:/Users/gerar/.cache/codex-runtimes/codex-primary-r
     assert.match(await guest.locator('#onlineActionResult').innerText(),/Signal Receiver/);
     assert.equal(await guest.evaluate(()=>document.documentElement.scrollWidth<=window.innerWidth),true);
     assert.deepEqual(errors,[]);
-    console.log('Browser checks passed: Judge verdicts and return to voting; private dawn signal; two-device authority; immune target menus and redirects; mobile layout.');
+    console.log('Browser checks passed: Judge verdicts; private night reaction signal without dawn delivery; two-device authority; immune targets; mobile layout.');
   } finally {await browser.close();}
 })().catch(error=>{console.error(error);process.exitCode=1;});
