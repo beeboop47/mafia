@@ -302,7 +302,6 @@ function signalHintPool(receiver) {
       if (target.id !== receiver.id) add('communications', `${target.name} received ${sent} tonight.`);
       add('communications', `A player who is ${trueLabel(alignment(target))} when this signal was received received ${sent} tonight.`);
     }
-    if (c.action === 'predictDeath') add('communications', `Someone's death prediction tonight was ${target.alive ? 'incorrect' : 'correct'}.`);
     if (category(c.action) === 'Deceitful' && alignment(actor) === 'evil' && alignment(target) === 'evil') add('deception', `An Evil player applied deception to another player who is Evil when this signal was received.`);
   }
   for (const p of subjects) {
@@ -358,10 +357,5 @@ function deliverSignalHints(receiver = null) {
 function signalHintFor(player) {
   deliverSignalHints(player);
   const hint = state.night.signalHints?.[player.id];
-  return hint ? `Signal Receiver — night ${hint.round}: ${hint.message}` : 'No signal is available tonight.';
-}
-
-function signalReactionOrder(players) {
-  return [...players.filter(p => nightActionFor(p) !== 'signalReceiver'),
-    ...players.filter(p => nightActionFor(p) === 'signalReceiver')];
+  return hint ? `Signal Receiver — night ${hint.round}: As of this reaction turn: ${hint.message}` : 'No signal is available tonight.';
 }

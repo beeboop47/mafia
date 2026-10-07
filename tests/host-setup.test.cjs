@@ -30,7 +30,7 @@ function game() {
   return context;
 }
 
-test('surviving neutrals win at the final two regardless of opponent or side-win setting', () => {
+test('Evil beats Neutral survival at the final two regardless of side-win setting', () => {
   for (const id of ['persuader', 'serial_killer', 'framer', 'gambler', 'leader']) {
     for (const orientation of ['good', 'evil', 'neutral']) {
       for (const autoSideWinChecks of [true, false]) {
@@ -38,12 +38,31 @@ test('surviving neutrals win at the final two regardless of opponent or side-win
         c.state.autoSideWinChecks = autoSideWinChecks;
         c.state.roles = [{id, title:id, orientation:'neutral'}, {id:'opponent', title:'Opponent', orientation, winCondition:orientation === 'neutral' ? 'votedOut' : 'none'}];
         c.state.players = [{id:0, name:'Survivor', roleId:id, alive:true}, {id:1, name:'Opponent', roleId:'opponent', alive:true}];
-        assert.equal(c.checkWin().winner, id);
+        assert.equal(c.checkWin().winner, orientation === 'evil' ? 'Evil' : id);
         c.state.players[1].alive = false;
         assert.equal(c.checkWin().winner, id);
       }
     }
   }
+});
+
+test('two Neutrals and one Evil have different winners depending on the elimination', () => {
+  for (const autoSideWinChecks of [true,false]) {
+    for (const eliminated of [0,1,2]) {
+      const c=game();c.state.autoSideWinChecks=autoSideWinChecks;
+      c.state.roles=[{id:'framer',title:'Framer',orientation:'neutral'},{id:'gambler',title:'Gambler',orientation:'neutral'},{id:'mafia',title:'Mafia',orientation:'evil'}];
+      c.state.players=c.state.roles.map((r,id)=>({id,name:r.title,roleId:r.id,alive:true}));
+      assert.equal(c.checkWin().done,false);
+      c.state.players[eliminated].alive=false;c.state.players[eliminated].eliminatedByVote=true;
+      assert.equal(c.checkWin().winner,eliminated===2?'Framer & Gambler':'Evil');
+    }
+  }
+});
+
+test('a fulfilled Jester win still takes precedence over Evil and Neutral survival',()=>{
+  const c=game();c.state.roles=[{id:'jester',title:'Jester',orientation:'neutral',winCondition:'votedOut'},{id:'mafia',orientation:'evil'},{id:'framer',orientation:'neutral'}];
+  c.state.players=[{id:0,name:'Jester',roleId:'jester',alive:false,eliminatedByVote:true},{id:1,roleId:'mafia',alive:true},{id:2,roleId:'framer',alive:true}];
+  assert.equal(c.checkWin().winner,'Jester');
 });
 
 test('Jester must be voted out, while other final neutrals can win together', () => {

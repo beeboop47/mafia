@@ -1409,13 +1409,13 @@
   </div>
 
   <script src="reactions.js"></script>
-  <script src="abilities.js?v=20261005-signal-reactions"></script>
+  <script src="abilities.js?v=20261006-normal-reactions"></script>
   <script src="judge.js?v=20261005"></script>
-  <script src="signal-receiver.js?v=20261005-reactions"></script>
+  <script src="signal-receiver.js?v=20261006-normal-order"></script>
   <script src="host-setup.js?v=20261005-judge"></script>
-  <script src="narrator.js?v=20261005-signal-reactions"></script>
+  <script src="narrator.js?v=20261006-normal-reactions"></script>
   <script src="online-reactions.js?v=20261004"></script>
-  <script src="roles.js?v=20261005-signal-reactions"></script>
+  <script src="roles.js?v=20261006-normal-reactions"></script>
   <script>
     // ---- State ---------------------------------------------------------------
     const state = {
@@ -2396,7 +2396,7 @@
       // other role stay in their normal position; no role priority is applied.
       const players = state.night.round1Players ? state.night.round1Players : playersAlive();
       if (state.narratorMode) return narratorReactionQueue(players);
-      return signalReactionOrder(getConfiguredNightOrder(players));
+      return getConfiguredNightOrder(players);
     }
 
     function startNight() {
@@ -3509,6 +3509,9 @@
       // Always-on two-player safeguard. This is intentionally independent of
       // the optional normal side-win setting so two-player games cannot stall.
       if (living.length <= 2) {
+        if (living.length === 2 && evil > 0) {
+          return {done: true, winner: 'Evil', reason: 'Two players remain and at least one of them is Evil. Neutral survival does not override the Evil win.'};
+        }
         const survivors = living.filter(player => {
           const role = roleOf(player);
           return role?.orientation === 'neutral' && normalizedWinCondition(role) !== 'votedOut';
@@ -3524,9 +3527,6 @@
         }
       }
       if (living.length === 2) {
-        if (evil > 0) {
-          return {done: true, winner: 'Evil', reason: 'Two players remain and at least one of them is Evil.'};
-        }
         const good = living.filter(p => roleOf(p)?.orientation === 'good').length;
         if (good > 0) {
           return {done: true, winner: 'Good', reason: 'Two players remain, at least one is Good, and no Evil players remain.'};
@@ -5228,7 +5228,7 @@
       state.night.round=2;
       bumpOnlineVersion();
       const base = state.night.round1Players ? state.night.round1Players : playersAlive();
-      state.night.reactionQueue = signalReactionOrder(getConfiguredNightOrder(base));
+      state.night.reactionQueue = getConfiguredNightOrder(base);
       state.night.index=0;state.night.onlineAckNeeded=false;state.night.onlineResults={}; await publishOnlineRoom();
     }
 

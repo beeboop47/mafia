@@ -702,6 +702,14 @@ test('Signal Receiver wakes for a private reaction hint after a narrated revival
   assert.ok(g.c.signalHintPool(g.c.playerOf(0)).deaths.some(h=>h.message==='Player 3 died during tonight and was revived.'));
 });
 
+test('narrator keeps the Receiver before a later investigator in normal report order',()=>{
+  const g=mechanicsGame(['signal_receiver',{id:'auditor',nightAction:'audit'},'citizen']);g.start();g.choose(1,2);
+  assert.deepEqual(Array.from(g.c.state.night.queue,p=>p.id),[0,1]);
+  assert.equal(g.c.state.night.currentActorId,0);
+  assert.match(g.c.$('nightResult').innerHTML,/As of this reaction turn/);
+  g.acknowledge();g.fire();assert.equal(g.c.state.night.currentActorId,1);
+});
+
 test('narrator excludes Judge from attack choices and automatically assigned Seer targets',()=>{
   const g=mechanicsGame(['judge','seer','mafia','citizen']);
   g.c.playerOf(1).hostSetup={seerSchedule:{1:0}};g.start();

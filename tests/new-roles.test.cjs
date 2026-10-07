@@ -41,7 +41,7 @@ function game(ids = ['signal_receiver', 'mafia', 'citizen', 'judge', 'doctor', '
     'recordLimitedInvestigation','resolveLimitedInvestigations','hasReactionRoundInfo','ackOnlineCommand',
     'handleOnlineCommand','resolveOnlineDay','handleOnlineNightRound1','onlinePrivatePayloadFor',
     'onlinePublicSnapshot','onlineCurrentNightActor','setChoiceAndContinue','isKillingRole','isTeamKillRole',
-    'teamKillGroupKey','resolveOnlineNightBeforeReactions','removePendingAttack','resolveOnlineRound1Intents']) load(c,name);
+    'teamKillGroupKey','resolveOnlineNightBeforeReactions','removePendingAttack','resolveOnlineRound1Intents','buildNightReactionQueue','beginOnlineReactionRound']) load(c,name);
   c.state.roles = vm.runInContext('DEFAULT_ROLES.map(r=>({...r}))', c);
   c.state.players = ids.map((roleId,id)=>({id,roleId,name:`Player ${id}`,uid:`uid-${id}`,alive:true,used:{}}));
   c.online.playersCache = Object.fromEntries(c.state.players.map(p=>[p.uid,{uid:p.uid,seatId:p.id}]));
@@ -255,9 +255,18 @@ test('signals do not leak individual role or allegiance clues about an immune Ju
     assert.ok(!messages(c,family).some(text=>text.includes('Player 3')),family);
 });
 
-test('Receivers are scheduled after other reactions without changing the other players’ order',()=>{
+test('Receivers keep their configured place in the normal reaction order',()=>{
   const c=game();
-  assert.deepEqual(Array.from(c.signalReactionOrder([c.playerOf(0),c.playerOf(4),c.playerOf(1)]),p=>p.id),[4,1,0]);
+  c.getConfiguredNightOrder=()=>[c.playerOf(0),c.playerOf(4),c.playerOf(1)];
+  assert.deepEqual(Array.from(c.buildNightReactionQueue(),p=>p.id),[0,4,1]);
+});
+
+test('online reaction queues also keep the Receiver in their configured place',async()=>{
+  const c=game();c.getConfiguredNightOrder=()=>[c.playerOf(0),c.playerOf(4),c.playerOf(1)];
+  c.resolvePendingRoleChanges=()=>{};c.bumpOnlineVersion=()=>{};
+  await c.beginOnlineReactionRound();
+  assert.deepEqual(Array.from(c.state.night.reactionQueue,p=>p.id),[0,4,1]);
+  assert.equal(c.state.night.signalHints[0],undefined);
 });
 
 test('online hints stay private and are generated only on the Receiver’s reaction turn',()=>{
@@ -274,4 +283,16 @@ test('online hints stay private and are generated only on the Receiver’s react
   assert.equal(c.onlinePrivatePayloadFor(c.playerOf(0)).result,own.result);
   assert.equal(c.playerOf(0).signalHintHistory.length,1);
   assert.equal(c.playerOf(0).dawnMessages.length,0);
+});
+
+test('a signal snapshots events so far and cannot report unresolved death-prediction results',()=>{
+  const c=game();c.setPlayerAlive(c.playerOf(2),false);
+  c.state.night.extraActions[5]={action:'predictDeath',targetId:2};
+  const pool=c.signalHintPool(c.playerOf(0));
+  assert.ok(pool.deaths.some(h=>h.message.includes('1 players who began tonight alive remain dead')));
+  assert.ok(!Object.values(pool).flat().some(h=>/death prediction.*(correct|incorrect)/i.test(h.message)));
+  const before=c.signalHintFor(c.playerOf(0));
+  c.setPlayerAlive(c.playerOf(2),true);
+  assert.equal(c.signalHintFor(c.playerOf(0)),before);
+  assert.ok(c.signalHintPool(c.playerOf(0)).deaths.some(h=>h.message.includes('0 players who began tonight alive remain dead')));
 });

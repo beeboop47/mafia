@@ -263,7 +263,6 @@ function narratorStartReports() {
     (narratorDeferredInfo(nightActionFor(player)) && !n.blockedIds?.includes(player.id) &&
       (n.trackTargets?.[player.id] != null || n.watchTargets?.[player.id] != null || n.limitedInvestigations?.[player.id])) || extraNoticesFor(player) || nightActionFor(player) === 'signalReceiver'
   ));
-  n.queue = signalReactionOrder(n.queue);
   n.index = 0;
   n.turnRevealed = false;
   if (!n.queue.length) return false;
