@@ -58,6 +58,7 @@ function renderHostSetup() {
     const action = role ? roleActiveNightAction(role) : null;
     for (const [key, title] of [['policemanTarget', 'Policeman intelligence target'], ['haterTarget', 'Hater target']]) {
       if (key === 'policemanTarget' && !roleHasSpecialId(role, 'policeman')) continue;
+      if (key === 'haterTarget' && !roleHasSpecialId(role, 'hater')) continue;
       const label = document.createElement('label'); label.textContent = title;
       label.appendChild(playerPicker(player, config[key], value => { if (value === undefined) delete config[key]; else config[key] = value; }));
       body.appendChild(label);

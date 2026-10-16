@@ -47,6 +47,7 @@ test('host setup shows only manually assigned role controls and saves signal set
   c.renderHostSetup();
   assert.ok(headings().includes('Seer targets by night'));
   assert.ok(!headings().includes('Policeman intelligence target'));
+  assert.ok(!headings().includes('Hater target'));
   assert.ok(!headings().includes('Gambler abilities by night'));
   assert.ok(!headings().includes('Signal Receiver hints by night'));
   c.state.players[0].roleId='signal_receiver'; c.renderHostSetup();
@@ -61,7 +62,11 @@ test('host setup shows only manually assigned role controls and saves signal set
   controls.find(n=>n.textContent==='Reset to random').onclick();
   assert.equal(c.state.players[0].hostSetup.signalSchedule[1],undefined);
   assert.equal(message.value,'');
+  c.state.roles.push({id:'hater'});
+  c.state.players[0].roleId='hater'; c.renderHostSetup();
+  assert.ok(headings().includes('Hater target'));
   c.state.mode='random'; c.renderHostSetup();
+  assert.ok(!headings().includes('Hater target'));
   assert.ok(!headings().includes('Signal Receiver hints by night'));
 });
 
