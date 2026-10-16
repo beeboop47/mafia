@@ -209,7 +209,7 @@ function narratorDeferredInfo(action) {
 }
 function narratorActionQueue(players) {
   let mafiaAdded = false;
-  const candidates = players.filter(player => !player.removed && !state.night?.narratorCompleted?.includes(player.id));
+  const candidates = players.filter(player => !roleHasSpecialId(roleOf(player), 'judge') && !player.removed && !state.night?.narratorCompleted?.includes(player.id));
   const mafia = candidates.filter(player => roleOf(player)?.orientation === 'evil' && nightActionFor(player) === 'teamKill');
   // One blocked/dead representative must not cancel an unblocked team's turn.
   const available = mafia.filter(player => player.alive && !state.night?.blockedIds?.includes(player.id));
@@ -290,7 +290,7 @@ function narratorResolveTurnEffects() {
 }
 function narratorReactionQueue(players) {
   return narratorOrder(players.filter(player => {
-    if (!player.alive) return false;
+    if (!player.alive || roleHasSpecialId(roleOf(player), 'judge')) return false;
     const action = nightActionFor(player);
     return findPendingAttacksFor(player.id).length || newReactionTurn(player) ||
       hasReactionRoundInfo(action) || extraNoticesFor(player);

@@ -1410,10 +1410,10 @@
 
   <script src="reactions.js"></script>
   <script src="abilities.js?v=20261006-normal-reactions"></script>
-  <script src="judge.js?v=20261005"></script>
+  <script src="judge.js?v=20261016"></script>
   <script src="signal-receiver.js?v=20261006-normal-order"></script>
   <script src="host-setup.js?v=20261005-judge"></script>
-  <script src="narrator.js?v=20261006-normal-reactions"></script>
+  <script src="narrator.js?v=20261016-judge-turns"></script>
   <script src="online-reactions.js?v=20261004"></script>
   <script src="roles.js?v=20261006-normal-reactions"></script>
   <script>
@@ -1626,7 +1626,8 @@
     }
 
     function resolvePendingRoleChanges() {
-      const changes = state.night.pendingRoleChanges || [];
+      const order = state.night.queue || state.night.round1Players || [];
+      const changes = (state.night.pendingRoleChanges || []).slice().sort((a,b) => order.findIndex(p=>p.id===a.actorId) - order.findIndex(p=>p.id===b.actorId));
       state.night.pendingRoleChanges = [];
       for (const change of changes) {
         if (state.night.blockedIds?.includes(change.actorId)) continue;
@@ -2388,7 +2389,7 @@
     function buildNightActionQueue() {
       // Every living player gets exactly one Round 1 pass, regardless of role.
       // The configured Night Order is the sole source of turn order.
-      return getConfiguredNightOrder(playersAlive());
+      return getConfiguredNightOrder(playersAlive().filter(p => !isJudge(p)));
     }
 
     function buildNightReactionQueue() {
@@ -2396,7 +2397,7 @@
       // other role stay in their normal position; no role priority is applied.
       const players = state.night.round1Players ? state.night.round1Players : playersAlive();
       if (state.narratorMode) return narratorReactionQueue(players);
-      return getConfiguredNightOrder(players);
+      return getConfiguredNightOrder(players.filter(p => !isJudge(p)));
     }
 
     function startNight() {
@@ -2938,6 +2939,7 @@
       }
 
       const actor = queue[night.index];
+      if (isJudge(actor)) { advanceNightActor(); return; }
       if (state.narratorMode && (!actor.alive || actor.removed || narratorSkipEmptyTurn(actor))) {
         advanceNightActor(); return;
       }
@@ -3005,7 +3007,7 @@
           if (!target || !target.alive) { state.night.roleChangeActorId=null; state.night.roleChangeTargetId=null; $('nightPrompt').textContent='The selected player is no longer available.'; area.appendChild(actionButton('Acknowledge & continue','roleChangeMissing',()=>completeNightTurn())); return; }
           $('nightPrompt').innerHTML = `Choose <strong>${escapeHtml(target.name)}</strong>'s new permanent role.`;
           area.innerHTML='';
-          sortedRoles(state.roles.filter(candidate=>candidate.id!==target.roleId)).forEach(candidate=>area.appendChild(actionButton(`${candidate.title} — ${labelOrientation(candidate.orientation)}`,candidate.id,()=>{
+          sortedRoles(state.roles.filter(candidate=>candidate.id!==target.roleId && (!roleHasSpecialId(candidate, 'judge') || !playersAlive().some(isJudge)))).forEach(candidate=>area.appendChild(actionButton(`${candidate.title} — ${labelOrientation(candidate.orientation)}`,candidate.id,()=>{
             if(state.night.busy)return; setNightBusy(true);
             queueNightRoleChange(actor,target,candidate.id);
             state.night.roleChangeActorId=null; state.night.roleChangeTargetId=null;
@@ -4172,7 +4174,7 @@
           } else if (dynamicAction === 'changeRole') {
             if (night.roleChangeActorId === player.id && night.roleChangeTargetId != null) {
               const target=playerOf(night.roleChangeTargetId);
-              payload.turn={type:'nightRound1',action:'changeRoleChoice',prompt:target?`Choose ${target.name}'s new permanent role.`:'The target is no longer available.',options:target?sortedRoles(state.roles.filter(x=>x.id!==target.roleId)).map(x=>({id:x.id,name:`${x.title} — ${labelOrientation(x.orientation)}`})):[{id:'ack',name:'Done'}]};
+              payload.turn={type:'nightRound1',action:'changeRoleChoice',prompt:target?`Choose ${target.name}'s new permanent role.`:'The target is no longer available.',options:target?sortedRoles(state.roles.filter(x=>x.id!==target.roleId && (!roleHasSpecialId(x, 'judge') || !playersAlive().some(isJudge)))).map(x=>({id:x.id,name:`${x.title} — ${labelOrientation(x.orientation)}`})):[{id:'ack',name:'Done'}]};
             } else {
               payload.turn={type:'nightRound1',action:'changeRole',prompt:customNightPrompt||'Choose a living player, or choose not to use this ability tonight. You will then choose their new permanent role.',options:validAbilityTargets(player,r).map(t=>({id:t.id,name:t.name})).concat([{id:'skip',name:'Do not use this ability'}])};
             }
@@ -4777,7 +4779,7 @@
       if (actionType === 'changeRoleChoice' && nightAction === 'changeRole') {
         if (n.roleChangeActorId !== actor.id || n.roleChangeTargetId == null) {ackOnlineCommand(commandUid,commandId,false,'That role-change step is no longer active.');await publishOnlineRoom();return;}
         const target=playerOf(n.roleChangeTargetId),candidate=state.roles.find(r=>r.id===String(value));
-        if(!target||!target.alive||!canAbilityTarget(target)||!candidate){ackOnlineCommand(commandUid,commandId,false,'That target or role is no longer available.');await publishOnlineRoom();return;}
+        if(!target||!target.alive||!canAbilityTarget(target)||!candidate||(roleHasSpecialId(candidate,'judge') && playersAlive().some(isJudge))){ackOnlineCommand(commandUid,commandId,false,'That target or role is no longer available.');await publishOnlineRoom();return;}
         markNightAbilityUsed(actor,role); recordNightAction(actor,'changeRole',target.id,{newRoleId:candidate.id});
         n.roleChangeActorId=null;n.roleChangeTargetId=null;n.round1Actions[actor.id]={action:'changeRole',targetId:target.id,newRoleId:candidate.id};n.round1Submitted[actor.id]=true;
         ackOnlineCommand(commandUid,commandId,true,`${target.name}'s role change to ${candidate.title} was submitted.`);setPrivateResult(actor.id,`${target.name}'s permanent role change to ${candidate.title} is submitted and will apply before night reactions if you are not blocked.`);await publishOnlineRoom();await maybeFinishOnlineRound1();return;
@@ -4917,7 +4919,7 @@
 
     async function resolveOnlineRound1Intents() {
       const n=state.night;
-      const players=(n.round1Players||[]).slice().sort((a,b)=>a.id-b.id);
+      const players=(n.queue||n.round1Players||[]).filter(p=>!isJudge(p));
       n.protectedIds=[]; n.blockedIds=[];
       const actions=n.round1Actions||{};
       for (const [id, intent] of Object.entries(actions)) {
@@ -5195,8 +5197,8 @@
       bumpOnlineVersion(); const nightPlayers=playersAlive().slice(); const round1SeerTargets={}; const gamblerActions={};
       
       nightPlayers.forEach(p=>{const role=roleOf(p), active=roleActiveNightAction(role);p.framedRoleId=null; if(roleHasSpecialId(role,'policeman')) ensurePolicemanIntel(p); if(active==='gambler') gamblerActions[p.id]=scheduledGamblerAbility(p); if((gamblerActions[p.id]||active)==='seer'){const choices=nightPlayers.filter(t=>t.id!==p.id && canAbilityTarget(t));round1SeerTargets[p.id]=scheduledSeerTarget(p, choices);}});
-      const queue = getConfiguredNightOrder(nightPlayers);
-      state.night={round:1,queue,index:0,busy:false,usedTeamKillRoleIds:[],pendingAttacks:[],reactionQueue:[],reactionCompleted:[],reactionFollowups:{},round1Players:nightPlayers,round1Submitted:{},round1SeerTargets,round1InspectTargets:{},framerTargetId:null,framerRoleChooserId:null,roleChangeActorId:null,roleChangeTargetId:null,haterTargets:{},protectedIds:[],blockedIds:[],trackTargets:{},watchTargets:{},actionRecords:{},round1Actions:{},gamblerActions,onlineAckNeeded:false,onlineResults:{},onlineSeerTargetId:null};
+      const queue = getConfiguredNightOrder(nightPlayers.filter(p=>!isJudge(p)));
+      state.night={round:1,queue,index:0,busy:false,usedTeamKillRoleIds:[],pendingAttacks:[],reactionQueue:[],reactionCompleted:[],reactionFollowups:{},round1Players:queue.slice(),round1Submitted:{},round1SeerTargets,round1InspectTargets:{},framerTargetId:null,framerRoleChooserId:null,roleChangeActorId:null,roleChangeTargetId:null,haterTargets:{},protectedIds:[],blockedIds:[],trackTargets:{},watchTargets:{},actionRecords:{},round1Actions:{},gamblerActions,onlineAckNeeded:false,onlineResults:{},onlineSeerTargetId:null};
       initializeExtraNight();
       await publishOnlineRoom();
     }
@@ -5228,7 +5230,7 @@
       state.night.round=2;
       bumpOnlineVersion();
       const base = state.night.round1Players ? state.night.round1Players : playersAlive();
-      state.night.reactionQueue = getConfiguredNightOrder(base);
+      state.night.reactionQueue = getConfiguredNightOrder(base.filter(p=>!isJudge(p)));
       state.night.index=0;state.night.onlineAckNeeded=false;state.night.onlineResults={}; await publishOnlineRoom();
     }
 
