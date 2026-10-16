@@ -6,7 +6,7 @@ const DEFAULT_ROLES = [
   },
   {
     id: 'celebrity', title: 'Celebrity', orientation: 'good',
-    description: 'The town loves you! Everybody knows you're the Celebrity.',
+    description: 'The town loves you! Everybody knows you\'re the Celebrity.',
     visibility: 'everybody', nightAction: 'none'
   },
   {
@@ -91,7 +91,7 @@ const DEFAULT_ROLES = [
   },
   {
     id: 'statistician', title: 'Statistician', orientation: 'good',
-    description: 'Compare two players to see if they're on different teams.',
+    description: 'Compare two players to see if they\'re on different teams.',
     visibility: 'nobody', nightAction: 'compare'
   },
   {
