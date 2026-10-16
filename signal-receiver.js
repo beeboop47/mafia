@@ -330,10 +330,16 @@ function signalHintPool(receiver) {
 }
 
 function chooseSignalHint(receiver) {
+  const configured = receiver.hostSetup?.signalSchedule?.[state.round];
+  const configuredFamily = SIGNAL_HINT_FAMILIES.includes(configured?.family) ? configured.family : null;
+  if (typeof configured?.message === 'string' && configured.message.trim()) {
+    return {family: configuredFamily || 'personal', message: configured.message};
+  }
   const pool = signalHintPool(receiver);
+  const availableFamilies = configuredFamily && pool[configuredFamily].length ? [configuredFamily] : SIGNAL_HINT_FAMILIES;
   const history = receiver.signalHintHistory || [];
-  let families = SIGNAL_HINT_FAMILIES.map(family => ({family, hints: pool[family].filter(h => !history.includes(h.message))})).filter(f => f.hints.length);
-  if (!families.length) families = SIGNAL_HINT_FAMILIES.map(family => ({family, hints: pool[family]})).filter(f => f.hints.length);
+  let families = availableFamilies.map(family => ({family, hints: pool[family].filter(h => !history.includes(h.message))})).filter(f => f.hints.length);
+  if (!families.length) families = availableFamilies.map(family => ({family, hints: pool[family]})).filter(f => f.hints.length);
   if (!families.length) return {family:'statistics', message:'No other round information is available.'};
   const selected = randomChoice(families);
   // Exact identities and attackers have fewer tickets within their family.

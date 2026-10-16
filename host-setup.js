@@ -54,12 +54,16 @@ function renderHostSetup() {
     const details = document.createElement('details'); details.className = 'advanced-panel';
     const summary = document.createElement('summary'); summary.textContent = player.name; details.appendChild(summary);
     const body = document.createElement('div'); body.className = 'advanced-body'; details.appendChild(body);
+    const role = state.mode === 'manual' ? roleOf(player) : null;
+    const action = role ? roleActiveNightAction(role) : null;
     for (const [key, title] of [['policemanTarget', 'Policeman intelligence target'], ['haterTarget', 'Hater target']]) {
+      if (key === 'policemanTarget' && !roleHasSpecialId(role, 'policeman')) continue;
       const label = document.createElement('label'); label.textContent = title;
       label.appendChild(playerPicker(player, config[key], value => { if (value === undefined) delete config[key]; else config[key] = value; }));
       body.appendChild(label);
     }
-    for (const [key, title] of [['seerSchedule', 'Seer targets by night'], ['gamblerSchedule', 'Gambler abilities by night']]) {
+    for (const [key, title, requiredAction] of [['seerSchedule', 'Seer targets by night', 'seer'], ['gamblerSchedule', 'Gambler abilities by night', 'gambler'], ['signalSchedule', 'Signal Receiver hints by night', 'signalReceiver']]) {
+      if (action !== requiredAction) continue;
       const heading = document.createElement('h4'); heading.textContent = title; body.appendChild(heading);
       const rows = document.createElement('div'); body.appendChild(rows);
       const schedule = config[key] ||= {};
@@ -69,7 +73,19 @@ function renderHostSetup() {
         const update = value => { if (value === undefined) delete schedule[night]; else schedule[night] = value; };
         let select;
         if (key === 'seerSchedule') select = playerPicker(player, schedule[night], update);
-        else {
+        else if (key === 'signalSchedule') {
+          const setting = schedule[night] || {};
+          select = document.createElement('select'); option(select, '', 'Random hint category');
+          SIGNAL_HINT_FAMILIES.forEach(family => option(select, family, family.replace(/([A-Z])/g, ' $1').replace(/^./, c => c.toUpperCase())));
+          select.value = setting.family || '';
+          const resultLabel = document.createElement('label'); resultLabel.textContent = 'Exact message (optional; may be false)';
+          const result = document.createElement('textarea'); result.value = setting.message || '';
+          result.placeholder = 'Leave blank for a truthful generated hint. If the category has no available hints, a random category is used.';
+          const save = () => update(select.value || result.value.trim() ? {family:select.value, message:result.value} : undefined);
+          select.addEventListener('change', save); result.addEventListener('input', save);
+          resultLabel.appendChild(result); row.appendChild(resultLabel);
+          select.resetResult = () => { result.value = ''; };
+        } else {
           select = document.createElement('select'); option(select, '', 'Random');
           gamblerAbilityPool().forEach(action => option(select, action, NIGHT_ACTIONS[action]?.label || action));
           select.value = schedule[night] || '';
@@ -77,7 +93,7 @@ function renderHostSetup() {
         }
         label.appendChild(select); row.appendChild(label);
         const clear = document.createElement('button'); clear.type = 'button'; clear.className = 'ghost'; clear.textContent = 'Reset to random';
-        clear.onclick = () => { delete schedule[night]; select.value = ''; }; row.appendChild(clear); rows.appendChild(row);
+        clear.onclick = () => { delete schedule[night]; select.value = ''; select.resetResult?.(); }; row.appendChild(clear); rows.appendChild(row);
       }
       let lastNight = Math.max(1, ...Object.keys(schedule).map(Number).filter(n => Number.isInteger(n) && n > 0 && n <= 1000));
       for (let night = 1; night <= lastNight; night++) addRow(night);

@@ -1411,8 +1411,8 @@
   <script src="reactions.js"></script>
   <script src="abilities.js?v=20261006-normal-reactions"></script>
   <script src="judge.js?v=20261016"></script>
-  <script src="signal-receiver.js?v=20261006-normal-order"></script>
-  <script src="host-setup.js?v=20261005-judge"></script>
+  <script src="signal-receiver.js?v=20261016-host-hints"></script>
+  <script src="host-setup.js?v=20261016-host-hints"></script>
   <script src="narrator.js?v=20261016-judge-turns"></script>
   <script src="online-reactions.js?v=20261004"></script>
   <script src="roles.js?v=20261006-normal-reactions"></script>
@@ -1861,7 +1861,7 @@
         const none = document.createElement('option'); none.value = ''; none.textContent = 'None'; select.appendChild(none);
         appendGroupedRoles(select, manualRoles);
         select.value = player.roleId || '';
-        select.addEventListener('change', e => player.roleId = e.target.value);
+        select.addEventListener('change', e => { player.roleId = e.target.value; renderHostSetup(); });
         row.appendChild(select);
 
         const remove = document.createElement('button');
