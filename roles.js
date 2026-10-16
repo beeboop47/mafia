@@ -5,6 +5,11 @@ const DEFAULT_ROLES = [
     visibility: 'nobody', nightAction: 'protect', nightReaction: 'none'
   },
   {
+    id: 'celebrity', title: 'Celebrity', orientation: 'good',
+    description: 'The town loves you! Everybody knows you're the Celebrity.',
+    visibility: 'everybody', nightAction: 'none'
+  },
+  {
     id: 'citizen', title: 'Citizen', orientation: 'good',
     description: 'You are a Citizen. Figure out which of you are the Mafia and help the good side eliminate every evil player.',
     visibility: 'nobody', nightAction: 'none'
@@ -85,9 +90,14 @@ const DEFAULT_ROLES = [
     visibility: 'nobody', nightAction: 'signalReceiver'
   },
   {
+    id: 'statistician', title: 'Statistician', orientation: 'good',
+    description: 'Compare two players to see if they're on different teams.',
+    visibility: 'nobody', nightAction: 'compare'
+  },
+  {
     id: 'traitor', title: 'Traitor', orientation: 'good',
     description: 'If the Mafia target you, you join the Mafia instead of dying. Your orientation becomes evil from that point onward.',
-    visibility: 'evil', nightAction: 'none', nightReaction: 'traitor'
+    visibility: 'nobody', nightAction: 'none', nightReaction: 'traitor'
   },
   {
     id: 'framer', title: 'Framer', orientation: 'neutral',
