@@ -11,7 +11,7 @@ function initializeSignalNight() {
   n.signalStart = Object.fromEntries(state.players.filter(p => !p.removed).map(p => {
     const role = roleOf(p);
     return [p.id, {alive: !!p.alive, roleId: role?.id, roleTitle: role?.title,
-      orientation: role?.orientation, ability: nightActionFor(p), reaction: roleNightReaction(role)}];
+      orientation: role?.orientation, ability: nightActionFor(p), reaction: roleNightReaction(role),lastDeathRound:p.lastDeathRound??p.deadSinceRound??null}];
   }));
   n.signalSubmitted = {};
   n.signalAttacks = [];
@@ -28,14 +28,20 @@ function recordSignalAttack(attack) {
   if (attack.signalAttackId == null) attack.signalAttackId = (n.signalAttackSequence = (n.signalAttackSequence || 0) + 1);
   let record = n.signalAttacks.find(a => a.id === attack.signalAttackId);
   if (!record) {
+    const actor=playerOf(attack.attackerId),role=roleOf(actor);
     record = {id: attack.signalAttackId, actorId: attack.attackerId,
       originalTargetId: attack.redirectedFrom ?? attack.targetId, targetId: attack.targetId,
-      action: attack.sourceAction};
+      action: attack.sourceAction, actorOrientation:role?.orientation,
+      actorRole:role?{id:role.id,title:role.title,orientation:role.orientation}:null, actorAlive:!!actor?.alive,
+      actorReaction:nightReactionFor(actor),targetRoles:{}};
     n.signalAttacks.push(record);
   }
   record.targetId = attack.targetId;
+  record.targetRoles ||= {};
+  const targetRole=roleOf(playerOf(attack.targetId));
+  if(targetRole&&!record.targetRoles[attack.targetId])record.targetRoles[attack.targetId]={id:targetRole.id,title:targetRole.title,orientation:targetRole.orientation};
   record.redirected = record.originalTargetId !== attack.targetId;
-  if (n.protectedIds?.includes(attack.targetId)) record.protected = true;
+  if (!attack.piercing && n.protectedIds?.includes(attack.targetId)) record.protected = true;
 }
 
 function recordSignalChange(player, field, before, after) {
@@ -288,6 +294,7 @@ function signalHintPool(receiver) {
     }
   }
   const deceptionTargets = new Set([
+    ...Object.keys(n.reactionReportMasks||{}).map(Number),...(n.scrambledWitnesses||[]),
     ...(n.hiddenAllegiance || []), ...(n.hiddenActivity || []), ...(n.fakeActivity || []),
     ...(n.reversedComparison || []), ...Object.keys(n.fakeVisits || {}).map(Number),
     ...all.filter(p => p.framedRoleId).map(p => p.id)

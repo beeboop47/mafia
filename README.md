@@ -1,5 +1,11 @@
 A website to play Mafia pass-and-play with friends.
 
+## Ability and reaction expansion
+
+The role editor includes 42 additional abilities and 31 additional reactions. All six reaction categories have six choices each (36 reactions total), including Investigative and Deceitful. See [Expansion Guide](Expansion%20Guide.md) for effects, limits, timing, private replies, bargains, and visible tokens. These choices work in offline, narrated and online games.
+
+Private results are delivered during existing night turns, with no private dawn-results phase or changes to player order. Order-dependent reactions have been replaced: the six Deceitful reactions apply before anyone acts on the following night; Investigative reactions reveal fixed historical facts immediately. Break Their Reaction replaces Last Shot; Shatter Defences also applies next night. See the guide for the full replacement list, including former dawn-only abilities.
+
 ## Signal Receiver and Judge
 
 **Signal Receiver (Good)** has the selectable passive ability **Receive a truthful hint**. One private signal arrives during night reactions on the Receiver's turn in the normal configured reaction order. Its 20 hint families cover allegiance counts, individual allegiances, roles, current abilities/reactions, activity, visits, targets, attacks, survival/protection, blocking, deception, transformations, deaths/revivals, comparisons, groups, living roster neighbours, round statistics, connections between actions, private communications and personal clues. Hints are a snapshot as of that turn: later deaths, revivals or other reactions may change the situation. Death-prediction results are excluded because dawn has not happened yet. Hints are a snapshot as of that turn: later deaths, revivals or other reactions may change the situation. Death-prediction results are excluded because dawn has not happened yet. Hints use true roles and actual recorded events; framing, hidden allegiance/activity, fake visits/activity and reversed comparisons cannot tamper with them. Passive abilities do not count as visits. Use and success are distinguished, times are explicit, exact reveals are less common, and recent exact repeats are avoided. Notes' text is not revealed. The ability also works on custom roles and through Gambler, copying or ability changes.

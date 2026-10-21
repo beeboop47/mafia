@@ -1408,13 +1408,13 @@
     </dialog>
   </div>
 
-  <script src="reactions.js"></script>
-  <script src="abilities.js?v=20261006-normal-reactions"></script>
+  <script src="reactions.js?v=20261021-existing-turns"></script>
+  <script src="abilities.js?v=20261021-existing-turns"></script>
   <script src="judge.js?v=20261016"></script>
-  <script src="signal-receiver.js?v=20261016-host-hints"></script>
-  <script src="host-setup.js?v=20261016-role-controls"></script>
-  <script src="narrator.js?v=20261016-judge-turns"></script>
-  <script src="online-reactions.js?v=20261004"></script>
+  <script src="signal-receiver.js?v=20261021-existing-turns"></script>
+  <script src="host-setup.js?v=20261021-hater-target"></script>
+  <script src="narrator.js?v=20261021-existing-turns"></script>
+  <script src="online-reactions.js?v=20261021-expansion"></script>
   <script src="roles.js?v=20261006-normal-reactions"></script>
   <script>
     // ---- State ---------------------------------------------------------------
@@ -1504,14 +1504,16 @@
       if (!alive && !judgeVerdict && isJudge(player)) return;
       if(!alive && player.alive && state.phase==='night' && survivePassiveAttack(player))return;
       if (state.phase === 'night' && player.alive !== !!alive) {
-        (state.night.signalLifeEvents ||= []).push({playerId:player.id, alive:!!alive});
+        if(!alive){player.lastDeathAbility=nightActionFor(player);player.lastDeathRound=state.round;}
+        (state.night.signalLifeEvents ||= []).push({playerId:player.id, alive:!!alive,orientation:roleOf(player)?.orientation});
       }
       player.alive = !!alive;
+      player.spectatorRolesUnlocked = false;
       player.deadSinceRound = player.alive ? null : (player.deadSinceRound ?? state.round);
     }
 
     function canSeeDeadSpectatorRoles(player) {
-      return !!player && !player.removed && !player.alive && !player.fakeDeathReturnRound && Number.isFinite(Number(player.deadSinceRound)) && Number(player.deadSinceRound) < Number(state.round);
+      return !!player && !player.removed && !player.alive && !player.fakeDeathReturnRound && player.spectatorRolesUnlocked === true;
     }
 
     function effectiveRoleOf(player) {
@@ -1523,7 +1525,7 @@
     }
 
     function investigationSubject(player) { return player; }
-    function investigationRoleOf(player) { return effectiveRoleOf(investigationSubject(player)); }
+    function investigationRoleOf(player, viewer=null) { return proposedInvestigationRole(player, viewer?.id ?? viewer); }
 
     function normalizedRoleOptions(role) {
       return {
@@ -1593,16 +1595,18 @@
       if (roleHasSpecialId(nextRole, 'judge') && playersAlive().some(p => p.id !== target.id && isJudge(p))) return false;
       if (changesPrevented(target)) return false;
       const oldRole = roleOf(target);
+      const guardedReaction=state.phase==='night' && state.night?.reactionGuard?.includes(target.id) ? nightReactionFor(target) : null;
       recordSignalChange(target, 'role', oldRole?.id, nextRole.id);
       recordSignalChange(target, 'orientation', oldRole?.orientation, nextRole.orientation);
       recordSignalChange(target, 'ability', nightActionFor(target), roleActiveNightAction(nextRole));
-      recordSignalChange(target, 'reaction', roleNightReaction(oldRole), roleNightReaction(nextRole));
+      if(guardedReaction===null)recordSignalChange(target, 'reaction', roleNightReaction(oldRole), roleNightReaction(nextRole));
       if (state.phase === 'night' && state.night && oldRole?.id !== nextRole.id) {
         state.night.roleChangeNotices = state.night.roleChangeNotices || {};
         state.night.roleChangeNotices[target.id] = `Your role was changed tonight. You are now ${nextRole.title} (${labelOrientation(nextRole.orientation)}). ${nextRole.description || ''} Night ability: ${NIGHT_ACTIONS[roleActiveNightAction(nextRole)]?.label || 'None'}. Night reaction: ${NIGHT_REACTIONS[roleNightReaction(nextRole)]?.label || 'None'}.`;
       }
       target.roleId = nextRole.id;
       target.roleOverrides = {};
+      if(guardedReaction!==null)target.roleOverrides.nightReaction=guardedReaction;
       target.framedRoleId = null;
       target.haterTargetId = null;
       target.policemanIntel = null;
@@ -1646,6 +1650,8 @@
     function nightReactionFor(player) {
       if (!player) return 'none';
       if (state.phase==='night' && state.night?.reactionBlocked?.includes(player.id)) return 'none';
+      if (state.phase==='night' && player.disabledReactionRound===state.round && !state.night?.reactionGuard?.includes(player.id)) return 'none';
+      if (state.phase==='night' && player.borrowedReaction?.round===state.round) return player.borrowedReaction.action;
       return roleNightReaction(roleOf(player));
     }
 
@@ -1667,7 +1673,7 @@
       return Object.keys(NIGHT_ACTIONS).filter(action => !['none', 'gambler', 'janitor', ...NIGHT_REACTION_ACTIONS].includes(action));
     }
     function hasReactionRoundInfo(action) {
-      return ['compare', 'exclude', 'audit', 'hater', 'inspectOrientation', 'seer', 'doctor', 'janitor', 'track', 'watch', 'signalReceiver'].includes(action);
+      return ['compare', 'exclude', 'audit', 'hater', 'inspectOrientation', 'seer', 'doctor', 'janitor', 'track', 'watch', 'signalReceiver','inspectReaction','traceAllegiance','checkProtection','findInterference','compareVisitors','examineRemains','predictDeath'].includes(action);
     }
     function playerOf(id) {return state.players.find(p => p.id === Number(id));}
     function labelOrientation(value) {return value ? value[0].toUpperCase() + value.slice(1) : '';}
@@ -2001,22 +2007,31 @@
     function recordNightAction(actor, action, targetId = null, extra = {}) {
       const n = state.night;
       n.actionRecords = n.actionRecords || {};
-      if (NIGHT_REACTION_ACTIONS.has(action) || action === 'traitorReaction' || isPassiveAbility(action)) return;
+      if (NIGHT_REACTION_ACTIONS.has(action)) { if(actor)markReactionSuccess(actor); return; }
+      if (action === 'traitorReaction') {if(actor)markReactionSuccess(actor);return;}
+      if (isPassiveAbility(action)) return;
       if (!actor) return;
       n.actionRecords[actor.id] = {actorId: actor.id, action, targetId: targetId == null ? null : Number(targetId), ...extra};
       (n.signalSubmitted ||= {})[actor.id] = {...n.actionRecords[actor.id]};
     }
 
     function trackReport(target, viewer) {
+      if(state.night.jammed?.includes(viewer?.id))return 'Your investigation result was jammed.';
       if (!target || !canAbilityTarget(target)) return 'No valid target remained.';
       const subject=investigationSubject(target);
-      const record = state.night.actionRecords?.[subject.id];
-      if (state.night.hiddenActivity?.includes(subject.id)) return `${target.name} made no recorded night ability use.`;
-      if (state.night.fakeVisits?.[subject.id] != null) {
+      let record = state.night.actionRecords?.[subject.id];
+      const secure=state.night.infoSecure?.includes(viewer?.id);
+      if (!secure && state.night.hiddenActivity?.includes(subject.id)) return `${target.name} made no recorded night ability use.`;
+      if (!secure && state.night.fakeVisits?.[subject.id] != null) {
         const fake=playerOf(state.night.fakeVisits[subject.id]);
         return `${target.name} visited ${fake?.id===viewer?.id?'you':fake?.name||'an unknown player'} and used an unidentified ability.`;
       }
       if (!record || record.action === 'none' || isPassiveAbility(record.action) || state.night.blockedIds?.includes(subject.id)) return `${target.name} made no recorded night ability use.`;
+      if(!secure && state.night.concealedVisits?.some(v=>v.actorId===subject.id)){
+        const ids=proposedDestinations(record).filter(id=>!state.night.concealedVisits.some(v=>v.actorId===subject.id&&v.targetId===id));
+        if(!ids.length)return `${target.name} made no recorded night ability use.`;
+        record={...record,targetId:ids[0],targetIds:ids};
+      }
       const ability = NIGHT_ACTIONS[record.action]?.label || record.action;
       if(record.targetIds?.length>1){
         const names=record.targetIds.map(playerOf).filter(Boolean).map(p=>p.id===viewer?.id?'you':p.name);
@@ -2071,22 +2086,24 @@
           continue;
         }
         if (choice.action === 'compare') {
-          let same = investigationRoleOf(first)?.orientation === investigationRoleOf(second)?.orientation;
-          if (!!n.reversedComparison?.includes(first.id) !== !!n.reversedComparison?.includes(second.id)) same=!same;
+          let same = investigationRoleOf(first,Number(actorId))?.orientation === investigationRoleOf(second,Number(actorId))?.orientation;
+          if (!n.infoSecure?.includes(Number(actorId)) && (!!n.reversedComparison?.includes(first.id) !== !!n.reversedComparison?.includes(second.id))) same=!same;
           n.limitedResults[actorId] = `${first.name} and ${second.name} ${same ? 'share the same allegiance' : 'have different allegiances'}.`;
         } else if (choice.action === 'exclude') {
-          const excluded = randomChoice(['good','evil','neutral'].filter(o => o !== investigationRoleOf(first)?.orientation));
+          const excluded = randomChoice(['good','evil','neutral'].filter(o => o !== investigationRoleOf(first,Number(actorId))?.orientation));
           n.limitedResults[actorId] = `${first.name} is not ${labelOrientation(excluded)}.`;
         } else {
           const subject=investigationSubject(first);
           const record = n.actionRecords?.[subject.id];
-          const active=!n.hiddenActivity?.includes(subject.id) && (n.fakeActivity?.includes(subject.id) || (record && record.action!=='none' && !isPassiveAbility(record.action) && !n.blockedIds?.includes(subject.id)));
+          const secure=n.infoSecure?.includes(Number(actorId));
+          const active=(secure||!n.hiddenActivity?.includes(subject.id)) && ((!secure&&n.fakeActivity?.includes(subject.id)) || (record && record.action!=='none' && !isPassiveAbility(record.action) && !n.blockedIds?.includes(subject.id)));
           n.limitedResults[actorId] = `${first.name} ${active ? 'used a night ability' : 'made no recorded night ability use'}.`;
         }
       }
     }
 
     function limitedInvestigationResult(actor) {
+      if(state.night.jammed?.includes(actor.id))return 'Your investigation result was jammed.';
       return state.night.limitedResults?.[actor.id] || 'You did not complete an investigation tonight.';
     }
 
@@ -2114,6 +2131,8 @@
       state.round = Number.isInteger(parsed.round) ? parsed.round : 1;
       state.day = parsed.day || {secondBallot:false,votes:{},tiedCandidates:[]};
       state.night = parsed.night || {};
+      if(typeof restoreReactionTimingState==='function')restoreReactionTimingState();
+      state.visibleTokens = Array.isArray(parsed.visibleTokens) ? parsed.visibleTokens : [];
       state.logs = Array.isArray(parsed.logs) ? parsed.logs.filter(entry => entry?.visibility === 'public') : [];
       state.onlineVersion = Number.isInteger(parsed.onlineVersion) ? parsed.onlineVersion : 0;
       state.processedCommandIds = {};
@@ -2135,6 +2154,7 @@
         roles: state.roles, players: state.players, mode: state.mode, phase: state.phase,
         handoffIndex: state.handoffIndex, handoffRevealed: state.handoffRevealed, round: state.round,
         day: state.day, night: state.night, logs: publicGameLogs().slice(0, 250),
+        visibleTokens: state.visibleTokens || [],
         onlineVersion: state.onlineVersion, onlineCommandAcks: state.onlineCommandAcks,
         autoSideWinChecks: state.autoSideWinChecks !== false,
         requireEvil: !!state.requireEvil,
@@ -2208,6 +2228,8 @@
       state.players.forEach(p => {setPlayerAlive(p, true); p.removed=false; p.used = {}; p.escaped = false; p.eliminatedByVote = false; p.framedRoleId = null; p.haterTargetId = null; p.policemanIntel = null; p.silenced = false;delete p.roleOverrides;delete p.copiedAbility;p.dawnMessages=[];p.pendingLetters=[];});
       state.players.forEach(p=>{delete p.fakeDeathReturnRound;delete p.pendingInheritance;delete p.inheritanceNotice;delete p.signalHintHistory;});
       delete state.judgeAnnouncedId;
+      delete state.visibleTokens;
+      for(const player of state.players)for(const key of ['originalIdentity','temporaryOrientation','borrowedReaction','reserveShieldRound','disabledAbilityRound','disabledReactionRound','delayedAttacks','firstContactUsed','lastDeathAbility','lastDeathRound','pendingExposure','shatteredDefencesRound','pendingReactionDeceptions'])delete player[key];
       state.players.filter(p => roleHasSpecialId(roleOf(p), 'policeman')).forEach(ensurePolicemanIntel);
     }
 
@@ -2235,7 +2257,6 @@
       $('handoffNextBtn').textContent = state.handoffIndex === state.players.length - 1 ? 'Start day' : 'Hide & pass';
     }
     function startDay() {
-      showLocalDawnMessages();
       if (state.narratorMode && state.night?.narratorDawnAnnouncement) {
         $('narratorDawnAnnouncement').textContent=state.night.narratorDawnAnnouncement;
         show('narratorDawnAnnouncement');
@@ -2267,10 +2288,10 @@
         const box = document.createElement('div'); box.className = 'target-card';
         if (voter.silenced) {
           state.day.votes[voter.id] = 'silenced';
-          box.innerHTML = `<strong>${escapeHtml(voter.name)}</strong><div class="muted tiny" style="margin-top:5px">Silenced — cannot vote today.</div>`;
+          box.innerHTML = `<strong>${escapeHtml(voter.name)}</strong>${(state.visibleTokens||[]).some(t=>t.holderId===voter.id)?' <span class="pill">Token holder</span>':''}<div class="muted tiny" style="margin-top:5px">Silenced — cannot vote today.</div>`;
           area.appendChild(box); return;
         }
-        box.innerHTML = `<strong>${escapeHtml(voter.name)}</strong><div class="muted tiny" style="margin-top:5px">Vote:</div>`;
+        box.innerHTML = `<strong>${escapeHtml(voter.name)}</strong>${(state.visibleTokens||[]).some(t=>t.holderId===voter.id)?' <span class="pill">Token holder</span>':''}<div class="muted tiny" style="margin-top:5px">Vote:</div>`;
         const select = document.createElement('select'); select.style.marginTop = '6px';
         select.appendChild(new Option('Choose player', ''));
         candidates.filter(id => id !== voter.id).map(playerOf).filter(Boolean).forEach(target => select.appendChild(new Option(target.name, target.id)));
@@ -2403,6 +2424,7 @@
     function startNight() {
       narratorCancelAuto();
       clearDaySilence();
+      state.players.forEach(p => {p.spectatorRolesUnlocked = !p.alive && !p.removed && !p.fakeDeathReturnRound;});
       state.phase = 'night';
       const nightPlayers = playersAlive().slice();
       // Framing lasts for one night only.
@@ -2978,12 +3000,13 @@
       if (night.round === 1) {
         setPhase('Night', state.narratorMode ? 'Narrated night' : 'Night actions — Round 1');
         if (state.narratorMode && night.narratorReporting) {
-          if (narratorDeferredInfo(nightActionFor(actor)) || nightActionFor(actor) === 'signalReceiver') {renderReactionTurn(actor);return;}
+          if (findPendingAttacksFor(actor.id).length || newReactionTurn(actor) || narratorDeferredInfo(nightActionFor(actor)) || nightActionFor(actor) === 'signalReceiver') {renderReactionTurn(actor);return;}
           renderNightKnownRoles(actor);
           showNightResult('Your private night information is shown above.');
           $('nightActionArea').appendChild(actionButton('Acknowledge & continue','genericInfoAcknowledge',()=>completeNightTurn()));
           return;
         }
+        if (renderProposedPlanning(actor)) return;
         if (state.narratorMode && findPendingAttacksFor(actor.id).length) {renderReactionTurn(actor);return;}
         if (state.narratorMode && ['seer','doctor','janitor'].includes(nightActionFor(actor))) {
           (night.narratorInfoShown||={})[actor.id]=true;
@@ -3061,12 +3084,12 @@
           removePendingAttack(attack);
           return;
         }
-        if (state.night.protectedIds?.includes(target.id)) {
+        if ((!attack.piercing && state.night.protectedIds?.includes(target.id)) || proposedAttackStopped(attack)) {
           removePendingAttack(attack);
           addLog(`${target.name} was protected from a night attack.`);
           return;
         }
-        if (!NIGHT_REACTION_ACTIONS.has(nightReactionFor(target)) || (EXTRA_REACTIONS[nightReactionFor(target)] && !newReactionTurn(target))) {
+        if (attack.noReaction || !NIGHT_REACTION_ACTIONS.has(nightReactionFor(target)) || (EXTRA_REACTIONS[nightReactionFor(target)] && !newReactionTurn(target))) {
           removePendingAttack(attack);
           killTarget(target, [], () => {});
           addLog(`${target.name} was killed during the night.`);
@@ -3100,7 +3123,7 @@
     }
 
     function findPendingAttacksFor(targetId) {
-      return state.night.pendingAttacks.filter(a => a.targetId === targetId);
+      return state.night.pendingAttacks.filter(a => a.targetId === targetId).sort((a,b)=>Number(a.attackerId)-Number(b.attackerId)||String(a.sourceAction||'').localeCompare(String(b.sourceAction||'')));
     }
 
     function removePendingAttack(attack) {
@@ -3177,6 +3200,10 @@
 
       // Detective and Seer results are intentionally revealed only in Round 2.
       const infoAction = nightActionFor(actor);
+      if(state.night.jammed?.includes(actor.id)&&NIGHT_ACTIONS[infoAction]?.category==='Investigative'){
+        showNightResult('Your investigation result was jammed.');
+        $('nightActionArea').appendChild(actionButton('Acknowledge & continue','genericInfoAcknowledge',()=>completeNightTurn()));return;
+      }
       if (infoAction === 'signalReceiver') {
         showNightResult(escapeHtml(signalHintFor(actor)));
         $('nightPrompt').textContent = 'Read your private signal, then acknowledge and continue.';
@@ -3205,10 +3232,10 @@
         if (!target || !canAbilityTarget(target)) {
           showNightResult('No valid information target remained.');
         } else if (infoAction === 'inspectOrientation') {
-          const effectiveRole = investigationRoleOf(target);
+          const effectiveRole = investigationRoleOf(target,actor);
           showNightResult(`<strong>Investigation result</strong><br><strong>${escapeHtml(target.name)}</strong> is <strong>${escapeHtml(labelOrientation(effectiveRole?.orientation || 'unknown'))}</strong>.`);
         } else {
-          const effectiveRole = investigationRoleOf(target);
+          const effectiveRole = investigationRoleOf(target,actor);
           showNightResult(`<strong>Seer result</strong><br><strong>${escapeHtml(target.name)}</strong> is <strong>${escapeHtml(effectiveRole?.title || 'Unknown')}</strong>.`);
         }
         $('nightPrompt').textContent = 'Your result is shown above. Acknowledge and continue.';
@@ -3287,6 +3314,11 @@
         return;
       }
 
+      if (!attacks.length && proposedInfoResult(actor)) {
+        showNightResult(escapeHtml(proposedInfoResult(actor)));
+        $('nightPrompt').textContent='Read your private ability result, then acknowledge and continue.';
+        $('nightActionArea').appendChild(actionButton('Acknowledge & continue','genericInfoAcknowledge',()=>completeNightTurn()));return;
+      }
       if (!attacks.length) {
         $('nightPrompt').innerHTML = '<strong>No reaction tonight.</strong> Nothing happened to you during the night.';
         $('nightActionArea').appendChild(actionButton('Acknowledge & continue', 'noReaction', () => {
@@ -3315,6 +3347,7 @@
     }
 
     function showPrivateReaction(target, attack) {
+      if(renderNewReaction(target))return;
       const role = roleOf(target);
       const attacker = playerOf(attack.attackerId);
       const action = nightReactionFor(target);
@@ -3356,6 +3389,7 @@
           if (!state.night.busy) setNightBusy(true);
           removePendingAttack(attack);
           target.escaped = true;
+          if(state.night.exhaustTargets?.includes(target.id))target.disabledReactionRound=state.round+1;
           addLog(`${target.name} escaped the night attack.`);
           completeReactiveTurnOrContinue(target);
         }));
@@ -3376,6 +3410,7 @@
           if (!state.night.busy) setNightBusy(true);
           removePendingAttack(attack);
           addLog(`${target.name} won Rock, Paper, Scissors and survived.`);
+          if(state.night.exhaustTargets?.includes(target.id))target.disabledReactionRound=state.round+1;
           completeReactiveTurnOrContinue(target);
         }));
         $('nightActionArea').appendChild(actionButton('I lost', 'lost', () => {
@@ -3401,13 +3436,16 @@
     }
 
     function renderScapegoatReaction(target, attack) {
-      const adjacent = adjacentLiving(target);
+      const adjacent = attack.redirectedFrom!=null || attack.escortRedirected ? [] : adjacentLiving(target);
       adjacent.filter(p => p.id !== target.id && canAbilityTarget(p)).forEach(victim => {
         $('nightActionArea').appendChild(actionButton(`Redirect to ${victim.name}`, victim.id, () => {
           if (!state.night.busy) setNightBusy(true);
           removePendingAttack(attack);
           target.used.scapegoat = true;
+          if(state.night.exhaustTargets?.includes(target.id))target.disabledReactionRound=state.round+1;
           const redirectedAttack = {
+            ...attack,
+            proposedWardChecked:false,
             attackerId: attack.attackerId,
             targetId: victim.id,
             sourceAction: attack.sourceAction,
@@ -3419,7 +3457,7 @@
           if (state.narratorMode || NIGHT_REACTION_ACTIONS.has(nightReactionFor(victim))) {
             state.night.pendingAttacks.push(redirectedAttack);
             ensureReactionQueued(victim);
-          } else if (state.night.protectedIds?.includes(victim.id)) {
+          } else if ((!redirectedAttack.piercing && state.night.protectedIds?.includes(victim.id)) || proposedAttackStopped(redirectedAttack)) {
             addLog(`${victim.name} was protected from the redirected attack.`);
           } else {
             killTarget(victim, [], () => {});
@@ -4085,7 +4123,7 @@
     }
 
     function onlinePublicSnapshot() {
-      const players = state.players.filter(p=>!p.removed).map(p => ({id: p.id, name: p.name, alive: p.alive, eliminatedByVote: !!p.eliminatedByVote, silenced: !!p.silenced, role: state.phase === 'gameover' ? (roleOf(p) ? {title: roleOf(p).title, orientation: roleOf(p).orientation} : null) : null}));
+      const players = state.players.filter(p=>!p.removed).map(p => ({id: p.id, name: p.name, alive: p.alive, eliminatedByVote: !!p.eliminatedByVote, silenced: !!p.silenced, tokenCount:(state.visibleTokens||[]).filter(t=>t.holderId===p.id).length, role: state.phase === 'gameover' ? (roleOf(p) ? {title: roleOf(p).title, orientation: roleOf(p).orientation} : null) : null}));
       const base = {phase: state.phase, round: state.round, version: state.onlineVersion, players, confrontations:state.night?.onlineConfrontations || [], reactionAnnouncements:state.phase==='day'?state.night?.publicReactions||[]:[], joinable: online.roomStatus==='lobby' || (online.roomStatus==='started' && state.phase==='day' && Object.keys(state.day?.votes||{}).length===0)};
       base.judgePresent = !!dayJudge();
       if (state.phase === 'day') {
@@ -4137,9 +4175,10 @@
       payload.roleChangeNotice = state.phase === 'night' && state.night?.round === 2
         ? state.night.roleChangeNotices?.[player?.id] || null : null;
       payload.extraNotices = state.phase==='night' && state.night?.round===2 ? extraNoticesFor(player) : '';
-      payload.dawnMessages = state.phase==='day' ? player?.dawnMessages||[] : [];
+      payload.dawnMessages = [];
       payload.inheritanceNotice=player?.inheritanceNotice||'';
       if (!r || !player) return payload;
+      if(state.phase==='night' && state.night.bargain?.attackerId===player.id){payload.turn={type:'reaction',action:'bargainDecision',prompt:`Spare ${playerOf(state.night.bargain.targetId)?.name} in exchange for their silence tomorrow?`,options:[{id:'spare',name:'Spare them'},{id:'refuse',name:'Refuse'}]};return payload;}
       const duelTurn=onlineDuelPayload(player);
       if(duelTurn){payload.turn=duelTurn;return payload;}
       if (state.phase === 'day') {
@@ -4161,6 +4200,7 @@
         const night = state.night;
         if (night.round === 1) {
           if (!night.round1Players?.some(p => p.id === player.id)) return payload;
+          const planning=proposedPlanningTurn(player);if(planning&&!night.round1Submitted?.[player.id]){payload.turn=planning;return payload;}
           if (night.round1Submitted?.[player.id]) {
             payload.turn = {type:'ack',prompt:'Your night ability is submitted. Wait for the other players.'};
             return payload;
@@ -4216,6 +4256,9 @@
             return payload;
           }
           const infoAction = dynamicAction;
+          if(player.alive && night.jammed?.includes(player.id)&&NIGHT_ACTIONS[infoAction]?.category==='Investigative'){
+            payload.result='Your investigation result was jammed.';payload.turn={type:'ack',prompt:'Your investigation result was withheld. Acknowledge to continue.'};return payload;
+          }
           if (!player.alive) payload.turn = {type:'ack',prompt:'You were killed during the night. Your Detective/Seer result is withheld.'};
           else if (infoAction === 'signalReceiver') {
             payload.result = signalHintFor(player);
@@ -4227,7 +4270,7 @@
           else if (infoAction === 'inspectOrientation' || infoAction === 'seer') {
             const targetId = infoAction === 'inspectOrientation' ? night.round1InspectTargets?.[player.id] : night.round1SeerTargets?.[player.id];
             const target = playerOf(targetId);
-            const effective = investigationRoleOf(target);
+            const effective = investigationRoleOf(target,player);
             const resultText = target
               ? (infoAction === 'inspectOrientation' ? `Investigation result: ${target.name} is ${labelOrientation(effective?.orientation || 'unknown')}.` : `Seer result: ${target.name} is ${effective?.title || 'Unknown'}.`)
               : 'No valid result remains.';
@@ -4323,7 +4366,7 @@
           const targetName = v === 'skip' ? 'Skip voting' : (pub.players || []).find(x => Number(x.id) === Number(v))?.name;
           voteText = targetName ? `<div class="tiny muted" style="margin-top:4px">Voted: ${escapeHtml(targetName)}</div>` : '';
         }
-        return `<div class="online-player ${p.id === online.seatId ? 'online-turn' : ''} ${p.alive ? '' : 'eliminated'}"><span class="name">${escapeHtml(p.name)}</span><div class="spacer"></div><span class="pill ${p.alive ? 'good' : ''}">${p.alive ? 'Alive' : 'Out'}</span>${p.role ? `<span class="tiny muted">${escapeHtml(p.role.title)} · ${escapeHtml(labelOrientation(p.role.orientation))}</span>` : ''}${voteText}</div>`;
+        return `<div class="online-player ${p.id === online.seatId ? 'online-turn' : ''} ${p.alive ? '' : 'eliminated'}"><span class="name">${escapeHtml(p.name)}</span><div class="spacer"></div>${p.tokenCount?`<span class="pill">Token holder (${p.tokenCount})</span>`:''}<span class="pill ${p.alive ? 'good' : ''}">${p.alive ? 'Alive' : 'Out'}</span>${p.role ? `<span class="tiny muted">${escapeHtml(p.role.title)} · ${escapeHtml(labelOrientation(p.role.orientation))}</span>` : ''}${voteText}</div>`;
       }).join('');
       if (me && !me.alive) $('onlineActionPrompt').textContent = 'You are eliminated. You can still watch the public game.';
     }
@@ -4435,7 +4478,7 @@
       $('onlineActionResult').innerHTML = '';
 
       if (priv && priv.alive === false) {
-        $('onlineRoleBox').innerHTML = '<div class="phase">Eliminated</div><div class="secret">Spectator</div><div class="desc">You are out of the game. Once you have been dead for a full round, the known roles list below will show everyone.</div>';
+        $('onlineRoleBox').innerHTML = '<div class="phase">Eliminated</div><div class="secret">Spectator</div><div class="desc">You are out of the game. Everyone’s roles become visible when the next night begins, after your revival window has closed.</div>';
       } else if (priv?.role) {
         const activeLabel = NIGHT_ACTIONS[priv.role.nightAction]?.label || priv.role.nightAction || 'None';
         const reactionLabel = NIGHT_REACTIONS[priv.role.nightReaction]?.label || priv.role.nightReaction || 'None';
@@ -4498,6 +4541,7 @@
           $('onlineActionPrompt').innerHTML = escapeHtml(turn.prompt || '');
           if(turn.type==='duel')renderOnlineDuel(area,turn);
           if(turn.extraForm)renderExtraForm(area,turn.action,turn.extraForm,value=>sendOnlineAction(turn,value));
+          if(turn.replyForm)renderSealedReplyForm(area,value=>sendOnlineAction(turn,value));
           (turn.options || []).forEach(opt => area.appendChild(actionButton(opt.name, opt.id, () => sendOnlineAction(turn, opt.id))));
           if ((turn.options || []).length === 0 && turn.type === 'ack') area.appendChild(actionButton('Acknowledge & continue', 'ack', () => sendOnlineAction(turn, 'ack')));
         }
@@ -4516,7 +4560,7 @@
           $('onlineActionResult').innerHTML = `<div class="result">${escapeHtml(ack.message || '')}</div>`;
         }
       }
-      if(priv?.dawnMessages?.length) $('onlineActionResult').innerHTML+=`<div class="result" style="white-space:pre-wrap">${escapeHtml(priv.dawnMessages.join('\n'))}</div>`;
+      if(online.public?.phase==='gameover')renderOnlineGameOver(online.public);
     }
 
     function renderOnlineGameOver(pub) {
@@ -4675,6 +4719,10 @@
       }
 
       const n = state.night;
+      if(n.round===2 && cmd.payload.actionType==='bargainDecision'){
+        try{const message=resolveBargain(actor,String(value));ackOnlineCommand(cmd.uid,commandId,true,message);setPrivateResult(actor.id,message);bumpOnlineVersion();}catch(error){ackOnlineCommand(cmd.uid,commandId,false,error.message);}
+        await publishOnlineRoom();return;
+      }
       if(n.round===2 && cmd.payload.actionType==='duel') {
         ensureOnlineDuel();
         await handleOnlineDuelCommand(actor,value,cmd.uid,commandId);
@@ -4694,6 +4742,11 @@
 
     async function handleOnlineNightRound1(actor, value, actionType, commandUid=null, commandId=null) {
       const role = roleOf(actor), n = state.night;
+      if(actionType==='proposedPlan'){
+        try{if(n.round1Submitted?.[actor.id]||!n.round1Players?.some(p=>p.id===actor.id))throw new Error('Your night turn is unavailable.');saveProposedPlan(actor,value);ackOnlineCommand(commandUid,commandId,true,'Plan recorded.');}catch(error){ackOnlineCommand(commandUid,commandId,false,error.message);}
+        bumpOnlineVersion();await publishOnlineRoom();return;
+      }
+      if(proposedPlanningTurn(actor)){ackOnlineCommand(commandUid,commandId,false,'Complete your reaction or token plan first.');await publishOnlineRoom();return;}
       const dynamicAction = nightActionFor(actor);
       const targetStep = ['kill','teamKill','protect','roleblock','silence','track','watch','inspectOrientation','framer'].includes(dynamicAction) && !['framerRoleChoice','changeRoleChoice'].includes(actionType);
       if (targetStep && !['ack','skip'].includes(value) && !canAbilityTarget(playerOf(value))) {
@@ -4920,7 +4973,7 @@
     async function resolveOnlineRound1Intents() {
       const n=state.night;
       const players=(n.queue||n.round1Players||[]).filter(p=>!isJudge(p));
-      n.protectedIds=[]; n.blockedIds=[];
+      n.protectedIds=[]; n.blockedIds=players.filter(p=>p.disabledAbilityRound===state.round).map(p=>p.id);
       const actions=n.round1Actions||{};
       for (const [id, intent] of Object.entries(actions)) {
         if (intent.targetId != null && !canAbilityTarget(playerOf(intent.targetId))) {
@@ -5003,6 +5056,9 @@
       const n = state.night, role = roleOf(actor), attacks = findPendingAttacksFor(actor.id);
       const dynamicAction = nightActionFor(actor);
       const reactionAction = nightReactionFor(actor);
+      if(n.jammed?.includes(actor.id)&&NIGHT_ACTIONS[dynamicAction]?.category==='Investigative'&&!attacks.length&&!newReactionTurn(actor)&&value!=='ack'){
+        ackOnlineCommand(commandUid,commandId,false,'Your investigation result was jammed.');await publishOnlineRoom();return;
+      }
       if(newReactionTurn(actor)){
         try{const message=resolveNewReaction(actor,value);settleUnhandledExtraAttacks(actor);ackOnlineCommand(commandUid,commandId,true,message);setPrivateResult(actor.id,message);n.onlineAckNeeded=false;bumpOnlineVersion();}
         catch(error){ackOnlineCommand(commandUid,commandId,false,error.message);}
@@ -5015,10 +5071,10 @@
         return;
       }
       if (!actor.alive) { ackOnlineCommand(commandUid, commandId, true, 'You are already eliminated for this reaction.'); await publishOnlineRoom(); return; }
-      if (dynamicAction === 'inspectOrientation' || dynamicAction === 'seer') {
+      if (!attacks.length && (dynamicAction === 'inspectOrientation' || dynamicAction === 'seer')) {
         const targetId = dynamicAction === 'inspectOrientation' ? n.round1InspectTargets?.[actor.id] : n.round1SeerTargets?.[actor.id];
         const target = playerOf(targetId);
-        const effective = investigationRoleOf(target);
+        const effective = investigationRoleOf(target,actor);
         setPrivateResult(actor.id, canAbilityTarget(target) ? (dynamicAction === 'inspectOrientation' ? `${target.name} is ${labelOrientation(effective?.orientation || 'unknown')}.` : `${target.name} is ${effective?.title || 'Unknown'}.`) : 'No valid result remains.');
         n.onlineAckNeeded=true; bumpOnlineVersion(); await publishOnlineRoom(); return;
       }
@@ -5052,6 +5108,7 @@
         removePendingAttack(attack); setPlayerAlive(actor, false); ackOnlineCommand(commandUid, commandId, true, 'Your reaction was resolved.'); addLog(`${actor.name} was killed during the night.`); setPrivateResult(actor.id, `You were killed during the night.`); n.onlineAckNeeded = true; bumpOnlineVersion(); await publishOnlineRoom(); return;
       }
       if (reactionAction === 'traitor' && value === 'traitorSurvive') {
+        if(n.exhaustTargets?.includes(actor.id))actor.disabledReactionRound=state.round+1;
         removePendingAttack(attack); actor.roleId = roleByIdOrRestore('mafia')?.id || state.roles.find(r => r.orientation === 'evil')?.id || actor.roleId; ackOnlineCommand(commandUid, commandId, true, 'You survived and joined the Mafia.'); addLog(`${actor.name} survived a night attack and joined the Mafia.`); setPrivateResult(actor.id, 'You survived and joined the Mafia.'); await onlineCompleteReactiveOrAdvance(actor); return;
       }
       if (reactionAction === 'escape') {
@@ -5070,7 +5127,7 @@
           removePendingAttack(attack); setPlayerAlive(actor, false); actor.used.scapegoat = true; ackOnlineCommand(commandUid, commandId, true, 'You chose not to redirect the attack and were killed.'); addLog(`${actor.name} chose not to redirect the night attack and was killed.`); setPrivateResult(actor.id, 'You were killed.'); await onlineCompleteReactiveOrAdvance(actor); return;
         }
         const victim = playerOf(Number(value));
-        const adjacent = adjacentLiving(actor);
+        const adjacent = attack.redirectedFrom!=null || attack.escortRedirected ? [] : adjacentLiving(actor);
         if (!victim || !victim.alive || !canAbilityTarget(victim) || !adjacent.some(p => p.id === victim.id)) {
           removePendingAttack(attack); setPlayerAlive(actor, false); actor.used.scapegoat = true;
           ackOnlineCommand(commandUid, commandId, true, 'That redirect target is no longer available; you were killed instead.');
@@ -5082,6 +5139,8 @@
         actor.used.scapegoat = true;
         recordNightAction(actor,'scapegoat',victim.id,{redirectedFrom:actor.id});
         const redirectedAttack = {
+          ...attack,
+          proposedWardChecked:false,
           attackerId: attack.attackerId,
           targetId: victim.id,
           sourceAction: attack.sourceAction,
@@ -5096,7 +5155,7 @@
             n.reactionCompleted = n.reactionCompleted.filter(id => id !== victim.id);
           }
           ensureReactionQueued(victim);
-        } else if (n.protectedIds?.includes(victim.id)) {
+        } else if ((!redirectedAttack.piercing && n.protectedIds?.includes(victim.id)) || proposedAttackStopped(redirectedAttack)) {
           addLog(`${victim.name} was protected from the redirected attack.`);
         } else {
           setPlayerAlive(victim, false);
@@ -5192,6 +5251,7 @@
 
     async function startOnlineNight() {
       clearDaySilence();
+      state.players.forEach(p => {p.spectatorRolesUnlocked = !p.alive && !p.removed && !p.fakeDeathReturnRound;});
       state.phase='night';
       await setOnlineJoinable(false);
       bumpOnlineVersion(); const nightPlayers=playersAlive().slice(); const round1SeerTargets={}; const gamblerActions={};
@@ -5210,8 +5270,8 @@
       attacks.forEach(attack => {
         const target = playerOf(attack.targetId);
         if (!target || !target.alive || !canAbilityTarget(target)) { removePendingAttack(attack); return; }
-        if(state.night.protectedIds?.includes(target.id)){removePendingAttack(attack);return;}
-        if (!NIGHT_REACTION_ACTIONS.has(nightReactionFor(target)) || (EXTRA_REACTIONS[nightReactionFor(target)] && !newReactionTurn(target))) {
+        if((!attack.piercing && state.night.protectedIds?.includes(target.id)) || proposedAttackStopped(attack)){removePendingAttack(attack);return;}
+        if (attack.noReaction || !NIGHT_REACTION_ACTIONS.has(nightReactionFor(target)) || (EXTRA_REACTIONS[nightReactionFor(target)] && !newReactionTurn(target))) {
           removePendingAttack(attack);
           setPlayerAlive(target, false); recordNightAction(playerOf(attack.attackerId)||target, attack.sourceAction, attack.targetId);
           addLog(`${target.name} was killed during the night.`);

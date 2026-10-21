@@ -186,6 +186,13 @@ function narratorAdvanceTransition(transition) {
 }
 function narratorPriority(player) {
   const action = nightActionFor(player);
+  if(proposedPlanningTurn(player))return -10;
+  if(EXTRA_ABILITIES[action]?.category==='Defensive')return 0;
+  if(['sabotage','jamInvestigation','exhaustReaction'].includes(action))return 10;
+  if(EXTRA_ABILITIES[action]?.category==='Transformative')return 20;
+  if(EXTRA_ABILITIES[action]?.category==='Deceitful')return 30;
+  if(EXTRA_ABILITIES[action]?.category==='Miscellaneous')return 40;
+  if(['piercingAttack','ambush','delayedStrike'].includes(action))return 60;
   // Protection from blocking/changes must exist before those effects resolve.
   if (['blockHarm','preventChanges'].includes(action)) return 0;
   if (action === 'roleblock') return 10;
@@ -205,7 +212,7 @@ function narratorOrder(players, reactions = false) {
   return players.slice().sort((a,b) => priority(a)-priority(b) || a.id-b.id);
 }
 function narratorDeferredInfo(action) {
-  return ['track','watch','audit'].includes(action);
+  return ['track','watch','audit','compareVisitors'].includes(action);
 }
 function narratorActionQueue(players) {
   let mafiaAdded = false;
@@ -221,6 +228,7 @@ function narratorActionQueue(players) {
       mafiaAdded = true; return true;
     }
     // These passives work automatically; their information is delivered at the end.
+    if(proposedPlanningTurn(player))return true;
     if (isPassiveAbility(action) && action !== 'seer') return false;
     return action !== 'none';
   }));
@@ -260,8 +268,8 @@ function narratorStartReports() {
     }
   }
   n.queue = (n.round1Players || state.players).filter(player => player.alive && !player.removed && (
-    (narratorDeferredInfo(nightActionFor(player)) && !n.blockedIds?.includes(player.id) &&
-      (n.trackTargets?.[player.id] != null || n.watchTargets?.[player.id] != null || n.limitedInvestigations?.[player.id])) || extraNoticesFor(player) || nightActionFor(player) === 'signalReceiver'
+    findPendingAttacksFor(player.id).length || newReactionTurn(player) || (narratorDeferredInfo(nightActionFor(player)) && !n.blockedIds?.includes(player.id) &&
+      (n.trackTargets?.[player.id] != null || n.watchTargets?.[player.id] != null || n.limitedInvestigations?.[player.id])) || (extraNoticesFor(player)&&(!n.narratorInfoShown?.[player.id]||n.extraNotices?.[player.id]?.length)) || nightActionFor(player) === 'signalReceiver'
   ));
   n.index = 0;
   n.turnRevealed = false;

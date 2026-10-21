@@ -7,7 +7,7 @@ const DEFAULT_ROLES = [
   {
     id: 'celebrity', title: 'Celebrity', orientation: 'good',
     description: 'The town loves you! Everybody knows you\'re the Celebrity.',
-    visibility: 'everybody', nightAction: 'none'
+    visibility: 'everyone', nightAction: 'none'
   },
   {
     id: 'citizen', title: 'Citizen', orientation: 'good',

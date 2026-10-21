@@ -51,6 +51,7 @@ async function resolveOnlineDuel(duel, targetWon, summary) {
   removePendingAttack(attack);
   if (duel.action === 'escape') target.escaped = targetWon;
   if (!targetWon) setPlayerAlive(target,false);
+  if (targetWon && state.night.exhaustTargets?.includes(target.id))target.disabledReactionRound=state.round+1;
   const result = `${summary} ${targetWon ? `${target.name} survived.` : `${target.name} was killed.`}`;
   addLog(result);
   setPrivateResult(target.id,result);
