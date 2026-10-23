@@ -4,7 +4,7 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>Mafia — Pass & Play (Framer fix)</title>
+  <title>Mafia — Pass & Play</title>
   <style>
     :root {
       --bg: #090a0f;
@@ -882,6 +882,7 @@
       }
     }
   </style>
+  <link rel="stylesheet" href="polish.css?v=20261023">
 </head>
 
 <body>
@@ -1131,10 +1132,10 @@
         <summary>Host setup — individual player settings</summary>
         <div class="advanced-body">
           <div id="hostPlayerControls">
-          <p class="muted tiny">Private host settings apply in both Random and Manual modes. Each setting applies when that player has the relevant ability, including roles assigned from the random pool. Recognition applies regardless of their role. Unconfigured nights stay random. A Seer target who is no longer alive is replaced by a random living player. Players still choose how to use their abilities.</p>
+          <p class="muted tiny">Assign a role in Manual mode to configure that player's night actions. Host-assigned nights remove the player's choice; unconfigured nights follow the usual rules. Personal challenges and recognition apply in every mode. A Seer target who is no longer alive is replaced by a random living player.</p>
           <div id="hostPlayerSettings"></div>
           <h4>Player recognition</h4>
-          <p class="muted tiny">Recognition reveals the other player's role privately. One-way recognition only adds knowledge for the first player. These links add to normal role visibility.</p>
+          <p class="muted tiny">Recognition privately shows the other player's recognised identity, including any disguise. One-way recognition only adds knowledge for the first player. These links add to normal role visibility.</p>
           <div class="grid2">
             <label>Player<select id="recognitionFrom"></select></label>
             <label>Recognises<select id="recognitionTo"></select></label>
@@ -1408,14 +1409,15 @@
     </dialog>
   </div>
 
-  <script src="reactions.js?v=20261021-existing-turns"></script>
-  <script src="abilities.js?v=20261021-existing-turns"></script>
+  <script src="reactions.js?v=20261023-reviewed"></script>
+  <script src="abilities.js?v=20261023-reviewed"></script>
   <script src="judge.js?v=20261016"></script>
   <script src="signal-receiver.js?v=20261021-existing-turns"></script>
-  <script src="host-setup.js?v=20261021-hater-target"></script>
-  <script src="narrator.js?v=20261021-existing-turns"></script>
+  <script src="host-setup.js?v=20261023-assigned-actions"></script>
+  <script src="narrator.js?v=20261023-disguises"></script>
   <script src="online-reactions.js?v=20261021-expansion"></script>
-  <script src="roles.js?v=20261006-normal-reactions"></script>
+  <script src="roles.js?v=20261023-undercover"></script>
+  <script src="customisation.js?v=20261023"></script>
   <script>
     // ---- State ---------------------------------------------------------------
     const state = {
@@ -1564,7 +1566,9 @@
     function ensurePolicemanIntel(player) {
       if (!player || !roleHasSpecialId(roleOf(player), 'policeman')) return null;
       if (player.policemanIntel?.targetId != null) return player.policemanIntel;
-      const target = hostTarget(player, 'policemanTarget', state.players.filter(p => p.id !== player.id && canAbilityTarget(p)));
+      const candidates = state.players.filter(p => p.id !== player.id && canAbilityTarget(p));
+      const unknown = candidates.filter(p => !visibleTo(player, p));
+      const target = hostTarget(player, 'policemanTarget', unknown.length ? unknown : candidates);
       const targetRole = roleOf(target);
       player.policemanIntel = target && targetRole ? {targetId: target.id, roleId: targetRole.id, roleTitle: targetRole.title, orientation: targetRole.orientation} : null;
       return player.policemanIntel;
@@ -1579,11 +1583,11 @@
         const intel = ensurePolicemanIntel(player);
         const target = playerOf(intel?.targetId);
         if (intel && target) chunks.push(`<div class="intel-card"><strong>Policeman intelligence</strong><div style="margin-top:5px"><strong>${escapeHtml(target.name)}</strong> was <strong>${escapeHtml(intel.roleTitle)}</strong> (${escapeHtml(labelOrientation(intel.orientation))}) when you received your assignment.</div><div class="tiny muted" style="margin-top:6px">You may hint at this information, but you must not directly say that you are the Policeman.</div></div>`);
-        const henchmen = state.players.filter(p => p.id !== player.id && roleHasSpecialId(roleOf(p), 'henchman'));
+        const henchmen = state.players.filter(p => p.id !== player.id && visibleTo(player,p) && roleHasSpecialId(recognitionRoleOf(p), 'henchman'));
         if (henchmen.length) chunks.push(`<div class="intel-card"><strong>Henchman contact</strong><div style="margin-top:5px">${henchmen.map(p=>escapeHtml(p.name)).join(', ')} ${henchmen.length === 1 ? 'is' : 'are'} Henchman. You recognise each other.</div></div>`);
       }
       if (roleHasSpecialId(role, 'henchman')) {
-        const police = state.players.filter(p => roleHasSpecialId(roleOf(p), 'policeman'));
+        const police = state.players.filter(p => visibleTo(player,p) && roleHasSpecialId(recognitionRoleOf(p), 'policeman'));
         if (police.length) chunks.push(`<div class="intel-card"><strong>Policeman contact</strong><div style="margin-top:5px">${police.map(p=>escapeHtml(p.name)).join(', ')} ${police.length === 1 ? 'is' : 'are'} Policeman. You recognise each other and may pressure them in real life, within the agreed rules of the game.</div></div>`);
       }
       return chunks.join('');
@@ -1689,6 +1693,7 @@
       return `<span class="pill ${role?.orientation || 'neutral'}">${escapeHtml(labelOrientation(role?.orientation || ''))}</span>`;
     }
     function addLog(text, visibility = 'private') {
+      if (typeof recordTimelineEvent === 'function') recordTimelineEvent(text);
       // Only explicitly public events belong in the shared game log.
       if (visibility !== 'public') return;
       state.logs.unshift({text, visibility, time: new Date().toLocaleTimeString([], {hour: '2-digit', minute: '2-digit'})});
@@ -1800,18 +1805,19 @@
       })[normalizedWinCondition(role)] || 'No special win condition';
     }
     function visibleTo(viewer, target) {
-      const role = roleOf(target);
+      const role = typeof recognitionRoleOf === 'function' ? recognitionRoleOf(target) : roleOf(target);
       if (!role || !viewer || viewer.removed || target.removed || viewer.id === target.id) return false;
 
-      // Eliminated players can see every other player's role.
-      // Living players continue to follow each role's normal visibility rules.
-      if (!viewer.alive) return true;
+      // Death grants full visibility only after the next night starts.
+      // Until then, retain the same recognition and visibility as while alive.
+      if (canSeeDeadSpectatorRoles(viewer)) return true;
       if (hostSettings(viewer).recognises?.includes(target.id)) return true;
+      if (role.visibility === 'everyone') return true;
+      if (roleOf(viewer)?.recognitionRoleId) return false;
 
       const viewerRole = roleOf(viewer);
       if ((roleHasSpecialId(viewerRole, 'policeman') && roleHasSpecialId(role, 'henchman')) || (roleHasSpecialId(viewerRole, 'henchman') && roleHasSpecialId(role, 'policeman'))) return true;
       if (Array.isArray(role.visibleToRoleIds) && viewerRole && role.visibleToRoleIds.includes(viewerRole.id)) return true;
-      if (role.visibility === 'everyone') return true;
       if (role.visibility === 'nobody') return false;
       if (!viewerRole) return false;
       return role.visibility === 'sameOrientation'
@@ -1839,7 +1845,7 @@
       <strong>Roles you know</strong>
       <div class="muted tiny" style="margin-top:4px">These roles are visible to you through role visibility or host recognition.</div>
       <div class="known-role-list">${known.map(target => {
-        const role = roleOf(target);
+        const role = typeof recognitionRoleOf==='function'?recognitionRoleOf(target,viewer):roleOf(target);
         return `<div class="known-role"><strong>${escapeHtml(target.name)}</strong><div class="tiny muted" style="margin-top:4px">${escapeHtml(role?.title || 'Unknown')} ${rolePill(role)}</div></div>`;
       }).join('')}</div>
     </div>`;
@@ -1947,6 +1953,7 @@
       $('roleDescription').value = role?.description || '';
       $('roleNightAction').value = roleActiveNightAction(role);
       $('roleNightReaction').value = roleNightReaction(role);
+      populateIdentityEditor(role);
       $('roleVisibility').value = role?.visibility || 'nobody';
       const visibleRolePicker = $('roleVisibleToRoles');
       visibleRolePicker.innerHTML = '';
@@ -2134,6 +2141,8 @@
       if(typeof restoreReactionTimingState==='function')restoreReactionTimingState();
       state.visibleTokens = Array.isArray(parsed.visibleTokens) ? parsed.visibleTokens : [];
       state.logs = Array.isArray(parsed.logs) ? parsed.logs.filter(entry => entry?.visibility === 'public') : [];
+      state.timeline = Array.isArray(parsed.timeline) ? parsed.timeline : [];
+      state.previousNightVisits = Array.isArray(parsed.previousNightVisits) ? parsed.previousNightVisits : [];
       state.onlineVersion = Number.isInteger(parsed.onlineVersion) ? parsed.onlineVersion : 0;
       state.processedCommandIds = {};
       state.onlineCommandAcks = parsed.onlineCommandAcks || {};
@@ -2153,8 +2162,8 @@
       return JSON.parse(JSON.stringify({
         roles: state.roles, players: state.players, mode: state.mode, phase: state.phase,
         handoffIndex: state.handoffIndex, handoffRevealed: state.handoffRevealed, round: state.round,
-        day: state.day, night: state.night, logs: publicGameLogs().slice(0, 250),
-        visibleTokens: state.visibleTokens || [],
+        day: state.day, night: state.night, logs: publicGameLogs().slice(0, 250), timeline:state.timeline || [],
+        visibleTokens: state.visibleTokens || [], previousNightVisits:state.previousNightVisits || [],
         onlineVersion: state.onlineVersion, onlineCommandAcks: state.onlineCommandAcks,
         autoSideWinChecks: state.autoSideWinChecks !== false,
         requireEvil: !!state.requireEvil,
@@ -2229,6 +2238,7 @@
       state.players.forEach(p=>{delete p.fakeDeathReturnRound;delete p.pendingInheritance;delete p.inheritanceNotice;delete p.signalHintHistory;});
       delete state.judgeAnnouncedId;
       delete state.visibleTokens;
+      delete state.previousNightVisits;
       for(const player of state.players)for(const key of ['originalIdentity','temporaryOrientation','borrowedReaction','reserveShieldRound','disabledAbilityRound','disabledReactionRound','delayedAttacks','firstContactUsed','lastDeathAbility','lastDeathRound','pendingExposure','shatteredDefencesRound','pendingReactionDeceptions'])delete player[key];
       state.players.filter(p => roleHasSpecialId(roleOf(p), 'policeman')).forEach(ensurePolicemanIntel);
     }
@@ -2391,12 +2401,15 @@
 
     function coordinatedKillMembers(actor) {
       const role = roleOf(actor);
+      if (role?.recognitionRoleId) return [actor];
       if (!role || !isTeamKillRole(role)) return [actor];
-      if (roleHasSpecialId(role, 'godfather')) return playersAlive().filter(player => roleOf(player)?.orientation === 'evil');
-      return playersAlive().filter(player => roleOf(player)?.id === role.id);
+      const recognisedRole=player=>typeof recognitionRoleOf==='function'?recognitionRoleOf(player,actor):roleOf(player);
+      if (roleHasSpecialId(role, 'godfather')) return playersAlive().filter(player => recognisedRole(player)?.orientation === 'evil');
+      return playersAlive().filter(player => recognisedRole(player)?.id === role.id);
     }
 
     function teamKillGroupKey(role) {
+      if(role?.recognitionRoleId)return `disguised:${role.id}`;
       return roleHasSpecialId(role, 'godfather') || (state.narratorMode && role?.orientation === 'evil' && role.nightAction === 'teamKill') ? 'evil' : role?.id;
     }
 
@@ -2548,7 +2561,7 @@
       if (!role || !teammates.length) return;
 
       const teammateNames = teammates.map(player => {
-        const playerRole = roleOf(player);
+        const playerRole = recognitionRoleOf(player,actor);
         const label = role.orientation === 'evil' && playerRole?.orientation === 'evil'
           ? 'Evil teammate'
           : 'Same role';
@@ -2800,6 +2813,7 @@
       button.type = 'button';
       button.className = 'action-btn';
       button.textContent = label;
+      button.dataset.choiceValue = String(value);
       if (state.narratorMode && label === 'Acknowledge & continue') {
         button.dataset.narratorAcknowledgement = 'true';
         // Private information waits for the reader; action confirmations still skip.
@@ -2966,7 +2980,7 @@
         advanceNightActor(); return;
       }
       night.currentActorId = actor.id;
-      if (state.narratorMode && !night.narratorReporting) night.narratorTurnIsMafia = roleOf(actor)?.orientation === 'evil' && nightActionFor(actor) === 'teamKill';
+      if (state.narratorMode && !night.narratorReporting) night.narratorTurnIsMafia = roleOf(actor)?.orientation === 'evil' && !roleOf(actor)?.recognitionRoleId && nightActionFor(actor) === 'teamKill';
       night.handoffReady = false;
       $('nightTitle').textContent = state.narratorMode ? 'Night' : `Night — ${actor.name}`;
       $('nightProgress').textContent = `${night.index + 1} / ${queue.length}`;
@@ -3693,7 +3707,7 @@
       if (state.editingRoleId) {
         const role = state.roles.find(r => r.id === state.editingRoleId);
         const previousNightAction = role?.nightAction;
-        Object.assign(role, {title, orientation, description, visibility, visibleToRoleIds, nightAction, nightReaction, targetFilter, canTargetSelf, maxUses, nightPrompt, winCondition, specialId});
+        Object.assign(role, {title, orientation, description, visibility, visibleToRoleIds, nightAction, nightReaction, targetFilter, canTargetSelf, maxUses, nightPrompt, winCondition, specialId}, identityEditorSettings());
         // Special target state belongs to the Hater ability, not to the Hater role id.
         // If the ability is changed away from Hater, clear any stale target state so
         // the role behaves exactly like the newly selected ability.
@@ -3703,7 +3717,7 @@
           });
         }
       } else {
-        state.roles.push({id: `custom_${Date.now()}_${Math.random().toString(36).slice(2,8)}`, specialId, title, orientation, description, visibility, visibleToRoleIds, nightAction, nightReaction, targetFilter, canTargetSelf, maxUses, nightPrompt, winCondition, randomCount: 0});
+        state.roles.push({id: `custom_${Date.now()}_${Math.random().toString(36).slice(2,8)}`, specialId, title, orientation, description, visibility, visibleToRoleIds, nightAction, nightReaction, targetFilter, canTargetSelf, maxUses, nightPrompt, winCondition, randomCount: 0, ...identityEditorSettings()});
       }
       closeRoleEditor(); renderSetup();
     });
@@ -4157,7 +4171,7 @@
 
     function onlineKnownRolesFor(viewer) {
       if (!viewer) return [];
-      return state.players.filter(t => !t.removed && visibleTo(viewer, t)).map(t => ({id: t.id, name: t.name, role: roleOf(t)?.title || 'Unknown', orientation: roleOf(t)?.orientation || 'neutral'}));
+      return state.players.filter(t => !t.removed && visibleTo(viewer, t)).map(t => {const role=typeof recognitionRoleOf==='function'?recognitionRoleOf(t,viewer):roleOf(t);return {id:t.id,name:t.name,role:role?.title||'Unknown',orientation:role?.orientation||'neutral'};});
     }
 
     function onlinePrivatePayloadFor(player) {
@@ -4913,7 +4927,7 @@
         n.haterTargets[actor.id] = actor.haterTargetId;
         n.round1Actions[actor.id] = {action:'hater',targetId:actor.haterTargetId};
         n.round1Submitted[actor.id]=true;
-        setPrivateResult(actor.id,'Your random target has been recorded. The target will be revealed during night reactions.');
+        setPrivateResult(actor.id,'Your target has been recorded. The target will be revealed during night reactions.');
         await publishOnlineRoom(); await maybeFinishOnlineRound1(); return;
       }
 
@@ -5424,6 +5438,7 @@
       hide('onlineStatus');
     })();
   </script>
+  <script>installCustomisation();</script>
   <script src="ambience.js"></script>
 </body>
 

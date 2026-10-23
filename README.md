@@ -1,5 +1,7 @@
 A website to play Mafia pass-and-play with friends.
 
+Host-assigned actions for every active ability, private personal challenges, recognition disguises (including Undercover), and an end-of-game timeline are described in the [Customisation Guide](Customisation%20Guide.md). The [Ability and Reaction Review](Ability%20and%20Reaction%20Review.md) lists the complete current catalogue and review decisions.
+
 ## Ability and reaction expansion
 
 The role editor includes 42 additional abilities and 31 additional reactions. All six reaction categories have six choices each (36 reactions total), including Investigative and Deceitful. See [Expansion Guide](Expansion%20Guide.md) for effects, limits, timing, private replies, bargains, and visible tokens. These choices work in offline, narrated and online games.

@@ -1,5 +1,11 @@
 const DEFAULT_ROLES = [
   {
+    id:'undercover', title:'Undercover', orientation:'good',
+    description:'You are Good. Help the town eliminate Evil. Your true identity is separate from the identity shown through recognition.',
+    visibility:'nobody', nightAction:'none', nightReaction:'none',
+    recognitionRoleId:'mafia', knowsDisguise:true
+  },
+  {
     id: 'bodyguard', title: 'Bodyguard', orientation: 'good',
     description: 'Defend a chosen player from attacks.',
     visibility: 'nobody', nightAction: 'protect', nightReaction: 'none'

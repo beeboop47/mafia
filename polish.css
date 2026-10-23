@@ -1,0 +1,19 @@
+body { background-color:#090a0f;background-image:linear-gradient(180deg,transparent 30%,rgba(22,20,33,.35)),url('assets/village.svg');background-repeat:no-repeat;background-position:center bottom;background-size:cover, min(1400px,100%) auto;background-attachment:fixed;transition:background-color .6s ease; }
+body[data-game-phase="night"] {background-color:#151521;}
+body[data-game-phase="day"] {background-color:#25232a;}
+.card,.private-role-banner,.intel-card {animation:card-arrive .24s ease-out;}
+.private-role-banner {position:relative;overflow:hidden;padding-right:62px;}
+.private-role-banner::after {content:'☾';position:absolute;right:22px;top:15px;font-size:40px;color:#b8a8df;opacity:.55;pointer-events:none;}
+.action-btn,button {transition:transform .13s ease,background-color .18s ease,box-shadow .18s ease;}
+button:not(:disabled):active {transform:scale(.98);}
+button:focus-visible,select:focus-visible,textarea:focus-visible {outline:2px solid #c9b5f7;outline-offset:3px;}
+.host-night-row {border:1px solid var(--border,#41434d);border-radius:10px;padding:12px;display:grid;gap:10px;margin-bottom:10px;min-width:0;}
+.host-night-row select,.host-night-row textarea {width:100%;min-width:0;}
+.personal-challenge {border-left:3px solid #b2a0d8;}
+.game-timeline {margin-top:20px;grid-column:1/-1;}
+.timeline-entry {border-left:2px solid #827495;padding:2px 0 2px 16px;margin-left:8px;}
+.timeline-entry p {margin:8px 0;color:var(--text,#eee);overflow-wrap:anywhere;}
+.timeline-entry h4 {color:#c6b3e6;margin:15px 0 5px;}
+[hidden] {display:none!important;}
+@keyframes card-arrive {from{opacity:0;transform:translateY(5px)}to{opacity:1;transform:none}}
+@media(prefers-reduced-motion:reduce){*,*::before,*::after{animation:none!important;transition:none!important;scroll-behavior:auto!important}}

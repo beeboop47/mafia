@@ -5,6 +5,7 @@ function hostSettings(player) {
 function hostTarget(actor, key, candidates) {
   candidates = candidates.filter(canAbilityTarget);
   const configured = hostSettings(actor)[key];
+  if(key==='haterTarget' && configured!=null)return candidates.find(p=>p.id===configured)||null;
   return candidates.find(p => p.id === configured) || randomChoice(candidates) || null;
 }
 function scheduledSeerTarget(actor, candidates) {
@@ -30,6 +31,15 @@ function removeHostReferences(id) {
       if (target === id) delete config.seerSchedule[night];
       else if (target > id) config.seerSchedule[night]--;
     }
+    for(const assignment of Object.values(config.abilitySchedule||{})){
+      const fields=['value'];
+      if(typeof EXTRA_ABILITIES!=='undefined' && EXTRA_ABILITIES[assignment.action]?.second==='player')fields.push('second');
+      for(const field of fields){
+        const values=String(assignment[field]??'').split(':');
+        if(values.some(value=>value!==''&&Number(value)===id)){assignment.skip=true;assignment[field]='';}
+        else assignment[field]=values.map(value=>value!==''&&Number.isInteger(Number(value))&&Number(value)>id?String(Number(value)-1):value).join(':');
+      }
+    }
     config.recognises = (config.recognises || []).filter(target => target !== id).map(target => target > id ? target - 1 : target);
   }
 }
@@ -41,10 +51,10 @@ function renderHostSetup() {
   const option = (select, value, label) => {
     const el = document.createElement('option'); el.value = value; el.textContent = label; select.appendChild(el);
   };
-  function playerPicker(actor, value, onChange) {
+  function playerPicker(actor, value, onChange, candidates=state.players) {
     const select = document.createElement('select');
     option(select, '', 'Random');
-    state.players.filter(p => p.id !== actor.id).forEach(p => option(select, p.id, p.name));
+    candidates.filter(p => p.id !== actor.id).forEach(p => option(select, p.id, p.name));
     select.value = value ?? '';
     select.addEventListener('change', () => onChange(select.value === '' ? undefined : Number(select.value)));
     return select;
@@ -60,7 +70,9 @@ function renderHostSetup() {
       if (key === 'policemanTarget' && !roleHasSpecialId(role, 'policeman')) continue;
       if (key === 'haterTarget' && action !== 'hater') continue;
       const label = document.createElement('label'); label.textContent = title;
-      label.appendChild(playerPicker(player, config[key], value => { if (value === undefined) delete config[key]; else config[key] = value; }));
+      const candidates=state.players.filter(p=>p.id!==player.id&&canAbilityTarget(p));
+      const unknown=key==='policemanTarget'?candidates.filter(p=>!visibleTo(player,p)):candidates;
+      label.appendChild(playerPicker(player, config[key], value => { if (value === undefined) delete config[key]; else config[key] = value; },unknown.length?unknown:candidates));
       body.appendChild(label);
     }
     for (const [key, title, requiredAction] of [['seerSchedule', 'Seer targets by night', 'seer'], ['gamblerSchedule', 'Gambler abilities by night', 'gambler'], ['signalSchedule', 'Signal Receiver hints by night', 'signalReceiver']]) {
@@ -90,7 +102,7 @@ function renderHostSetup() {
           select = document.createElement('select'); option(select, '', 'Random');
           gamblerAbilityPool().forEach(action => option(select, action, NIGHT_ACTIONS[action]?.label || action));
           select.value = schedule[night] || '';
-          select.addEventListener('change', () => update(select.value || undefined));
+          select.addEventListener('change', () => {update(select.value || undefined);renderHostSetup();});
         }
         label.appendChild(select); row.appendChild(label);
         const clear = document.createElement('button'); clear.type = 'button'; clear.className = 'ghost'; clear.textContent = 'Reset to random';

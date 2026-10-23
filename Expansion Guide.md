@@ -5,9 +5,10 @@ The role editor includes 42 additional abilities and 31 additional reactions. Al
 ## Night timing
 
 - Private results are shown during existing night turns. There is no private dawn-results phase, no extra report turn, and no change to the configured player queue.
-- The six Deceitful reactions schedule effects for the following night. Effects apply before anyone acts, remain active for that night, then expire. The original attack still resolves. Effects can persist even if their owner died.
+- The six Deceitful reactions schedule effects for the following night. Effects apply before anyone acts, remain active for that night, then expire. Clean Getaway and False Double also cancel their triggering attack once per game; the other four allow the attack to resolve. Scheduled effects can persist even if their owner died.
 - Simultaneous scheduled disguises use stable seat IDs: the lowest source seat ID wins each conflicting field. Secure Information bypasses their reports; Signal Receiver continues using the truth. Actual roles, allegiances and visits are unchanged.
-- Investigative reactions reveal fixed facts immediately during the holder’s reaction, even if the triggering attack then kills them. No future-night events are predicted or awaited.
+- Investigative reactions cancel the triggering attack once per game and reveal fixed facts immediately during the holder’s reaction. A separate attack can still kill them. No future-night events are predicted or awaited.
+- Follow the Footsteps, Visitor Diversion and Safety in Numbers use the preceding night's completed visits, not an incomplete record of the current night. There is no preceding-night evidence on Night 1.
 - Break Their Reaction and Shatter Defences affect the attacker on the following night, independently of turn order. They do not create counterattack turns or private dawn results.
 - One-use limits remain spent through role or ability changes. A new game resets them. Redirected attacks cannot be redirected again.
 - Piercing Attack bypasses ordinary protection and shields; reactions and Survive Once still apply.
@@ -67,7 +68,7 @@ The role editor includes 42 additional abilities and 31 additional reactions. Al
 | Borrow Reaction | Use a chosen player’s reaction on the following night only. |
 | Temporary Conversion | Once per game: change a player’s allegiance for the following night. Reverts at dawn before win checks. |
 | Restore Identity | Once per game: restore a player’s originally dealt role, allegiance, ability and reaction. Spent uses remain spent. |
-| Bestow Ability | Permanently give another player your ability, replacing theirs. Your ability becomes None. |
+| Bestow Ability | Once per game: choose another player and a permitted ability to grant them permanently. You retain your spent Bestow Ability. Configure the gift pool in the role editor. |
 
 ### Offensive
 
@@ -123,12 +124,12 @@ The role editor includes 42 additional abilities and 31 additional reactions. Al
 
 | Reaction | Effect |
 |---|---|
-| Identify Assailant | Immediately learn the attacker’s name during this reaction. The attack continues. |
-| Read the Weapon | Immediately learn the exact ability that generated this attack during this reaction. The attack continues. |
-| Read Their Reaction | Immediately learn your attacker’s reaction recorded when the attack was created. The attack continues. |
-| Read Their Ability | Immediately learn your attacker’s night ability at the start of tonight. The attack continues. |
-| Read Their Origins | Immediately learn your attacker’s exact role at the start of tonight. The attack continues. |
-| Read Their Past | Immediately learn whether the attacker’s allegiance changed between the start of tonight and this attack. Reveal both allegiances only if they differ. The attack continues. |
+| Identify Assailant | Once per game: stop this attack and immediately learn the attacker’s name. |
+| Read the Weapon | Once per game: stop this attack and immediately learn the exact ability that generated it. |
+| Read Their Reaction | Once per game: stop this attack and learn the attacker’s reaction recorded when the attack was created. |
+| Read Their Ability | Once per game: stop this attack and learn the attacker’s night ability at the start of tonight. |
+| Read Their Origins | Once per game: stop this attack and learn the attacker’s exact role at the start of tonight. |
+| Read Their Past | Once per game: stop this attack and learn whether the attacker’s allegiance changed between the start of tonight and this attack. Reveal both allegiances only if they differ. |
 
 ### Deceitful
 
@@ -137,8 +138,8 @@ The role editor includes 42 additional abilities and 31 additional reactions. Al
 | Lingering Frame | Choose a role. On the following night, ordinary role investigations of your attacker report that role. Applies before anyone acts; does not stop this attack. |
 | Stained Colours | Choose an allegiance. On the following night, ordinary allegiance investigations of your attacker report it. Applies before anyone acts; does not stop this attack. |
 | Planted Trail | Choose a player from the reaction roster. On the following night, Track reports your attacker visiting that player. Creates no real visit; does not stop this attack. |
-| Clean Getaway | On the following night, hide your attacker’s activity and visits from ordinary investigations. Actual effects remain. Does not stop this attack. |
-| False Double | On the following night, your attacker appears as your role and allegiance recorded when they attacked you. Does not change either actual identity or stop this attack. |
+| Clean Getaway | Once per game: stop this attack, then hide your own activity and visits from ordinary investigations on the following night. Actual effects remain. |
+| False Double | Once per game: stop this attack, then appear as your attacker’s recorded role and allegiance to ordinary investigations on the following night. Your actual identity does not change. |
 | Witness Confusion | On the following night, invert shared-visitor investigations involving your attacker. Two affected subjects cancel out. Does not stop this attack. |
 
 ### Defensive
@@ -146,7 +147,7 @@ The role editor includes 42 additional abilities and 31 additional reactions. Al
 | Reaction | Effect |
 |---|---|
 | Brace | Once per game: stop this attack and lose your next night’s active ability. |
-| Safety in Numbers | Stop this attack if someone other than its attacker visited you. |
+| Safety in Numbers | Stop this attack if another player, excluding the attacker, visited you on the preceding night. |
 | Feign Death | Once per game: stop this attack; lose your next ability and be silenced tomorrow. |
 | Bargain for Life | Ask your attacker to spare you in exchange for being silenced tomorrow. |
 
@@ -165,9 +166,9 @@ The role editor includes 42 additional abilities and 31 additional reactions. Al
 | Reaction | Effect |
 |---|---|
 | Mirror Allegiance | Once per game: stop this attack and adopt your attacker’s allegiance. |
-| Steal Their Weapon | Permanently gain the ability that generated the attack. This attack continues. |
+| Steal Their Weapon | Once per game: stop this attack, gain the ability that generated it, and lose this reaction. |
 | Defensive Awakening | Once per game: stop this attack, gain Protect and lose this reaction. |
-| Vengeful Awakening | If you survive this attack, gain Kill and lose this reaction. |
+| Vengeful Awakening | Once per game: stop this attack, gain Kill and lose this reaction. |
 | Shed Identity | Once per game: stop this attack, become a Citizen, and lose your ability and reaction. Retain your allegiance. |
 
 ### Redirective
@@ -177,5 +178,5 @@ The role editor includes 42 additional abilities and 31 additional reactions. Al
 | Return to Sender | Once per game: redirect to the attacker. |
 | Blind Deflection | Once per game: redirect to a random other player, excluding the attacker. |
 | Decoy Trail | Once per game: redirect to your secretly nominated decoy. |
-| Follow the Footsteps | Redirect to the attacker’s other recorded destination, if one exists. |
-| Visitor Diversion | Once per game: redirect to a random non-attacking visitor. |
+| Follow the Footsteps | Redirect to another destination your attacker visited on the preceding night, if still available. |
+| Visitor Diversion | Once per game: redirect to a random available player who visited you on the preceding night, excluding the attacker. |

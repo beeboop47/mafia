@@ -15,21 +15,21 @@ const EXTRA_REACTIONS = Object.freeze({
   disarmAssailant:{label:'Disarm Assailant',category:'Retaliatory'},
   shatterDefences:{label:'Shatter Defences',category:'Retaliatory'},
   mirrorAllegiance:{label:'Mirror Allegiance',category:'Transformative',once:true},
-  stealWeapon:{label:'Steal Their Weapon',category:'Transformative'},
+  stealWeapon:{label:'Steal Their Weapon',category:'Transformative',once:true},
   defensiveAwakening:{label:'Defensive Awakening',category:'Transformative',once:true},
-  vengefulAwakening:{label:'Vengeful Awakening',category:'Transformative'},
+  vengefulAwakening:{label:'Vengeful Awakening',category:'Transformative',once:true},
   shedIdentity:{label:'Shed Identity',category:'Transformative',once:true},
-  identifyAssailant:{label:'Identify Assailant',category:'Investigative'},
-  readWeapon:{label:'Read the Weapon',category:'Investigative'},
-  traceTheirSteps:{label:'Read Their Reaction',category:'Investigative'},
-  countThreats:{label:'Read Their Ability',category:'Investigative'},
-  witnessSearch:{label:'Read Their Origins',category:'Investigative'},
-  readTheirPast:{label:'Read Their Past',category:'Investigative'},
+  identifyAssailant:{label:'Identify Assailant',category:'Investigative',once:true},
+  readWeapon:{label:'Read the Weapon',category:'Investigative',once:true},
+  traceTheirSteps:{label:'Read Their Reaction',category:'Investigative',once:true},
+  countThreats:{label:'Read Their Ability',category:'Investigative',once:true},
+  witnessSearch:{label:'Read Their Origins',category:'Investigative',once:true},
+  readTheirPast:{label:'Read Their Past',category:'Investigative',once:true},
   counterframe:{label:'Lingering Frame',category:'Deceitful'},
   falseColours:{label:'Stained Colours',category:'Deceitful'},
   plantEscapeRoute:{label:'Planted Trail',category:'Deceitful'},
-  eraseFootprints:{label:'Clean Getaway',category:'Deceitful'},
-  borrowTheirFace:{label:'False Double',category:'Deceitful'},
+  eraseFootprints:{label:'Clean Getaway',category:'Deceitful',once:true},
+  borrowTheirFace:{label:'False Double',category:'Deceitful',once:true},
   scrambleWitnesses:{label:'Witness Confusion',category:'Deceitful'}
 });
 
@@ -65,14 +65,14 @@ function newReactionTurn(player) {
 function reactionDescription(action) {
   return {
     returnToSender:'Once per game: redirect to the attacker.',blindDeflection:'Once per game: redirect to a random other player, excluding the attacker.',
-    decoyTrail:'Once per game: redirect to your secretly nominated decoy.',followFootsteps:'Redirect to the attacker’s other recorded destination, if one exists.',
-    visitorDiversion:'Once per game: redirect to a random non-attacking visitor.',brace:'Once per game: stop this attack and lose your next night’s active ability.',
-    safetyNumbers:'Stop this attack if someone other than its attacker visited you.',feignDeath:'Once per game: stop this attack; lose your next ability and be silenced tomorrow.',
+    decoyTrail:'Once per game: redirect to your secretly nominated decoy.',followFootsteps:'Redirect to another destination your attacker visited on the preceding night, if still available. No destination exists on Night 1.',
+    visitorDiversion:'Once per game: redirect to a random available player who visited you on the preceding night, excluding the attacker. No prior visitors exist on Night 1.',brace:'Once per game: stop this attack and lose your next night’s active ability.',
+    safetyNumbers:'Stop this attack if someone other than its attacker visited you on the preceding night. No prior visitors exist on Night 1.',feignDeath:'Once per game: stop this attack; lose your next ability and be silenced tomorrow.',
     bargainLife:'Ask your attacker to spare you in exchange for being silenced tomorrow.',lastShot:'Once per game: disable your attacker’s night reaction on the following night. The original attack continues.',
     exposeAssailant:'Learn the attacker’s role. If you die tonight, announce that role without naming them.',markAssailant:'Once per game: publicly name the attacker at dawn if you die.',
     disarmAssailant:'Your attacker loses their next night’s active ability. This attack continues.',shatterDefences:'Your attacker cannot benefit from ordinary protection or single-use shields next night. This attack continues.',
-    mirrorAllegiance:'Once per game: stop this attack and adopt your attacker’s allegiance.',stealWeapon:'Permanently gain the ability that generated the attack. This attack continues.',
-    defensiveAwakening:'Once per game: stop this attack, gain Protect and lose this reaction.',vengefulAwakening:'If you survive this attack, gain Kill and lose this reaction.',
+    mirrorAllegiance:'Once per game: stop this attack and adopt your attacker’s allegiance.',stealWeapon:'Once per game: stop this attack, permanently gain the ability that generated it, and lose this reaction.',
+    defensiveAwakening:'Once per game: stop this attack, gain Protect and lose this reaction.',vengefulAwakening:'Once per game: stop this attack, gain Kill and lose this reaction.',
     shedIdentity:'Once per game: stop this attack, become a Citizen, and lose your ability and reaction. Retain your allegiance.',
     identifyAssailant:'Immediately learn the attacker’s name during this reaction. The attack continues.',
     readWeapon:'Immediately learn the exact ability that generated this attack during this reaction. The attack continues.',
@@ -83,10 +83,10 @@ function reactionDescription(action) {
     counterframe:'Choose a role. On the following night, ordinary role investigations of your attacker report that role. Applies before anyone acts; does not stop this attack.',
     falseColours:'Choose an allegiance. On the following night, ordinary allegiance investigations of your attacker report it. Applies before anyone acts; does not stop this attack.',
     plantEscapeRoute:'Choose a player from the reaction roster. On the following night, Track reports your attacker visiting that player. Creates no real visit; does not stop this attack.',
-    eraseFootprints:'On the following night, hide your attacker’s activity and visits from ordinary investigations. Actual effects remain. Does not stop this attack.',
-    borrowTheirFace:'On the following night, your attacker appears as your role and allegiance recorded when they attacked you. Does not change either actual identity or stop this attack.',
+    eraseFootprints:'Once per game: stop this attack, then hide your own activity and visits from ordinary investigations on the following night. Actual effects remain.',
+    borrowTheirFace:'Once per game: stop this attack, then appear as your attacker’s recorded role and allegiance to ordinary investigations on the following night. Your actual identity does not change.',
     scrambleWitnesses:'On the following night, invert shared-visitor investigations involving your attacker. Two affected subjects cancel out. Does not stop this attack.'
-  }[action]||'';
+  }[action]?.replace('The attack continues.','Once per game: stop this attack and receive this clue.')||'';
 }
 function renderNewReaction(player) {
   const turn=newReactionTurn(player);if(!turn)return false;
@@ -159,7 +159,7 @@ function resolveNewReaction(player,value) {
   }
   const reactionResult=resolveInformationReaction(player,attack,action,choice);
   removePendingAttack(attack);
-  let saved=false,success=!!reactionResult;
+  let saved=(spec.category==='Investigative'||['eraseFootprints','borrowTheirFace'].includes(action))&&!!reactionResult,success=!!reactionResult;
   if(spec.category==='Redirective'){
     let destination;
     const candidates=(n.reactionRosterSnapshot||[]).filter(p=>p.alive&&p.targetable&&p.id!==player.id).map(p=>playerOf(p.id)).filter(p=>p&&!p.removed);
@@ -168,10 +168,10 @@ function resolveNewReaction(player,value) {
       if(action==='blindDeflection')destination=randomChoice(candidates.filter(p=>p.id!==attacker?.id));
       if(action==='decoyTrail')destination=playerOf(n.decoyTargets?.[player.id]);
       if(action==='followFootsteps'){
-        const record=proposedRecords().find(r=>r.actorId===attacker?.id);
+        const record=(n.previousNightVisits||[]).find(r=>r.actorId===attacker?.id);
         destination=playerOf(record&&proposedDestinations(record).find(id=>id!==player.id&&id!==attacker?.id));
       }
-      if(action==='visitorDiversion')destination=randomChoice(proposedRecords().filter(r=>r.actorId!==attacker?.id&&r.actorId!==player.id&&proposedDestinations(r).includes(player.id)).map(r=>playerOf(r.actorId)).filter(p=>candidates.some(candidate=>candidate.id===p?.id)));
+      if(action==='visitorDiversion')destination=randomChoice((n.previousNightVisits||[]).filter(r=>r.actorId!==attacker?.id&&r.actorId!==player.id&&proposedDestinations(r).includes(player.id)).map(r=>playerOf(r.actorId)).filter(p=>candidates.some(candidate=>candidate.id===p?.id)));
     }
     if(destination && candidates.some(p=>p.id===destination.id) && canAbilityTarget(destination)){
       attack.redirectedFrom=player.id;attack.targetId=destination.id;attack.proposedWardChecked=false;
@@ -180,7 +180,7 @@ function resolveNewReaction(player,value) {
     }
   }
   if(['brace','feignDeath'].includes(action)){saved=success=true;player.disabledAbilityRound=state.round+1;if(action==='feignDeath')player.silenced=true;}
-  if(action==='safetyNumbers')saved=success=proposedRecords().some(r=>r.actorId!==attacker?.id&&proposedDestinations(r).includes(player.id));
+  if(action==='safetyNumbers')saved=success=(n.previousNightVisits||[]).some(r=>r.actorId!==player.id&&r.actorId!==attacker?.id&&proposedDestinations(r).includes(player.id));
   if(action==='lastShot' && attacker && canAbilityTarget(attacker)){
     attacker.disabledReactionRound=state.round+1;success=true;
   }
@@ -192,7 +192,10 @@ function resolveNewReaction(player,value) {
   if(action==='disarmAssailant' && attacker){attacker.disabledAbilityRound=state.round+1;success=true;}
   if(action==='shatterDefences' && attacker){attacker.shatteredDefencesRound=state.round+1;extraNotice(attacker.id,'Shatter Defences: ordinary protection and single-use shields will not protect you next night.');success=true;}
   if(action==='mirrorAllegiance' && attacker)saved=success=proposedOverride(player,'orientation',attackSnapshot?.actorOrientation||roleOf(attacker)?.orientation);
-  if(action==='stealWeapon')success=proposedOverride(player,'nightAction',attack.sourceAction||'kill');
+  if(['stealWeapon','vengefulAwakening'].includes(action) && !changesPrevented(player) && !n.reactionGuard?.includes(player.id)){
+    saved=success=proposedOverride(player,'nightAction',action==='stealWeapon'?(attack.sourceAction||'kill'):'kill');
+    if(success)proposedOverride(player,'nightReaction','none');
+  }
   if(action==='defensiveAwakening' && !changesPrevented(player) && !n.reactionGuard?.includes(player.id)){
     proposedOverride(player,'nightAction','protect');proposedOverride(player,'nightReaction','none');saved=success=true;
   }
@@ -202,9 +205,6 @@ function resolveNewReaction(player,value) {
   }
   if(!saved)setPlayerAlive(player,false);
   if(['exposeAssailant','markAssailant'].includes(action) && player.alive)delete player.pendingExposure;
-  if(action==='vengefulAwakening' && player.alive && !changesPrevented(player) && !n.reactionGuard?.includes(player.id)){
-    proposedOverride(player,'nightAction','kill');proposedOverride(player,'nightReaction','none');success=true;
-  }
   if(success)markReactionSuccess(player);
   return `${reactionResult?`${reactionResult}\n`:''}${spec.label} ${success?'activated':'could not take effect'}. ${player.alive?'You are alive.':'You were killed.'}`;
 }
@@ -227,8 +227,9 @@ function resolveInformationReaction(player,attack,action,choice) {
   }
   if(spec.category==='Deceitful'){
     if(!attacker || !canAbilityTarget(attacker))return 'Your attacker cannot receive this effect.';
-    const ownRole=snapshot?.targetRoles?.[player.id]||roleOf(player);
-    (player.pendingReactionDeceptions ||= []).push({round:state.round+1,playerId:player.id,action,attackerId:attacker.id,choice,role:ownRole?{id:ownRole.id,title:ownRole.title,orientation:ownRole.orientation}:null});
+    const ownRole=action==='borrowTheirFace'?(snapshot?.actorRole||roleOf(attacker)):(snapshot?.targetRoles?.[player.id]||roleOf(player));
+    const subjectId=['eraseFootprints','borrowTheirFace'].includes(action)?player.id:attacker.id;
+    (player.pendingReactionDeceptions ||= []).push({round:state.round+1,playerId:player.id,subjectId,action,attackerId:attacker.id,choice,role:ownRole?{id:ownRole.id,title:ownRole.title,orientation:ownRole.orientation}:null});
     const detail=action==='counterframe'?'Chosen role: '+state.roles.find(r=>r.id===choice).title+'. ':action==='falseColours'?'Chosen allegiance: '+labelOrientation(choice)+'. ':action==='plantEscapeRoute'?'Chosen destination: '+playerOf(choice).name+'. ':'';
     result=detail+spec.label+' is scheduled for the following night, before anyone acts. It does not change tonight’s reports.';
   }
@@ -239,7 +240,7 @@ function rebuildReactionDeceptions() {
   const n=state.night;n.reactionReportMasks={};n.scrambledWitnesses=[];
   const effects=[...(n.activeReactionDeceptions||[])].sort((a,b)=>b.playerId-a.playerId);
   for(const effect of effects){
-    const {action,attackerId,choice,role}=effect,target=playerOf(attackerId);
+    const {action,choice,role}=effect,attackerId=effect.subjectId??effect.attackerId,target=playerOf(attackerId);
     if(!target||target.removed||!canAbilityTarget(target))continue;
     if(action==='counterframe'){
       const framed=state.roles.find(r=>r.id===choice);if(framed)n.reactionReportMasks[attackerId]={...(n.reactionReportMasks[attackerId]||{}),id:framed.id,title:framed.title};

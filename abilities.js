@@ -14,10 +14,10 @@ const EXTRA_ABILITIES = {
   plantEvidence:{label:'Plant Evidence',category:'Deceitful',prompt:'Ordinary role and allegiance investigations report this player’s identity from the start of tonight.'},
   exchangeAbilities:{label:'Exchange Abilities',category:'Transformative',second:'player',prompt:'Permanently swap two players’ night abilities.'},
   exchangeReactions:{label:'Exchange Reactions',category:'Transformative',second:'player',prompt:'Permanently swap two players’ night reactions.'},
-  borrowReaction:{label:'Borrow Reaction',category:'Transformative',prompt:'Use a chosen player’s reaction on the following night only.'},
+  borrowReaction:{label:'Borrow Reaction',category:'Transformative',prompt:'Use a chosen player’s reaction on the following night only. If they have no usable reaction, keep your own.'},
   temporaryConversion:{label:'Temporary Conversion',category:'Transformative',second:'allegiance',once:true,prompt:'Once per game: change a player’s allegiance for the following night. Reverts at dawn before win checks.'},
   restoreIdentity:{label:'Restore Identity',category:'Transformative',once:true,prompt:'Once per game: restore a player’s originally dealt role, allegiance, ability and reaction. Spent uses remain spent.'},
-  bestowAbility:{label:'Bestow Ability',category:'Transformative',prompt:'Permanently give another player your ability, replacing theirs. Your ability becomes None.'},
+  bestowAbility:{label:'Bestow Ability',category:'Transformative',second:'ability',once:true,prompt:'Once per game: choose another player and an ability to permanently grant them, replacing theirs. You retain your spent Bestow Ability.'},
   piercingAttack:{label:'Piercing Attack',category:'Offensive',once:true,prompt:'Once per game: attack through ordinary protection. Reactions still apply.'},
   ambush:{label:'Ambush',category:'Offensive',prompt:'Attack a player only if they made a recorded visit tonight.'},
   sabotage:{label:'Sabotage',category:'Offensive',prompt:'Stop a player’s active Defensive ability tonight.'},
@@ -52,7 +52,7 @@ const EXTRA_ABILITIES = {
   changeAllegiance: {label:'Change Allegiance', category:'Transformative', second:'allegiance', prompt:'Choose a player and their new permanent allegiance.'},
   changeAbility: {label:'Change Ability', category:'Transformative', second:'ability', prompt:'Choose a player and their new permanent night ability.'},
   changeReaction: {label:'Change Reaction', category:'Transformative', second:'reaction', prompt:'Choose a player and their new permanent night reaction.'},
-  copyAbility: {label:'Copy Ability', category:'Transformative', prompt:'Copy a player\'s ability for the following night only. Your allegiance and reaction stay the same.'},
+  copyAbility: {label:'Copy Ability', category:'Transformative', prompt:'Copy a player\'s ability for the following night only. None or Copy Ability cannot be copied; you keep your own ability instead. Your allegiance and reaction stay the same.'},
   blockReaction: {label:'Block Reaction', category:'Offensive', prompt:'Disable a player\'s night reaction tonight.'},
   forceAnswer: {label:'Force Answer', category:'Offensive', text:true, prompt:'Choose a player and a yes/no question they must answer truthfully tomorrow in real life. Do not directly ask their role or allegiance.'},
   blockHarm: {label:'Block Harm', category:'Defensive', prompt:'Protect a player from kills, silence, roleblock and Block Reaction tonight.'},
@@ -103,6 +103,7 @@ function extraChoices(actor, action) {
   if (spec.second === 'player') secondary = targets.map(p => ({id:String(p.id), name:p.name}));
   if (spec.second === 'allegiance') secondary = ['good','evil','neutral'].map(id => ({id,name:labelOrientation(id)}));
   if (spec.second === 'ability') secondary = Object.entries(NIGHT_ACTIONS).filter(([id]) => !NIGHT_REACTION_ACTIONS.has(id)).map(([id,a]) => ({id,name:a.label,category:a.category}));
+  if (action === 'bestowAbility') secondary = secondary.filter(o => o.id !== 'bestowAbility' && o.id !== 'none' && (!roleOf(actor)?.bestowPool?.length || roleOf(actor).bestowPool.includes(o.id)));
   if (spec.second === 'reaction') secondary = Object.entries(NIGHT_REACTIONS).map(([id,a]) => ({id,name:a.label,category:a.category}));
   if(spec.second==='reaction')secondary.unshift({id:'none',name:'None',category:'Defensive'});
   return {targets:targets.map(p => ({id:String(p.id),name:p.name})), secondary, text:!!spec.text, noTarget:!!spec.noTarget, passive:isPassiveAbility(action)};
@@ -260,8 +261,9 @@ function resolveExtraEffects() {
       extraNotice(target.id,`${EXTRA_ABILITIES[c.action].label}: you now have ${label}.`);
     }
     if(c.action==='copyAbility' && target && !changesPrevented(actor)){
-      actor.copiedAbility={action:n.startAbilities[target.id]||'none',round:state.round+1};
-      extraNotice(actor.id,`Next night you will use ${NIGHT_ACTIONS[actor.copiedAbility.action]?.label||'None'}.`);
+      const copied=n.startAbilities[target.id]||'none';
+      if(['none','copyAbility'].includes(copied))extraNotice(actor.id,'There was no usable ability to copy. You keep your own ability next night.');
+      else {actor.copiedAbility={action:copied,round:state.round+1};extraNotice(actor.id,`Next night you will use ${NIGHT_ACTIONS[copied]?.label||copied}.`);}
     }
     if(c.action==='forceAnswer' && target && !n.harmProtected?.includes(target.id))extraNotice(target.id,`${actor.name} asks: ${c.text} Answer yes or no truthfully tomorrow in real life. Questions directly asking your role or allegiance are invalid.`);
     if(c.action==='sendSignal' && target)extraNotice(target.id,`${actor.name} requests this signal tomorrow: ${c.text}`);
@@ -321,6 +323,7 @@ function survivePassiveAttack(target) {
 function finishExtraNight() {
   const n=state.night;if(n.extraFinished)return;n.extraFinished=true;
   finishProposedNight();
+  state.previousNightVisits=proposedRecords().map(r=>({actorId:r.actorId,action:r.action,targetIds:proposedDestinations(r)}));
 
 }
 
@@ -365,6 +368,7 @@ function proposedOverride(player, field, value) {
 }
 function initializeProposedNight() {
   const n=state.night;
+  n.previousNightVisits=(state.previousNightVisits||[]).map(r=>({...r,targetIds:[...(r.targetIds||[])]}));
   n.proposedProcessed={};n.proposedAttackProcessed={};n.proposedReactionUsed={};n.proposedAnnouncements=[];
   n.singleWards=[];n.wardRecipients=[];n.revivalWards=[];n.infoSecure=[];n.reactionGuard=[];n.jammed=[];n.exhaustTargets=[];
   n.reportSwaps={};n.plantedEvidence=[];n.forgedReactions={};n.falseProtection=[];n.forgedInterference=[];n.concealedVisits=[];
@@ -470,7 +474,11 @@ function resolveProposedEffects() {
       const first=field==='nightAction'?nightActionFor(target):nightReactionFor(target),second=field==='nightAction'?nightActionFor(other):nightReactionFor(other);
       proposedOverride(target,field,second);proposedOverride(other,field,first);
     }
-    if(c.action==='borrowReaction' && !changesPrevented(actor))actor.borrowedReaction={round:state.round+1,action:nightReactionFor(target)};
+    if(c.action==='borrowReaction' && !changesPrevented(actor)){
+      const reaction=nightReactionFor(target);
+      if(reaction==='none'||(EXTRA_REACTIONS[reaction]?.once&&actor.used?.[reaction]))extraNotice(actor.id,'There was no usable reaction to borrow. You keep your own reaction next night.');
+      else {actor.borrowedReaction={round:state.round+1,action:reaction};extraNotice(actor.id,`Next night you will use ${NIGHT_REACTIONS[reaction]?.label||reaction}.`);}
+    }
     if(c.action==='temporaryConversion' && !changesPrevented(target)){
       target.temporaryOrientation={round:state.round+1,value:c.second};extraNotice(target.id,`Your allegiance will become ${labelOrientation(c.second)} next night only.`);
     }
@@ -482,7 +490,7 @@ function resolveProposedEffects() {
       }
     }
     if(c.action==='bestowAbility' && !changesPrevented(actor) && !changesPrevented(target)){
-      if(proposedOverride(target,'nightAction',n.startAbilities[id]))proposedOverride(actor,'nightAction','none');
+      if(c.second && c.second!=='bestowAbility' && c.second!=='none')proposedOverride(target,'nightAction',c.second);
     }
     if(c.action==='delayedStrike'){
       (target.delayedAttacks ||= []).push({actorId:actor.id,round:state.round+1});
