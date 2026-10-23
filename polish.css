@@ -10,6 +10,7 @@ button:focus-visible,select:focus-visible,textarea:focus-visible {outline:2px so
 .host-night-row {border:1px solid var(--border,#41434d);border-radius:10px;padding:12px;display:grid;gap:10px;margin-bottom:10px;min-width:0;}
 .host-night-row select,.host-night-row textarea {width:100%;min-width:0;}
 .personal-challenge {border-left:3px solid #b2a0d8;}
+#onlineActionPrompt {white-space:pre-wrap;}
 .game-timeline {margin-top:20px;grid-column:1/-1;}
 .timeline-entry {border-left:2px solid #827495;padding:2px 0 2px 16px;margin-left:8px;}
 .timeline-entry p {margin:8px 0;color:var(--text,#eee);overflow-wrap:anywhere;}

@@ -1,17 +1,20 @@
 // Recognition is deliberately separate from true identity and investigation masks.
 function recognitionRoleOf(player, viewer=null) {
   const role=roleOf(player);
-  if (!role || (viewer && canSeeDeadSpectatorRoles(viewer))) return role;
+  if (!role || player.coverExposed || (viewer && canSeeDeadSpectatorRoles(viewer))) return role;
   return state.roles.find(r=>r.id===role.recognitionRoleId) || role;
 }
 function privateCustomisationText(player) {
   const role=roleOf(player), parts=[];
-  if(role?.recognitionRoleId && role.knowsDisguise!==false){
+  if(role?.recognitionRoleId && !player.coverExposed && role.knowsDisguise!==false){
     const disguise=state.roles.find(r=>r.id===role.recognitionRoleId);
     if(disguise)parts.push(`Players who recognise you see you as ${disguise.title} (${labelOrientation(disguise.orientation)}). Investigations reveal your true identity. You do not automatically recognise their roles.`);
   }
-  if(hostSettings(player).challenge?.trim())parts.push(`Personal challenge — all game: ${hostSettings(player).challenge.trim()}`);
-  if(Object.keys(hostSettings(player).abilitySchedule||{}).length || hostSettings(player).haterTarget!=null)parts.push('The host has assigned some of your night actions. On those nights you cannot choose or change the assigned action.');
+  if(player.coverExposed)parts.push('Your recognition disguise has been exposed.');
+  if(hostSettings(player).challenge?.trim())parts.push(`Your personal challenge — all game: ${hostSettings(player).challenge.trim()}`);
+  if(state.phase==='night' && hostAbilityAssignment(player) && (isPassiveAbility(nightActionFor(player))||state.narratorMode))parts.push(hostAssignmentDescription(player));
+  const rolled=hostSettings(player).gamblerSchedule?.[state.round];
+  if(state.phase==='night' && roleActiveNightAction(role)==='gambler' && rolled)parts.push(`Tonight's assigned Gambler ability: ${NIGHT_ACTIONS[rolled]?.label||rolled}.`);
   return parts.join('\n\n');
 }
 function populateIdentityEditor(role) {
@@ -24,14 +27,17 @@ function populateIdentityEditor(role) {
   sortedRoles(state.roles.filter(r=>r.id!==role?.id)).forEach(r=>select.add(new Option(`${r.title} · ${labelOrientation(r.orientation)}`,r.id)));
   select.value=role?.recognitionRoleId||'';$('knowsDisguise').checked=role?.knowsDisguise!==false;
   const pool=$('bestowPool');pool.replaceChildren();
+  if(!$('undercoverWin')){const label=document.createElement('label');label.innerHTML='<input id="undercoverWin" type="checkbox"> A surviving Good player with this role turns a normal Evil victory into a Good victory';$('identityEditor').appendChild(label);}
+  $('undercoverWin').checked=role?.undercoverWin ?? (role?.id==='undercover');
   Object.entries(NIGHT_ACTIONS).filter(([id])=>id!=='none'&&id!=='bestowAbility'&&!NIGHT_REACTION_ACTIONS.has(id)).forEach(([id,a])=>{const o=new Option(a.label,id);o.selected=role?.bestowPool?.includes(id)||false;pool.add(o);});
 }
-function identityEditorSettings(){return {recognitionRoleId:$('recognitionDisguise')?.value||null,knowsDisguise:$('knowsDisguise')?.checked!==false,bestowPool:[...($('bestowPool')?.selectedOptions||[])].map(o=>o.value)};}
+function identityEditorSettings(){return {recognitionRoleId:$('recognitionDisguise')?.value||null,knowsDisguise:$('knowsDisguise')?.checked!==false,undercoverWin:!!$('undercoverWin')?.checked,bestowPool:[...($('bestowPool')?.selectedOptions||[])].map(o=>o.value)};}
 
 function hostAbilityAssignment(actor) {
   if(state.mode!=='manual')return null;
   const assignment=hostSettings(actor).abilitySchedule?.[state.round];
-  if(nightActionFor(actor)==='hater' && hostSettings(actor).haterTarget!=null)return {action:'hater',value:hostSettings(actor).haterTarget};
+  if(nightActionFor(actor)==='seer' && hostSettings(actor).seerSchedule?.[state.round]!=null)return {action:'seer',value:hostSettings(actor).seerSchedule[state.round]};
+  if(state.round===1 && nightActionFor(actor)==='hater' && hostSettings(actor).haterTarget!=null)return {action:'hater',value:hostSettings(actor).haterTarget};
   return assignment && assignment.action===nightActionFor(actor) ? assignment : null;
 }
 function hostAssignmentChoices(actor,action,setup=false){
@@ -62,6 +68,17 @@ function hostAssignedValue(actor,secondStep=false){
   if(['framer','changeRole'].includes(action)&&!choices.secondary.length)return 'skip';
   if(action==='changeRole'&&playerOf(setting.value)?.roleId===setting.second)return 'skip';
   return String(secondStep?setting.second:setting.value);
+}
+function hostAssignmentDescription(actor){
+  const setting=hostAbilityAssignment(actor);if(!setting)return '';
+  const action=setting.action,label=NIGHT_ACTIONS[action]?.label||action;
+  if(setting.skip)return `Tonight's assigned action: do not use ${label}. You cannot choose an alternative.`;
+  const choices=hostAssignmentChoices(actor,action),parts=[`Tonight's assigned ability: ${label}.`];
+  if(!choices.noTarget||['hater','seer'].includes(action)){const ids=String(setting.value??'').split(':');parts.push(`Assigned target${ids.length>1?'s':''}: ${ids.map(id=>id===''?'not selected':playerOf(id)?.name||'unavailable player').join(' and ')}.`);}
+  if(setting.second){const option=choices.secondary.find(o=>String(o.id)===String(setting.second));parts.push(`Assigned choice: ${option?.name||'unavailable choice'}.`);}
+  if(setting.text)parts.push(`Assigned message: ${setting.text}`);
+  if(hostAssignedValue(actor)==='skip')parts.push('This assignment is unavailable tonight, so the ability will be skipped.');
+  parts.push('You cannot choose or change this assignment.');return parts.join('\n');
 }
 function renderExpandedHostSetup(){
   [...$('hostPlayerSettings').children].forEach((details,index)=>{
@@ -116,6 +133,10 @@ function recordTimelinePrivate(id,message){
   if(seen.includes(key))return;seen.push(key);
   recordTimelineEvent(`${playerOf(id)?.name||'Player'} — ${text}`,[id]);
 }
+function assignedResultText(player,message){
+  if(!hostAbilityAssignment(player)||typeof message!=='string')return message;
+  return message.replace('You chose not to use your night ability tonight.','Your assigned ability was not used tonight.').replace('You chose to save your one-time revive.','Tonight’s assignment saves your one-time revival.').replace('You chose not to revive anyone.','Tonight’s assignment does not revive anyone.');
+}
 function timelineHtml(events,players){
   const names=players.map(p=>`<option value="${p.id}">${escapeHtml(p.name)}</option>`).join('');
   let previous='';
@@ -130,7 +151,33 @@ function showGameTimeline(container,events,players){
   };
 }
 
+function removeLegacyHunt(){
+  const retiredAction='exposeCover',retiredRole='counterintelligence';
+  const needsReplacement=state.players.some(p=>p.roleId===retiredRole||p.originalIdentity?.roleId===retiredRole);
+  state.roles=state.roles.filter(r=>r.id!==retiredRole);
+  if(needsReplacement&&!state.roles.some(r=>r.id==='mafia'))state.roles.push({...DEFAULT_ROLES.find(r=>r.id==='mafia')});
+  for(const role of state.roles){
+    if(role.nightAction===retiredAction)role.nightAction='none';
+    if(role.recognitionRoleId===retiredRole)role.recognitionRoleId=null;
+    if(role.bestowPool)role.bestowPool=role.bestowPool.filter(id=>id!==retiredAction);
+    if(role.id==='undercover'&&role.description?.includes('Counterintelligence can'))role.description=DEFAULT_ROLES.find(r=>r.id==='undercover').description;
+  }
+  for(const p of state.players){
+    if(p.roleId===retiredRole)p.roleId='mafia';
+    if(p.roleOverrides?.nightAction===retiredAction)p.roleOverrides.nightAction='none';
+    if(p.copiedAbility?.action===retiredAction)delete p.copiedAbility;
+    if(p.originalIdentity?.roleId===retiredRole)p.originalIdentity.roleId='mafia';
+    if(p.originalIdentity?.roleOverrides?.nightAction===retiredAction)p.originalIdentity.roleOverrides.nightAction='none';
+    for(const [night,setting]of Object.entries(p.hostSetup?.abilitySchedule||{}))if(setting.action===retiredAction)delete p.hostSetup.abilitySchedule[night];
+    for(const [night,action]of Object.entries(p.hostSetup?.gamblerSchedule||{}))if(action===retiredAction)delete p.hostSetup.gamblerSchedule[night];
+  }
+  const n=state.night||{};
+  for(const field of ['startAbilities','gamblerActions'])for(const [id,action]of Object.entries(n[field]||{}))if(action===retiredAction)n[field][id]='none';
+  for(const field of ['extraActions','round1Actions'])for(const [id,choice]of Object.entries(n[field]||{}))if(choice.action===retiredAction){if(field==='extraActions')delete n[field][id];else n[field][id]={action:'none'};}
+}
 function installCustomisation(){
+  const originalSetup=renderSetup;renderSetup=function(...args){removeLegacyHunt();return originalSetup(...args);};
+  const originalHydrate=hydratePersistedState;hydratePersistedState=function(snapshot){const result=originalHydrate(snapshot);if(result)removeLegacyHunt();return result;};
   const originalHostSetup=renderHostSetup;
   renderHostSetup=function(){
     const key=d=>(d.parentElement.closest('details')?.querySelector('summary')?.textContent||'')+'/'+d.querySelector('summary')?.textContent;
@@ -142,9 +189,10 @@ function installCustomisation(){
   specialRoleIntelHtml=function(player){const text=privateCustomisationText(player);return originalIntel(player)+(text?`<div class="intel-card personal-challenge" style="white-space:pre-wrap">${escapeHtml(text)}</div>`:'');};
   const originalStandard=renderStandardAction;
   renderStandardAction=function(actor,role,living){
-    if(!hostAbilityAssignment(actor))return originalStandard(actor,role,living);
+    if(!hostAbilityAssignment(actor)){$('nightPrompt').style.whiteSpace='';return originalStandard(actor,role,living);}
     const value=hostAssignedValue(actor);
-    $('nightPrompt').textContent=value==='skip'?'The host’s assignment cannot be used tonight, or the host chose to skip. You cannot choose an alternative.':'Your ability has been assigned by the host. You cannot choose or change it.';
+    $('nightPrompt').textContent=hostAssignmentDescription(actor);
+    $('nightPrompt').style.whiteSpace='pre-wrap';
     $('nightActionArea').appendChild(actionButton('Continue with host assignment','hostAssigned',()=>setChoiceAndContinue(actor,value)));
   };
   const originalChoice=setChoiceAndContinue;
@@ -158,7 +206,7 @@ function installCustomisation(){
     if(!buttons.length||buttons.some(b=>/Acknowledge/.test(b.textContent)))return;
     const value=hostAssignedValue(actor,second);
     const selected=buttons.find(b=>b.dataset.choiceValue===value)||buttons.find(b=>b.dataset.choiceValue==='doctorSkip');
-    area.replaceChildren();$('nightPrompt').textContent='The host assigned this ability. You cannot choose or change it.';
+    area.replaceChildren();$('nightPrompt').textContent=hostAssignmentDescription(actor);$('nightPrompt').style.whiteSpace='pre-wrap';
     area.appendChild(actionButton(selected?'Continue with host assignment':'Assigned option unavailable — continue','hostAssigned',()=>{if(selected)selected.click();else {n.framerRoleChooserId=null;n.roleChangeActorId=null;n.roleChangeTargetId=null;completeNightTurn();}}));
   }
   const originalUpdate=updateNight;updateNight=function(){const result=originalUpdate();const n=state.night;restrictLocal((n.round===2?n.reactionQueue:n.queue)?.[n.index]);return result;};
@@ -168,9 +216,9 @@ function installCustomisation(){
     const payload=originalPayload(player);payload.customisationText=privateCustomisationText(player);
     if(payload.specialIntel?.type==='henchman')payload.specialIntel.policemen=state.players.filter(p=>visibleTo(player,p)&&roleHasSpecialId(recognitionRoleOf(p),'policeman')).map(p=>p.name);
     const turn=payload.turn,setting=hostAbilityAssignment(player);
-    if(setting && turn && ((turn.type==='nightRound1' && turn.action!=='proposedPlan')||(['doctor','janitor'].includes(turn.action)&&turn.type==='reaction'))){
+    if(setting && turn && ((turn.type==='nightRound1' && turn.action!=='proposedPlan' && !['doctor','janitor'].includes(setting.action))||(['doctor','janitor'].includes(turn.action)&&turn.type==='reaction'))){
       // Preserve the real action type for the server; only the acknowledgement is sent by the player.
-      turn.hostAssigned=true;turn.prompt='The host assigned your ability. You cannot choose or change it.';
+      turn.hostAssigned=true;turn.prompt=hostAssignmentDescription(player);
       turn.options=[{id:'hostAssigned',name:'Continue with host assignment'}];delete turn.extraForm;
     }
     return payload;
@@ -200,11 +248,11 @@ function installCustomisation(){
   };
   const originalRenderOnline=renderOnlinePrivate;
   renderOnlinePrivate=function(...args){originalRenderOnline(...args);const text=online.private?.customisationText;if(text){const el=document.createElement('div');el.className='intel-card personal-challenge';el.style.whiteSpace='pre-wrap';el.textContent=text;$('onlineRoleBox').appendChild(el);}};
-  const originalAssign=assignRoles;assignRoles=function(...args){const result=originalAssign(...args);if(result!==false){state.timeline=[];state.players.forEach(p=>{const r=roleOf(p);state.timeline.push({round:1,phase:'handoff',playerIds:[p.id],text:`${p.name} was assigned ${r?.title||'Unknown'} (${labelOrientation(r?.orientation)}).`});});}return result;};
+  const originalAssign=assignRoles;assignRoles=function(...args){removeLegacyHunt();const result=originalAssign(...args);if(result!==false){state.timeline=[];state.players.forEach(p=>{const r=roleOf(p);state.timeline.push({round:1,phase:'handoff',playerIds:[p.id],text:`${p.name} was assigned ${r?.title||'Unknown'} (${labelOrientation(r?.orientation)}).`});});}return result;};
   const originalRecord=recordNightAction;recordNightAction=function(actor,action,targetId=null,extra={}){originalRecord(actor,action,targetId,extra);if(!actor)return;const ids=extra.targetIds||[targetId].filter(id=>id!=null);const choice=extra.framedRoleId||extra.newRoleId;recordTimelineEvent(`${actor.name} selected ${NIGHT_ACTIONS[action]?.label||action}${ids.length?' → '+ids.map(id=>playerOf(id)?.name||'departed player').join(', '):''}${choice?' as '+(state.roles.find(r=>r.id===choice)?.title||choice):''}.`,[actor.id,...ids]);};
   const originalNotice=extraNotice;extraNotice=function(id,message){originalNotice(id,message);recordTimelinePrivate(id,message);};
-  const originalPrivate=setPrivateResult;setPrivateResult=function(id,message){originalPrivate(id,message);recordTimelinePrivate(id,message);};
-  const originalResult=showNightResult;showNightResult=function(message){originalResult(message);const n=state.night,actor=(n?.round===2?n.reactionQueue:n?.queue)?.[n.index];if(actor)recordTimelinePrivate(actor.id,message);};
+  const originalPrivate=setPrivateResult;setPrivateResult=function(id,message){message=assignedResultText(playerOf(id),message);originalPrivate(id,message);recordTimelinePrivate(id,message);};
+  const originalResult=showNightResult;showNightResult=function(message){const n=state.night,actor=(n?.round===2?n.reactionQueue:n?.queue)?.[n.index];message=assignedResultText(actor,message);originalResult(message);if(actor)recordTimelinePrivate(actor.id,message);};
   const originalAlive=setPlayerAlive;setPlayerAlive=function(player,alive,...args){const before=player?.alive;originalAlive(player,alive,...args);if(player&&before!==player.alive)recordTimelineEvent(`${player.name} ${player.alive?'returned to life':'died'}.`,[player.id]);};
   const originalEnd=endGame;endGame=function(result){originalEnd(result);showGameTimeline($('winCard'),state.timeline||[],state.players);};
   const originalSnapshot=onlinePublicSnapshot;onlinePublicSnapshot=function(){const pub=originalSnapshot();if(state.phase==='gameover')pub.timeline=state.timeline||[];return pub;};

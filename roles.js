@@ -1,9 +1,9 @@
 const DEFAULT_ROLES = [
   {
     id:'undercover', title:'Undercover', orientation:'good',
-    description:'You are Good. Help the town eliminate Evil. Your true identity is separate from the identity shown through recognition.',
+    description:'You are Good. If you survive until Evil would normally win, Good wins instead. Evil must get you voted out or eliminate you through the usual game mechanics.',
     visibility:'nobody', nightAction:'none', nightReaction:'none',
-    recognitionRoleId:'mafia', knowsDisguise:true
+    recognitionRoleId:'mafia', knowsDisguise:true, undercoverWin:true
   },
   {
     id: 'bodyguard', title: 'Bodyguard', orientation: 'good',

@@ -1410,14 +1410,14 @@
   </div>
 
   <script src="reactions.js?v=20261023-reviewed"></script>
-  <script src="abilities.js?v=20261023-reviewed"></script>
+  <script src="abilities.js?v=20261023-no-hunt"></script>
   <script src="judge.js?v=20261016"></script>
   <script src="signal-receiver.js?v=20261021-existing-turns"></script>
   <script src="host-setup.js?v=20261023-assigned-actions"></script>
   <script src="narrator.js?v=20261023-disguises"></script>
   <script src="online-reactions.js?v=20261021-expansion"></script>
-  <script src="roles.js?v=20261023-undercover"></script>
-  <script src="customisation.js?v=20261023"></script>
+  <script src="roles.js?v=20261023-no-hunt"></script>
+  <script src="customisation.js?v=20261023-no-hunt"></script>
   <script>
     // ---- State ---------------------------------------------------------------
     const state = {
@@ -1813,7 +1813,7 @@
       if (canSeeDeadSpectatorRoles(viewer)) return true;
       if (hostSettings(viewer).recognises?.includes(target.id)) return true;
       if (role.visibility === 'everyone') return true;
-      if (roleOf(viewer)?.recognitionRoleId) return false;
+      if (roleOf(viewer)?.recognitionRoleId && !viewer.coverExposed) return false;
 
       const viewerRole = roleOf(viewer);
       if ((roleHasSpecialId(viewerRole, 'policeman') && roleHasSpecialId(role, 'henchman')) || (roleHasSpecialId(viewerRole, 'henchman') && roleHasSpecialId(role, 'policeman'))) return true;
@@ -2236,6 +2236,7 @@
       }
       state.players.forEach(p => {setPlayerAlive(p, true); p.removed=false; p.used = {}; p.escaped = false; p.eliminatedByVote = false; p.framedRoleId = null; p.haterTargetId = null; p.policemanIntel = null; p.silenced = false;delete p.roleOverrides;delete p.copiedAbility;p.dawnMessages=[];p.pendingLetters=[];});
       state.players.forEach(p=>{delete p.fakeDeathReturnRound;delete p.pendingInheritance;delete p.inheritanceNotice;delete p.signalHintHistory;});
+      state.players.forEach(p=>{delete p.coverExposed;});
       delete state.judgeAnnouncedId;
       delete state.visibleTokens;
       delete state.previousNightVisits;
@@ -3543,6 +3544,8 @@
       if (!living.length) return {done:true,winner:'Nobody',reason:'No players remain in the game.'};
       const evil = living.filter(p => roleOf(p)?.orientation === 'evil').length;
       const nonEvil = living.filter(p => roleOf(p)?.orientation !== 'evil').length;
+      const undercover=living.find(p=>p.alive && roleOf(p)?.orientation==='good' && (roleOf(p)?.undercoverWin ?? (roleOf(p)?.id==='undercover')));
+      const undercoverWin=()=>({done:true,winner:'Good',reason:`${undercover.name} survived until Evil would have won. The Undercover secures a Good victory.`});
 
       // Role-specific wins always take precedence over general side wins.
       for (const player of state.players) {
@@ -3564,6 +3567,7 @@
       // the optional normal side-win setting so two-player games cannot stall.
       if (living.length <= 2) {
         if (living.length === 2 && evil > 0) {
+          if(undercover)return undercoverWin();
           return {done: true, winner: 'Evil', reason: 'Two players remain and at least one of them is Evil. Neutral survival does not override the Evil win.'};
         }
         const survivors = living.filter(player => {
@@ -3595,7 +3599,7 @@
           if (neutrals.length) return {done: false};
           return {done: true, winner: 'Good', reason: 'All evil players have been eliminated and no neutral players remain.'};
         }
-        if (evil >= nonEvil) return {done: true, winner: 'Evil', reason: 'Evil now equals or outnumbers the living non-evil players.'};
+        if (evil >= nonEvil) {if(undercover)return undercoverWin();return {done: true, winner: 'Evil', reason: 'Evil now equals or outnumbers the living non-evil players.'};}
       }
 
       return {done: false};

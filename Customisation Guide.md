@@ -8,13 +8,13 @@ Expand **Host-assigned [ability] by night** under the player. Each night can be 
 
 Host assignments include targets, both targets for comparison/swap abilities, the false role for Framer, the replacement role for Change Role, new abilities/reactions/allegiances, and message text. Doctor and Janitor assignments refer to players who actually died that night. Gambler can have both its rolled ability and that ability's choices assigned.
 
-On an assigned night the player gets a notice and a Continue button. They cannot pick another target, option or message. Online submissions are checked against the host's assignment. Invalid targets/options skip the action rather than allowing a substitute. Normal blocking, protection, target restrictions and spent-use limits still apply. Assignments are tied to the named ability; a later transformation to a different ability does not reuse an unrelated old choice.
+On an assigned night the player gets a notice naming the assigned ability, target(s), secondary choice and message, plus a Continue button. They are not warned about future assignments during the initial role reveal. They cannot pick another target, option or message. Online submissions are checked against the host's assignment. Invalid targets/options skip the action rather than allowing a substitute. Normal blocking, protection, target restrictions and spent-use limits still apply. Assignments are tied to the named ability; a later transformation to a different ability does not reuse an unrelated old choice.
 
 Seer, Signal Receiver and Hater retain their existing dedicated controls. A host-assigned Hater target also removes the player's option to decline recording it. Passive abilities already have no player-selected action. Unconfigured future nights retain the usual rules.
 
 ## Personal challenges
 
-Type a private challenge under any player's host settings. It appears with that player's private role information during handoff and night turns, and throughout their online private view. It remains attached to the player for the entire game, including through role changes and revival. It is not shown to other players or put in the public log. The app displays the instruction; the host judges completion in person.
+Type a private challenge under any player's host settings. It appears as **Your personal challenge**, without identifying who assigned it, with that player's private role information during handoff and night turns, and throughout their online private view. It remains attached to the player for the entire game, including through role changes and revival. It is not shown to other players or put in the public log. The app displays the instruction; the host judges completion in person.
 
 ## Policeman intelligence
 
@@ -23,6 +23,10 @@ Both the setup picker and actual assignment prefer a target whose role the Polic
 ## Recognition disguises
 
 The role editor has a **Recognition disguise** and **Player knows their disguise** option. The built-in **Undercover** role is Good but is recognised as Mafia by Evil players.
+
+An alive Good Undercover turns a normal Evil victory into a Good victory, including the final-two safeguard and ordinary Evil parity. Merely knowing their identity does not cancel this win. Other special role victories retain their existing precedence. Disabling normal side-win checks still disables parity checks; the final-two safeguard remains active. The role editor exposes this Undercover win trait for custom roles too.
+
+Evil must get the Undercover voted out or eliminate them through the usual game mechanics. There is no dedicated counter-role or hunting action.
 
 Recognition and host recognition links show the disguise. Ordinary role/allegiance investigations use the real identity, subject to their usual framing or other investigation effects; truthful Signal Receiver clues always use truth. Unlocked dead spectators and the end-of-game reveal see the real role.
 
