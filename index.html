@@ -1754,8 +1754,21 @@
     function currentRolePoolSnapshot() { return Object.fromEntries(state.roles.filter(r=>r.id!=='citizen' && r.randomEnabled!==false && Number(r.randomCount||0)>0).map(r=>[r.id,Math.max(1,Math.floor(Number(r.randomCount)||1))])); }
     function renderPresetSelect() {
       const el=$('presetSelect'); if(!el) return; const current=el.value; el.innerHTML='';
-      Object.entries(BUILTIN_PRESETS).forEach(([id,p])=>el.appendChild(new Option(`${p.name} — ${p.description}`,`builtin:${id}`)));
-      Object.entries(readCustomPresets()).forEach(([id,p])=>el.appendChild(new Option(`${p.name} — custom`,`custom:${id}`)));
+      for(const [label,matches] of [
+        ['Three-player games',p=>p.players===3],
+        ['Larger games',p=>p.players>3],
+        ['Flexible role pools',p=>!p.players]
+      ]){
+        const group=document.createElement('optgroup');group.label=label;
+        Object.entries(BUILTIN_PRESETS).filter(([,p])=>matches(p)).forEach(([id,p])=>{
+          const title=p.players===3?p.name.split(' · ')[1]:p.name;
+          group.appendChild(new Option(title,`builtin:${id}`));
+        });
+        if(group.children.length)el.appendChild(group);
+      }
+      const custom=document.createElement('optgroup');custom.label='Your presets';
+      Object.entries(readCustomPresets()).forEach(([id,p])=>custom.appendChild(new Option(p.name,`custom:${id}`)));
+      if(custom.children.length)el.appendChild(custom);
       if([...el.options].some(o=>o.value===current)) el.value=current;
       renderPresetDescription();
     }
