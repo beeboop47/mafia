@@ -5,6 +5,7 @@ Fallback (DO NOT TOUCH).html
 /Publish.ps1
 /Publish.cmd
 /Watch-Publish.cjs
+/Publish-Hidden.vbs
 /.auto-publish/
 
 # Credentials and machine-specific files.
