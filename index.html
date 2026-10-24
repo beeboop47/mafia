@@ -1062,6 +1062,7 @@
           <div style="margin-top:10px">
             <label>Preset</label>
             <select id="presetSelect"></select>
+            <div id="presetDescription" class="muted tiny" style="margin-top:8px" aria-live="polite"></div>
           </div>
           <div class="preset-actions">
             <button id="applyPresetBtn" type="button">Apply preset</button>
@@ -1414,7 +1415,7 @@
   <script src="judge.js?v=20261016"></script>
   <script src="signal-receiver.js?v=20261021-existing-turns"></script>
   <script src="host-setup.js?v=20261023-assigned-actions"></script>
-  <script src="narrator.js?v=20261023-disguises"></script>
+  <script src="narrator.js?v=20261024-presets"></script>
   <script src="online-reactions.js?v=20261021-expansion"></script>
   <script src="roles.js?v=20261023-no-hunt"></script>
   <script src="customisation.js?v=20261024-personal-victories"></script>
@@ -1733,6 +1734,13 @@
 
     // ---- Setup / roles --------------------------------------------------------
     const BUILTIN_PRESETS = {
+      three_social: {name:'3 players · First vote', description:'1 Mafia + 2 Citizens. No night kills or special powers: discuss, then vote. Good must eliminate Mafia; a wrong elimination gives Evil the win.', players:3, roles:{mafia:1}, requireEvil:true, requireNeutral:false, autoSideWinChecks:true},
+      three_clues: {name:'3 players · First investigation', description:'1 Mafia + 1 Detective + 1 Citizen. No night kills. Detective gets a truthful allegiance clue; Mafia must bluff through the vote. A guided introduction with an advantage for Good.', players:3, roles:{mafia:1,detective:1}, requireEvil:true, requireNeutral:false, autoSideWinChecks:true},
+      three_target: {name:'3 players · Hidden grudge', description:'1 Hater + 2 Citizens. No night kills. Hater secretly learns a target and tries to get them voted out. Good must vote out Hater; eliminating either Citizen leaves Evil in the final two.', players:3, roles:{hater:1}, requireEvil:true, requireNeutral:false, autoSideWinChecks:true},
+      four_rescue: {name:'4 players · One rescue', description:'1 Godfather + 1 Doctor + 2 Citizens. One shared Evil night kill; Doctor can revive once. A short introduction to attacks and revival.', players:4, roles:{godfather:1,doctor:1}, requireEvil:true, requireNeutral:false, autoSideWinChecks:true},
+      five_classic: {name:'5 players · Clues and cover', description:'1 Godfather + 1 Detective + 1 Bodyguard + 2 Citizens. Investigate, protect, and discuss. One Evil player keeps the voting majority with Good.', players:5, roles:{godfather:1,detective:1,bodyguard:1}, requireEvil:true, requireNeutral:false, autoSideWinChecks:true},
+      six_survival: {name:'6 players · Shared survival', description:'1 Godfather + 1 Detective + 1 Doctor + 1 Bodyguard + 1 Gambler + 1 Citizen. Gambler wins personally by surviving alongside either faction; everyone else follows their faction goal.', players:6, roles:{godfather:1,detective:1,doctor:1,bodyguard:1,gambler:1}, requireEvil:true, requireNeutral:true, autoSideWinChecks:true},
+      eight_team: {name:'8 players · Two-sided town', description:'1 Godfather + 1 Mafia + 1 Detective + 1 Doctor + 1 Bodyguard + 3 Citizens. Two Evil players share one night kill; Good has clues, protection, and one revival.', players:8, roles:{godfather:1,mafia:1,detective:1,doctor:1,bodyguard:1}, requireEvil:true, requireNeutral:false, autoSideWinChecks:true},
       classic: {name:'Classic', description:'1 Godfather + 1 Detective.', roles:{godfather:1, detective:1}},
       chaos: {name:'Chaos', description:'Every available non-Citizen role selected once.', allRoles:true},
       trickery: {name:'Trickery', description:'Hacker, Framer, Serial Killer, Persuader, Gambler and Leader.', roles:{hacker:1, framer:1, serial_killer:1, persuader:1, gambler:1, leader:1}},
@@ -1749,10 +1757,20 @@
       Object.entries(BUILTIN_PRESETS).forEach(([id,p])=>el.appendChild(new Option(`${p.name} — ${p.description}`,`builtin:${id}`)));
       Object.entries(readCustomPresets()).forEach(([id,p])=>el.appendChild(new Option(`${p.name} — custom`,`custom:${id}`)));
       if([...el.options].some(o=>o.value===current)) el.value=current;
+      renderPresetDescription();
+    }
+    function renderPresetDescription() {
+      const def=selectedPresetDefinition(),el=$('presetDescription'); if(!el)return;
+      el.textContent=def ? `${def.description || 'Your saved role pool.'}${def.players ? ` Requires exactly ${def.players} players; remaining seats become Citizens. Uses your current role definitions. Normal faction win checks are enabled.` : ''}` : '';
     }
     function applyPresetDefinition(def) {
       if(!def) return;
+      if(def.players && state.players.length!==def.players){
+        $('configStatus').textContent=`${def.name} needs exactly ${def.players} players. Add or remove players, then apply it again.`;
+        return false;
+      }
       state.mode='random';
+      for(const key of ['requireEvil','requireNeutral','autoSideWinChecks']) if(typeof def[key]==='boolean')state[key]=def[key];
       state.roles.forEach(role=>{ if(role.id==='citizen') return; role.randomEnabled=false; role.randomCount=1; });
       if(def.allRoles){
         state.roles.forEach(role=>{ if(role.id!=='citizen'){role.randomEnabled=true;role.randomCount=1;} });
@@ -1760,6 +1778,7 @@
         Object.entries(def.roles || {}).forEach(([id,count])=>{ const role=roleByIdOrRestore(id); if(role){role.randomEnabled=true;role.randomCount=Math.max(1,Math.floor(Number(count)||1));} });
       }
       renderSetup();
+      return true;
     }
     function selectedPresetDefinition() { const value=$('presetSelect')?.value||''; const [kind,id]=value.split(':'); return kind==='builtin'?BUILTIN_PRESETS[id]:readCustomPresets()[id]; }
     function saveConfigLocal() { const payload={roles:state.roles,players:state.players.map(p=>({...p,alive:true,used:{},escaped:false,eliminatedByVote:false,framedRoleId:null,haterTargetId:null,policemanIntel:null,silenced:false})),mode:state.mode,nightOrder:$('nightOrder')?.value||'player',autoSideWinChecks:state.autoSideWinChecks!==false,requireEvil:!!state.requireEvil,requireNeutral:!!state.requireNeutral,narratorMode:!!state.narratorMode,customPresets:readCustomPresets()}; localStorage.setItem(CONFIG_STORAGE_KEY,JSON.stringify(payload)); $('configStatus').textContent='Saved players, roles, presets and settings on this device.'; }
@@ -3695,7 +3714,8 @@
       }
       closeRoleEditor(); renderSetup();
     });
-    $('applyPresetBtn').addEventListener('click',()=>{const def=selectedPresetDefinition();if(def){applyPresetDefinition(def);$('configStatus').textContent=`Applied ${def.name || 'preset'}.`;}});
+    $('presetSelect').addEventListener('change',renderPresetDescription);
+    $('applyPresetBtn').addEventListener('click',()=>{const def=selectedPresetDefinition();if(def&&applyPresetDefinition(def)!==false){$('configStatus').textContent=`Applied ${def.name || 'preset'}.`;}});
     $('savePresetBtn').addEventListener('click',()=>{const name=prompt('Name this custom preset:');if(!name?.trim())return;const id=`preset_${Date.now()}`;const presets=readCustomPresets();presets[id]={name:name.trim(),roles:currentRolePoolSnapshot()};writeCustomPresets(presets);renderPresetSelect();$('presetSelect').value=`custom:${id}`;$('configStatus').textContent='Custom preset saved.';});
     $('deletePresetBtn').addEventListener('click',()=>{const value=$('presetSelect').value;if(!value.startsWith('custom:')){alert('Built-in presets cannot be deleted.');return;}const id=value.split(':')[1],presets=readCustomPresets();delete presets[id];writeCustomPresets(presets);renderPresetSelect();$('configStatus').textContent='Custom preset deleted.';});
     $('saveConfigBtn').addEventListener('click',saveConfigLocal);

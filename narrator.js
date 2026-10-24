@@ -331,7 +331,10 @@ function assignNarratorRoles() {
   if (evilCount > evilLimit) { alert('Narrator mode needs fewer Mafia to avoid an immediate Evil win.'); return false; }
   if (evilEnabled) {
     const evilPool = roles.filter(role => role.orientation === 'evil' && role.id !== mafia.id && role.randomEnabled !== false && !counts[role.id]).map(role => role.id);
-    if (mafia.randomEnabled !== false) for (let i=evilCount; i<evilLimit; i++) evilPool.push(mafia.id);
+    if (mafia.randomEnabled !== false) {
+      const remaining=Math.max(0,Math.floor(Number(mafia.randomCount)||1)-(counts[mafia.id]||0));
+      for(let i=0;i<remaining;i++)evilPool.push(mafia.id);
+    }
     pool.push(...shuffle(evilPool).slice(0, evilLimit - evilCount));
   }
   const assigned = [];
