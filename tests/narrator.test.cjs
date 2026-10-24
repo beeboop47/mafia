@@ -7,6 +7,7 @@ function setup(){
   const c=vm.createContext({state:{mode:'random',players:[],roles:[]},online:{mode:'offline'},alert:()=>{},
     shuffle:list=>[...list],randomChoice:list=>list[0],EXTRA_ABILITIES:{fakeActivity:{}},
     isPassiveAbility:a=>a==='seer',actionUsesLeft:()=>Infinity,document:{getElementById:()=>({})},window:{},
+    proposedAttackStopped:()=>false,proposedPlanningTurn:()=>null,renderProposedPlanning:()=>false,
     newReactionTurn:()=>null,extraNoticesFor:()=>'',hasReactionRoundInfo:a=>['seer','doctor','janitor','inspectOrientation'].includes(a),
     findPendingAttacksFor:id=>id===2?[{targetId:2}]:[],roleHasSpecialId:(r,id)=>r?.id===id});
   c.nightReactionFor=()=> 'none';

@@ -25,6 +25,7 @@ function game(){
   const c=vm.createContext({state:{phase:'night',round:1,logs:[],players:[],roles:[],night:{pendingAttacks:[],protectedIds:[]}},
     online:{mode:'offline'},structuredClone,document:{createElement:element},
     escapeHtml:text=>String(text).replaceAll('&','&amp;').replaceAll('<','&lt;').replaceAll('>','&gt;'),
+    shouldDeferNightReport:()=>false,nightNeedsSettledReports:()=>false,
     setPhase:()=>{},renderNightKnownRoles:()=>{},renderNewReaction:()=>false,newReactionTurn:()=>null,
     settleUnhandledExtraAttacks:()=>{},isLimitedInvestigation:()=>false,survivePassiveAttack:()=>false,
     changesPrevented:()=>false,roleHasSpecialId:(role,id)=>role?.id===id,

@@ -50,7 +50,7 @@ Do not look too clean. A player with perfect reads and no enemies becomes suspic
 
 ### Playing Effective Neutral
 
-Neutral roles should ask: "Do I need to survive, die, be voted out, change the board, or hide?" Your play should serve that answer.
+Ordinary Neutral roles win personally by surviving until the game ends, alongside either Good or Evil. They do not replace the faction winner. Cooperating to eliminate Hater, for example, can give Detective a Good faction victory and Gambler a personal survival victory. Jester is the exception: survival is insufficient; they must be voted out.
 
 Do not default to helping Good. Good will often eliminate neutrals once Evil is under control. Do not default to helping Evil either, because Evil may kill you once you are no longer useful. Trade information, create leverage, and stay hard to classify.
 

@@ -1,5 +1,13 @@
 A website to play Mafia pass-and-play with friends.
 
+## Publishing changes to GitHub
+
+Double-click **Publish.cmd** in this folder to check the website scripts, run the game tests, commit the intended project files and push to `https://github.com/beeboop47/mafia.git` on `main`. If Git asks you to sign in, use the GitHub account with write access to that repository. Successful uploads report **Published successfully**. A failed test or a newer remote history stops publishing; the script never force-pushes or overwrites local files to resolve a conflict.
+
+To run the checks without staging, committing or uploading, run `powershell -NoProfile -ExecutionPolicy RemoteSigned -File .\Publish.ps1 -CheckOnly`. To use your own commit message, run `powershell -NoProfile -ExecutionPolicy RemoteSigned -File .\Publish.ps1 -Message "Describe your update"`.
+
+Git, Node.js and GitHub write access are required. The script uses your installed Git credential manager; credentials are not stored in these scripts. The local `Fallback (DO NOT TOUCH).html`, environment files and temporary test output are excluded. Publishing runs only when you launch it; there is no background watcher. Website deployment follows the repository's existing hosting configuration.
+
 Host-assigned actions for every active ability, private personal challenges, recognition disguises (including Undercover), and an end-of-game timeline are described in the [Customisation Guide](Customisation%20Guide.md). The [Ability and Reaction Review](Ability%20and%20Reaction%20Review.md) lists the complete current catalogue and review decisions.
 
 ## Ability and reaction expansion
@@ -51,8 +59,6 @@ Narrator mode silently skips blocked or unavailable ability turns. Doctor and Ja
 
 ## Neutral endgames
 
-At the final two, any living Evil player wins before ordinary Neutral survival is considered. With two Neutrals and one Evil, eliminating Evil allows the surviving Neutrals to win; eliminating a Neutral allows Evil to win. With no Evil in the final two, existing Neutral survival rules apply. Explicit role wins such as Jester being voted out still take precedence. This safeguard applies even when automatic side-win checks are disabled.
+Neutrals earn personal survival victories alongside the faction result; they do not replace it. Detective and Gambler voting Hater out produces a Good faction victory plus Gambler's personal survival victory. Surviving eligible Neutrals can also win personally alongside Evil. Dead or removed Neutrals do not qualify. Jester must be voted out and retains its special victory precedence; surviving is insufficient.
 
-## Neutral endgames
-
-At the final two, any living Evil player wins before ordinary Neutral survival is considered. With two Neutrals and one Evil, eliminating Evil allows the surviving Neutrals to win; eliminating a Neutral allows Evil to win. With no Evil in the final two, existing Neutral survival rules apply. Explicit role wins such as Jester being voted out still take precedence. This safeguard applies even when automatic side-win checks are disabled.
+With normal side checks enabled, surviving Neutrals do not prevent Good winning after Evil is eliminated, or Evil winning after Good is eliminated. The always-on final-two safeguard remains active even if normal side checks are disabled, including Undercover's existing exception. If only Neutrals remain, the end screen lists their personal victories without awarding a faction victory. Offline and online end screens show personal winners separately, and host recovery saves preserve the result.

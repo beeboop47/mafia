@@ -22,7 +22,7 @@ function game() {
   vm.runInContext(fs.readFileSync(path.join(root, 'judge.js'), 'utf8'), context);
   vm.runInContext(fs.readFileSync(path.join(root, 'signal-receiver.js'), 'utf8'), context);
   vm.runInContext(fs.readFileSync(path.join(root, 'host-setup.js'), 'utf8'), context);
-  for (const name of ['assignRoles', 'ensurePolicemanIntel', 'visibleTo', 'resolveLimitedInvestigations', 'checkWin', 'trackReport']) {
+  for (const name of ['assignRoles', 'ensurePolicemanIntel', 'canSeeDeadSpectatorRoles', 'visibleTo', 'resolveLimitedInvestigations', 'checkWin', 'trackReport']) {
     const start = html.indexOf(`    function ${name}(`);
     const end = html.indexOf('\n    function ', start + 1);
     vm.runInContext(html.slice(start, end), context);
@@ -32,6 +32,7 @@ function game() {
 
 test('host setup shows only manually assigned role controls and saves signal settings', () => {
   const c=game();
+  vm.runInContext(fs.readFileSync(path.join(root, 'roles.js'), 'utf8'), c);
   function element() {
     return {children:[],style:{},value:'',textContent:'',listeners:{},
       appendChild(child){this.children.push(child);},replaceChildren(){this.children=[];},
@@ -62,15 +63,19 @@ test('host setup shows only manually assigned role controls and saves signal set
   controls.find(n=>n.textContent==='Reset to random').onclick();
   assert.equal(c.state.players[0].hostSetup.signalSchedule[1],undefined);
   assert.equal(message.value,'');
-  c.state.roles.push({id:'hater'});
+  c.state.roles.push(vm.runInContext('DEFAULT_ROLES.find(role => role.id === "hater")', c));
   c.state.players[0].roleId='hater'; c.renderHostSetup();
   assert.ok(headings().includes('Hater target'));
+  const targetPicker=flatten(nodes.hostPlayerSettings).find(n=>n.textContent==='Hater target').children[0];
+  assert.ok(targetPicker.children.some(n=>n.textContent==='Two'));
+  targetPicker.value='1'; targetPicker.listeners.change();
+  assert.equal(c.state.players[0].hostSetup.haterTarget,1);
   c.state.mode='random'; c.renderHostSetup();
   assert.ok(!headings().includes('Hater target'));
   assert.ok(!headings().includes('Signal Receiver hints by night'));
 });
 
-test('Evil beats Neutral survival at the final two regardless of side-win setting', () => {
+test('final-two faction results coexist with personal Neutral survival regardless of side-win setting', () => {
   for (const id of ['persuader', 'serial_killer', 'framer', 'gambler', 'leader']) {
     for (const orientation of ['good', 'evil', 'neutral']) {
       for (const autoSideWinChecks of [true, false]) {
@@ -78,9 +83,11 @@ test('Evil beats Neutral survival at the final two regardless of side-win settin
         c.state.autoSideWinChecks = autoSideWinChecks;
         c.state.roles = [{id, title:id, orientation:'neutral'}, {id:'opponent', title:'Opponent', orientation, winCondition:orientation === 'neutral' ? 'votedOut' : 'none'}];
         c.state.players = [{id:0, name:'Survivor', roleId:id, alive:true}, {id:1, name:'Opponent', roleId:'opponent', alive:true}];
-        assert.equal(c.checkWin().winner, orientation === 'evil' ? 'Evil' : id);
+        assert.equal(c.checkWin().winner, orientation === 'evil' ? 'Evil' : orientation==='good'?'Good':'Nobody');
+        assert.deepEqual(Array.from(c.checkWin().personalWinners,p=>p.id),[0]);
         c.state.players[1].alive = false;
-        assert.equal(c.checkWin().winner, id);
+        assert.equal(c.checkWin().winner, 'Nobody');
+        assert.deepEqual(Array.from(c.checkWin().personalWinners,p=>p.id),[0]);
       }
     }
   }
@@ -92,9 +99,10 @@ test('two Neutrals and one Evil have different winners depending on the eliminat
       const c=game();c.state.autoSideWinChecks=autoSideWinChecks;
       c.state.roles=[{id:'framer',title:'Framer',orientation:'neutral'},{id:'gambler',title:'Gambler',orientation:'neutral'},{id:'mafia',title:'Mafia',orientation:'evil'}];
       c.state.players=c.state.roles.map((r,id)=>({id,name:r.title,roleId:r.id,alive:true}));
-      assert.equal(c.checkWin().done,false);
+      assert.equal(c.checkWin().done,autoSideWinChecks);
       c.state.players[eliminated].alive=false;c.state.players[eliminated].eliminatedByVote=true;
-      assert.equal(c.checkWin().winner,eliminated===2?'Framer & Gambler':'Evil');
+      assert.equal(c.checkWin().winner,eliminated===2?'Nobody':'Evil');
+      assert.equal(c.checkWin().personalWinners.length,eliminated===2?2:1);
     }
   }
 });
@@ -117,7 +125,8 @@ test('Jester must be voted out, while other final neutrals can win together', ()
   c.state.players[1].alive = true;
   assert.equal(c.checkWin().winner, 'Jester');
   c.state.players = [{id:0, name:'Framer', roleId:'framer', alive:true}, {id:1, name:'Gambler', roleId:'gambler', alive:true}];
-  assert.equal(c.checkWin().winner, 'Framer & Gambler');
+  assert.equal(c.checkWin().winner, 'Nobody');
+  assert.equal(c.checkWin().personalWinners.length,2);
 });
 test('manual assignments consume pool copies and satisfy their evil minimum', () => {
   const c = game();
@@ -240,7 +249,7 @@ test('a surviving Jester remains a Jester when Evil is eliminated', () => {
   const c=game();
   c.state.roles=[{id:'citizen',orientation:'good'},{id:'jester',orientation:'neutral'},{id:'serial_killer',orientation:'neutral'}];
   c.state.players=[{id:0,roleId:'jester',alive:true},{id:1,roleId:'citizen',alive:true},{id:2,roleId:'citizen',alive:true}];
-  assert.equal(c.checkWin().done,false); assert.equal(c.state.players[0].roleId,'jester');
+  assert.equal(c.checkWin().winner,'Good');assert.equal(c.checkWin().personalWinners.length,0);assert.equal(c.state.players[0].roleId,'jester');
 });
 test('both independent minimums are met together', () => {
   const c=game(); c.state.mode='random'; c.state.requireEvil=true; c.state.requireNeutral=true;
@@ -291,6 +300,8 @@ function activityGame(actions, blockedIds=[]) {
   const helper=source.indexOf('function extraTargetsAvailable(');
   vm.runInContext(source.slice(helper,source.indexOf('\nfunction ',helper+1)),c);
   c.EXTRA_ABILITIES={fakeActivity:{},hideActivity:{}};
+  c.resolveProposedEffects=()=>{};
+  c.rebuildReactionDeceptions=()=>{};
   const start=source.indexOf('function resolveExtraEffects()');
   vm.runInContext(source.slice(start,source.indexOf('\nfunction ',start+1)),c);
   c.resolveExtraEffects(); c.resolveLimitedInvestigations(); return c;

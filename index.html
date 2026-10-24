@@ -1417,7 +1417,7 @@
   <script src="narrator.js?v=20261023-disguises"></script>
   <script src="online-reactions.js?v=20261021-expansion"></script>
   <script src="roles.js?v=20261023-no-hunt"></script>
-  <script src="customisation.js?v=20261023-no-hunt"></script>
+  <script src="customisation.js?v=20261024-personal-victories"></script>
   <script>
     // ---- State ---------------------------------------------------------------
     const state = {
@@ -2142,6 +2142,7 @@
       state.visibleTokens = Array.isArray(parsed.visibleTokens) ? parsed.visibleTokens : [];
       state.logs = Array.isArray(parsed.logs) ? parsed.logs.filter(entry => entry?.visibility === 'public') : [];
       state.timeline = Array.isArray(parsed.timeline) ? parsed.timeline : [];
+      state.gameResult = parsed.gameResult || null;
       state.previousNightVisits = Array.isArray(parsed.previousNightVisits) ? parsed.previousNightVisits : [];
       state.onlineVersion = Number.isInteger(parsed.onlineVersion) ? parsed.onlineVersion : 0;
       state.processedCommandIds = {};
@@ -2162,7 +2163,7 @@
       return JSON.parse(JSON.stringify({
         roles: state.roles, players: state.players, mode: state.mode, phase: state.phase,
         handoffIndex: state.handoffIndex, handoffRevealed: state.handoffRevealed, round: state.round,
-        day: state.day, night: state.night, logs: publicGameLogs().slice(0, 250), timeline:state.timeline || [],
+        day: state.day, night: state.night, logs: publicGameLogs().slice(0, 250), timeline:state.timeline || [], gameResult:state.gameResult||null,
         visibleTokens: state.visibleTokens || [], previousNightVisits:state.previousNightVisits || [],
         onlineVersion: state.onlineVersion, onlineCommandAcks: state.onlineCommandAcks,
         autoSideWinChecks: state.autoSideWinChecks !== false,
@@ -3540,69 +3541,37 @@
 
     // ---- Win / game end ------------------------------------------------------
     function checkWin() {
-      const living = state.players.filter(p=>!p.removed&&(p.alive||p.fakeDeathReturnRound));
-      if (!living.length) return {done:true,winner:'Nobody',reason:'No players remain in the game.'};
-      const evil = living.filter(p => roleOf(p)?.orientation === 'evil').length;
-      const nonEvil = living.filter(p => roleOf(p)?.orientation !== 'evil').length;
-      const undercover=living.find(p=>p.alive && roleOf(p)?.orientation==='good' && (roleOf(p)?.undercoverWin ?? (roleOf(p)?.id==='undercover')));
-      const undercoverWin=()=>({done:true,winner:'Good',reason:`${undercover.name} survived until Evil would have won. The Undercover secures a Good victory.`});
-
-      // Role-specific wins always take precedence over general side wins.
-      for (const player of state.players) {
-        if (player.removed) continue;
-        const role = roleOf(player);
-        if (!role || normalizedWinCondition(role) === 'none') continue;
-        if (normalizedWinCondition(role) === 'votedOut' && !player.alive && player.eliminatedByVote) {
-          return {done: true, winner: role.title, reason: `${player.name} was voted out, completing the ${role.title} win condition.`};
-        }
-        if (role.winCondition === 'sideWhenTargetVotedOut') {
-          const target = playerOf(player.haterTargetId);
-          if (target && !target.alive && target.eliminatedByVote) {
-            return {done: true, winner: role.orientation === 'evil' ? 'Evil' : role.title, reason: `${target.name} was voted out, completing ${role.title}'s target win condition.`};
-          }
+      const living=state.players.filter(p=>!p.removed&&(p.alive||p.fakeDeathReturnRound));
+      const finish=(winner,reason)=>({done:true,winner,reason,personalWinners:living.filter(p=>roleOf(p)?.orientation==='neutral'&&roleOf(p)?.id!=='jester'&&normalizedWinCondition(roleOf(p))!=='votedOut').map(p=>({id:p.id,name:p.name||('Player '+(p.id+1)),role:roleOf(p)?.title||'Neutral',condition:'Survived until the game ended'}))});
+      if(!living.length)return finish('Nobody','No players remain in the game.');
+      const evil=living.filter(p=>roleOf(p)?.orientation==='evil').length;
+      const good=living.filter(p=>roleOf(p)?.orientation==='good').length;
+      const nonEvil=living.length-evil;
+      const undercover=living.find(p=>p.alive&&roleOf(p)?.orientation==='good'&&(roleOf(p)?.undercoverWin??(roleOf(p)?.id==='undercover')));
+      const evilVictory=(reason='Evil now equals or outnumbers the living non-evil players.')=>undercover?finish('Good',undercover.name+' survived until Evil would have won. The Undercover secures a Good victory.'):finish('Evil',reason);
+      // Special role victories, including Jester, retain their existing precedence.
+      for(const player of state.players){
+        if(player.removed)continue;
+        const role=roleOf(player),condition=normalizedWinCondition(role);
+        if(!role||condition==='none')continue;
+        if(condition==='votedOut'&&!player.alive&&player.eliminatedByVote)return finish(role.title,player.name+' was voted out, completing the '+role.title+' win condition.');
+        if(condition==='sideWhenTargetVotedOut'){
+          const target=playerOf(player.haterTargetId);
+          if(target&&!target.alive&&target.eliminatedByVote)return finish(role.orientation==='evil'?'Evil':role.title,target.name+' was voted out, completing '+role.title+"'s target win condition.");
         }
       }
-
-      // Always-on two-player safeguard. This is intentionally independent of
-      // the optional normal side-win setting so two-player games cannot stall.
-      if (living.length <= 2) {
-        if (living.length === 2 && evil > 0) {
-          if(undercover)return undercoverWin();
-          return {done: true, winner: 'Evil', reason: 'Two players remain and at least one of them is Evil. Neutral survival does not override the Evil win.'};
-        }
-        const survivors = living.filter(player => {
-          const role = roleOf(player);
-          return role?.orientation === 'neutral' && normalizedWinCondition(role) !== 'votedOut';
-        });
-        if (survivors.length) {
-          return {done: true, winner: [...new Set(survivors.map(player => roleOf(player).title))].join(' & '), reason: `${survivors.map(player => player.name).join(' and ')} survived to the final ${living.length === 1 ? 'player' : 'two players'}, completing the neutral survival win condition.`};
-        }
-        if (living.length === 1) {
-          const last = living[0];
-          const lastRole = roleOf(last);
-          const missedVoteWin = normalizedWinCondition(lastRole) === 'votedOut';
-          return {done: true, winner: missedVoteWin ? 'Nobody' : (lastRole?.orientation === 'evil' ? 'Evil' : 'Good'), reason: missedVoteWin ? `${last.name} survived, but was not voted out and did not complete their win condition.` : `${last.name} is the last player standing.`};
-        }
+      // The final-two safeguard still ends stalled games, independently of optional side checks.
+      if(living.length<=2){
+        if(evil>0)return evilVictory();
+        if(good>0)return finish('Good','No Evil players remain. Good wins; eligible surviving Neutrals also earn personal victories.');
+        return finish('Nobody','No Good or Evil faction remains. Eligible surviving Neutrals earn personal survival victories; Jester must have been voted out.');
       }
-      if (living.length === 2) {
-        const good = living.filter(p => roleOf(p)?.orientation === 'good').length;
-        if (good > 0) {
-          return {done: true, winner: 'Good', reason: 'Two players remain, at least one is Good, and no Evil players remain.'};
-        }
+      if(state.autoSideWinChecks!==false){
+        if(evil===0)return finish(good>0?'Good':'Nobody',good>0?'All Evil players have been eliminated. Good wins; eligible surviving Neutrals also earn personal victories.':'No Good or Evil faction remains. Eligible surviving Neutrals earn personal survival victories.');
+        if(good===0)return evilVictory('All Good players have been eliminated. Evil wins; eligible surviving Neutrals also earn personal victories.');
+        if(evil>=nonEvil)return evilVictory();
       }
-
-      // Normal Mafia side-win checks can be disabled for custom/experimental
-      // games. They remain enabled by default.
-      if (state.autoSideWinChecks !== false) {
-        const neutrals = living.filter(p => roleOf(p)?.orientation === 'neutral');
-        if (evil === 0) {
-          if (neutrals.length) return {done: false};
-          return {done: true, winner: 'Good', reason: 'All evil players have been eliminated and no neutral players remain.'};
-        }
-        if (evil >= nonEvil) {if(undercover)return undercoverWin();return {done: true, winner: 'Evil', reason: 'Evil now equals or outnumbers the living non-evil players.'};}
-      }
-
-      return {done: false};
+      return {done:false};
     }
     function removePlayerFromGame(player) {
       if (!player || player.removed || !['day','night'].includes(state.phase)) return false;
@@ -3665,6 +3634,7 @@
       else updateNight();
     }
     function endGame(result) {
+      state.gameResult=result;
       narratorCancelAuto();
       if (state.phase === 'night') publishNightLog();
       state.phase = 'gameover';
@@ -5205,7 +5175,7 @@
         if(!online.isHost || online.roomCode!==roomCode) return;
         ensureOnlineDuel();
         const {dbMod}=online.api; const updates={}; const pub=onlinePublicSnapshot();
-        updates[`rooms/${roomCode}/public`]=pub.phase==='gameover'?{...pub,winner:online._winner?.winner,reason:online._winner?.reason}:pub;
+        updates[`rooms/${roomCode}/public`]=pub.phase==='gameover'?{...pub,winner:online._winner?.winner||pub.winner,reason:online._winner?.reason||pub.reason,personalWinners:online._winner?.personalWinners||pub.personalWinners||[]}:pub;
         updates[`rooms/${roomCode}/meta/status`]=pub.phase==='gameover'?'gameover':(pub.phase==='setup'?'lobby':'started');
         if(pub.phase==='gameover' || pub.phase==='setup') updates[`rooms/${roomCode}/state`]=serializeAuthoritativeState(); else updates[`rooms/${roomCode}/state`]=serializeAuthoritativeState();
         for(const pl of state.players){
@@ -5328,6 +5298,7 @@
 
     async function finishOnlineGame(result) {
       if (state.phase==='gameover') return;
+      state.gameResult=result;
       if (state.phase === 'night') publishNightLog();
       online._winner = result; state.phase = 'gameover'; bumpOnlineVersion();
       addLog(result.reason, 'public');

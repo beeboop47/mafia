@@ -14,7 +14,7 @@ function setup(action='rps') {
   const timers=new Map(), acks=[], results={};let timerId=0;
   const players=[{id:0,name:'Target',alive:true,used:{}},{id:1,name:'Attacker',alive:true,used:{}},{id:2,name:'Other',alive:true,used:{}}];
   const attack={attackerId:1,targetId:0};
-  const c=vm.createContext({console,Date:{now:()=>now},
+  const c=vm.createContext({console,Date:{now:()=>now},shouldDeferNightReport:()=>false,
     online:{isHost:true,serverTimeOffset:0},
     state:{phase:'night',round:1,onlineVersion:1,night:{round:2,index:0,pendingAttacks:[attack],onlineAckNeeded:false},players},
     playerOf:id=>players.find(p=>p.id===id),onlineCurrentNightActor:()=>players[0],

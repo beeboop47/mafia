@@ -1,0 +1,16 @@
+# Local fallback copy is deliberately excluded from publishing.
+Fallback (DO NOT TOUCH).html
+
+# Credentials and machine-specific files.
+.env
+.env.*
+*.local
+node_modules/
+.DS_Store
+Thumbs.db
+
+# Temporary test output.
+tests/*.png
+tests/*.log
+test-results/
+playwright-report/

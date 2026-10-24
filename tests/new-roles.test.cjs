@@ -35,7 +35,7 @@ function game(ids = ['signal_receiver', 'mafia', 'citizen', 'judge', 'doctor', '
     vm.runInContext(fs.readFileSync(path.join(root, file), 'utf8'), c);
   for (const name of ['roleOf','roleActiveNightAction','roleNightReaction','nightActionFor','nightReactionFor',
     'playersAlive','playerOf','labelOrientation','normalizedRoleOptions','actionUsesLeft','markNightAbilityUsed',
-    'validAbilityTargets','setPlayerAlive','recordNightAction','applyPermanentRoleChange','ensurePolicemanIntel',
+    'validAbilityTargets','visibleTo','setPlayerAlive','recordNightAction','applyPermanentRoleChange','ensurePolicemanIntel',
     'validDayTarget','checkWin','normalizedWinCondition','assignRoles','effectiveRoleOf','investigationSubject',
     'investigationRoleOf','trackReport','isLimitedInvestigation','limitedInvestigationChoices',
     'recordLimitedInvestigation','resolveLimitedInvestigations','hasReactionRoundInfo','ackOnlineCommand',
@@ -177,7 +177,7 @@ test('configured and random Seer, Policeman and Hater selections cannot choose a
   const c=game();c.playerOf(0).hostSetup={seerSchedule:{1:3},policemanTarget:3,haterTarget:3};
   const candidates=[c.playerOf(3),c.playerOf(1)];
   assert.equal(c.scheduledSeerTarget(c.playerOf(0),candidates),1);
-  assert.equal(c.hostTarget(c.playerOf(0),'haterTarget',candidates).id,1);
+  assert.equal(c.hostTarget(c.playerOf(0),'haterTarget',candidates),null);
   c.playerOf(0).roleId='policeman';assert.notEqual(c.ensurePolicemanIntel(c.playerOf(0)).targetId,3);
 });
 

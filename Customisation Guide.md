@@ -40,6 +40,8 @@ Once per game, choose another living player and a permitted ability to grant the
 
 ## End-of-game timeline
 
+Faction victories and Neutral personal survival victories are listed separately at game over. Eligible surviving Neutrals win personally alongside either Good or Evil. They never replace the faction winner or keep a defeated faction's game open. Jester is excluded from survival victories and retains its voted-out victory. With only Neutrals remaining, there is no faction victory; eligible survivors still receive personal wins. These results persist through host save/restore.
+
 After the game ends, open **Game timeline** below the final reveal. It records assignments, selected actions and targets, private results, transformations, deaths, revivals, protection/attack reports and public voting outcomes. Selections are described as selections; they do not imply success. Later events record outcomes. Filter by player to follow their story.
 
 The timeline is withheld from shared online state until game over. Host recovery saves retain it privately. Old saved games cannot reconstruct events that were never recorded. In-person behaviour and unsubmitted decisions cannot be reconstructed by the app.

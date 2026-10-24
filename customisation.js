@@ -6,6 +6,7 @@ function recognitionRoleOf(player, viewer=null) {
 }
 function privateCustomisationText(player) {
   const role=roleOf(player), parts=[];
+  if(role?.orientation==='neutral'&&role.id!=='jester'&&normalizedWinCondition(role)!=='votedOut')parts.push('Personal victory: survive until the game ends. You can win alongside Good or Evil; you do not need to defeat either faction.');
   if(role?.recognitionRoleId && !player.coverExposed && role.knowsDisguise!==false){
     const disguise=state.roles.find(r=>r.id===role.recognitionRoleId);
     if(disguise)parts.push(`Players who recognise you see you as ${disguise.title} (${labelOrientation(disguise.orientation)}). Investigations reveal your true identity. You do not automatically recognise their roles.`);
@@ -150,6 +151,14 @@ function showGameTimeline(container,events,players){
     container.querySelectorAll('.timeline-entry').forEach(row=>{row.hidden=!!value&&!row.dataset.players.split(',').includes(value)&&!players.some(p=>String(p.id)===value&&row.textContent.includes(p.name));});
   };
 }
+function showPersonalVictories(container,result){
+  container.querySelector('.personal-victories')?.remove();
+  if(!result.personalWinners?.length)return;
+  const section=document.createElement('section');section.className='personal-victories intel-card';
+  const heading=document.createElement('h3');heading.textContent='Personal survival victories';section.appendChild(heading);
+  for(const player of result.personalWinners){const row=document.createElement('p');row.textContent=`${player.name} — ${player.role}: survived until the game ended.`;section.appendChild(row);}
+  container.appendChild(section);
+}
 
 function removeLegacyHunt(){
   const retiredAction='exposeCover',retiredRole='counterintelligence';
@@ -248,15 +257,15 @@ function installCustomisation(){
   };
   const originalRenderOnline=renderOnlinePrivate;
   renderOnlinePrivate=function(...args){originalRenderOnline(...args);const text=online.private?.customisationText;if(text){const el=document.createElement('div');el.className='intel-card personal-challenge';el.style.whiteSpace='pre-wrap';el.textContent=text;$('onlineRoleBox').appendChild(el);}};
-  const originalAssign=assignRoles;assignRoles=function(...args){removeLegacyHunt();const result=originalAssign(...args);if(result!==false){state.timeline=[];state.players.forEach(p=>{const r=roleOf(p);state.timeline.push({round:1,phase:'handoff',playerIds:[p.id],text:`${p.name} was assigned ${r?.title||'Unknown'} (${labelOrientation(r?.orientation)}).`});});}return result;};
+  const originalAssign=assignRoles;assignRoles=function(...args){removeLegacyHunt();const result=originalAssign(...args);if(result!==false){delete state.gameResult;state.timeline=[];state.players.forEach(p=>{const r=roleOf(p);state.timeline.push({round:1,phase:'handoff',playerIds:[p.id],text:`${p.name} was assigned ${r?.title||'Unknown'} (${labelOrientation(r?.orientation)}).`});});}return result;};
   const originalRecord=recordNightAction;recordNightAction=function(actor,action,targetId=null,extra={}){originalRecord(actor,action,targetId,extra);if(!actor)return;const ids=extra.targetIds||[targetId].filter(id=>id!=null);const choice=extra.framedRoleId||extra.newRoleId;recordTimelineEvent(`${actor.name} selected ${NIGHT_ACTIONS[action]?.label||action}${ids.length?' → '+ids.map(id=>playerOf(id)?.name||'departed player').join(', '):''}${choice?' as '+(state.roles.find(r=>r.id===choice)?.title||choice):''}.`,[actor.id,...ids]);};
   const originalNotice=extraNotice;extraNotice=function(id,message){originalNotice(id,message);recordTimelinePrivate(id,message);};
   const originalPrivate=setPrivateResult;setPrivateResult=function(id,message){message=assignedResultText(playerOf(id),message);originalPrivate(id,message);recordTimelinePrivate(id,message);};
   const originalResult=showNightResult;showNightResult=function(message){const n=state.night,actor=(n?.round===2?n.reactionQueue:n?.queue)?.[n.index];message=assignedResultText(actor,message);originalResult(message);if(actor)recordTimelinePrivate(actor.id,message);};
   const originalAlive=setPlayerAlive;setPlayerAlive=function(player,alive,...args){const before=player?.alive;originalAlive(player,alive,...args);if(player&&before!==player.alive)recordTimelineEvent(`${player.name} ${player.alive?'returned to life':'died'}.`,[player.id]);};
-  const originalEnd=endGame;endGame=function(result){originalEnd(result);showGameTimeline($('winCard'),state.timeline||[],state.players);};
-  const originalSnapshot=onlinePublicSnapshot;onlinePublicSnapshot=function(){const pub=originalSnapshot();if(state.phase==='gameover')pub.timeline=state.timeline||[];return pub;};
-  const originalOnlineEnd=renderOnlineGameOver;renderOnlineGameOver=function(pub){originalOnlineEnd(pub);showGameTimeline($('onlineGameOver'),pub.timeline||[],pub.players||[]);};
+  const originalEnd=endGame;endGame=function(result){originalEnd(result);if(result.winner==='Nobody')$('winnerTitle').textContent='No faction victory';showPersonalVictories($('winCard'),result);showGameTimeline($('winCard'),state.timeline||[],state.players);};
+  const originalSnapshot=onlinePublicSnapshot;onlinePublicSnapshot=function(){const pub=originalSnapshot();if(state.phase==='gameover'){pub.timeline=state.timeline||[];const result=state.gameResult||online._winner;if(result){pub.winner=result.winner;pub.reason=result.reason;pub.personalWinners=result.personalWinners||[];}}return pub;};
+  const originalOnlineEnd=renderOnlineGameOver;renderOnlineGameOver=function(pub){originalOnlineEnd(pub);if(pub.winner==='Nobody')$('onlineWinnerTitle').textContent='No faction victory';showPersonalVictories($('onlineGameOver'),pub);showGameTimeline($('onlineGameOver'),pub.timeline||[],pub.players||[]);};
   const originalPhase=setPhase;setPhase=function(...args){document.body.dataset.gamePhase=state.phase;return originalPhase(...args);};
   const originalPublicRender=renderOnlinePublic;renderOnlinePublic=function(...args){document.body.dataset.gamePhase=online.public?.phase||state.phase;return originalPublicRender(...args);};
   renderHostSetup();
