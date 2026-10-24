@@ -4,6 +4,8 @@ Fallback (DO NOT TOUCH).html
 # Publishing tools stay on this computer.
 /Publish.ps1
 /Publish.cmd
+/Watch-Publish.cjs
+/.auto-publish/
 
 # Credentials and machine-specific files.
 .env
