@@ -1,6 +1,10 @@
 # Local fallback copy is deliberately excluded from publishing.
 Fallback (DO NOT TOUCH).html
 
+# Publishing tools stay on this computer.
+/Publish.ps1
+/Publish.cmd
+
 # Credentials and machine-specific files.
 .env
 .env.*
