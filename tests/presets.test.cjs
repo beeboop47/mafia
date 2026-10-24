@@ -22,40 +22,28 @@ function setup(count){
   c.online.mode='offline';
   return c;
 }
-test('sized presets deal the advertised roster and do not immediately end the game',()=>{
-  const definitions=setup(3).presets;
-  for(const [id,def] of Object.entries(definitions).filter(([,d])=>d.players)){
-    for(const mode of ['forward','reverse','narrator']){
-      const reverse=mode==='reverse';
-      const c=setup(def.players);c.shuffle=list=>reverse?[...list].reverse():[...list];
-      c.state.narratorMode=mode==='narrator';
-      c.state.requireNeutral=true;c.state.autoSideWinChecks=false;
-      assert.equal(c.applyPresetDefinition(def),true,id);
+test('new presets are flexible role pools at small and large player counts',()=>{
+  for(const id of ['investigation','survival','deception','confrontation','wildcards']){
+    for(const count of [3,4,6,10])for(const narrator of [false,true]){
+      const c=setup(count),def=c.presets[id];
+      assert.equal(def.players,undefined);
+      c.state.narratorMode=narrator;c.state.requireEvil=false;c.state.requireNeutral=false;
+      c.state.autoSideWinChecks=false;
+      assert.equal(c.applyPresetDefinition(def),true);
+      assert.equal(c.state.autoSideWinChecks,false);
+      assert.equal(c.state.requireEvil,false);
+      assert.equal(c.state.requireNeutral,false);
       assert.notEqual(c.assignRoles(),false,id);
-      const expected={...def.roles};expected.citizen=def.players-Object.values(def.roles).reduce((a,b)=>a+b,0);
-      const actual={};for(const p of c.state.players)actual[p.roleId]=(actual[p.roleId]||0)+1;
-      assert.deepEqual(actual,expected,id);
-      assert.equal(c.checkWin().done,false,id);
-      assert.equal(c.state.autoSideWinChecks,true,id);
-      assert.equal(c.state.requireNeutral,def.requireNeutral,id);
+      assert.equal(c.state.players.length,count);
+      assert.ok(c.state.players.every(p=>p.roleId==='citizen'||def.roles[p.roleId]),id);
+      assert.ok(c.state.players.filter(p=>c.roleOf(p).orientation==='evil').length<=Math.floor((count-1)/2));
     }
   }
 });
-test('wrong player count leaves settings and role pool untouched',()=>{
-  const c=setup(4),before=JSON.stringify(c.state);
-  assert.equal(c.applyPresetDefinition(c.presets.three_social),false);
-  assert.equal(JSON.stringify(c.state),before);
-  assert.match(c.status.textContent,/exactly 3 players/);
-});
-test('three-player introductions have no night kills and reward eliminating Evil',()=>{
-  for(const id of ['three_social','three_clues','three_target']){
-    const c=setup(3);c.applyPresetDefinition(c.presets[id]);c.assignRoles();
-    assert.ok(c.state.players.every(p=>!['kill','teamKill'].includes(c.roleOf(p).nightAction)));
-    const evil=c.state.players.find(p=>c.roleOf(p).orientation==='evil');
-    if(evil.roleId==='hater')evil.haterTargetId=c.state.players.find(p=>p!==evil).id;
-    evil.alive=false;evil.eliminatedByVote=true;
-    assert.equal(c.checkWin().winner,'Good',id);
-  }
+test('removed player-count presets are absent and original presets remain',()=>{
+  const c=setup(3);
+  for(const id of ['three_social','three_clues','three_target','four_rescue','five_classic','six_survival','eight_team'])assert.equal(c.presets[id],undefined);
+  for(const id of ['classic','chaos','trickery','protection'])assert.ok(c.presets[id]);
 });
 test('legacy and custom role-pool presets preserve unspecified win settings and custom roles',()=>{
   const c=setup(5);c.state.roles.push({id:'my_role',title:'Mine',orientation:'good'});
