@@ -882,7 +882,7 @@
       }
     }
   </style>
-  <link rel="stylesheet" href="polish.css?v=20261023">
+  <link rel="stylesheet" href="polish.css?v=20261025-guide">
 </head>
 
 <body>
@@ -890,7 +890,16 @@
     <header>
       <h1>Mafia — Pass & Play</h1>
       <div class="sub">Private role handoff → day voting → night abilities → repeat until a win condition is met.</div>
+      <button id="openGuideBtn" class="ghost" type="button" style="margin-top:12px">Game guide</button>
     </header>
+    <dialog id="gameGuide" class="game-guide" aria-labelledby="guideTitle">
+      <div class="section-title"><h2 id="guideTitle">Game guide</h2><button id="closeGuideBtn" class="ghost" type="button" aria-label="Close game guide">Close</button></div>
+      <p class="muted">Roles tell you who you are and how you win. Abilities are powers used at night. Night reactions respond to an attack.</p>
+      <div class="guide-tabs" role="group" aria-label="Guide section"><button type="button" data-guide-tab="roles" aria-pressed="true">Roles</button><button type="button" data-guide-tab="abilities" aria-pressed="false">Abilities</button><button type="button" data-guide-tab="reactions" aria-pressed="false">Night reactions</button></div>
+      <div class="guide-filters"><label>Search<input id="guideSearch" type="search" placeholder="Search names or explanations"></label><label>Category<select id="guideCategory"></select></label></div>
+      <p id="guideIntro" class="muted tiny"></p><p id="guideCount" class="muted tiny" role="status"></p>
+      <div id="guideEntries" class="guide-entries"></div>
+    </dialog>
 
     <section id="onlineEntry" class="card">
       <div class="section-title">
@@ -1422,6 +1431,7 @@
   <script src="online-reactions.js?v=20261021-expansion"></script>
   <script src="roles.js?v=20261023-no-hunt"></script>
   <script src="customisation.js?v=20261024-personal-victories"></script>
+  <script src="guide.js?v=20261025"></script>
   <script>
     // ---- State ---------------------------------------------------------------
     const state = {
@@ -1784,7 +1794,15 @@
     function currentRolePoolSnapshot() { return Object.fromEntries(state.roles.filter(r=>r.id!=='citizen' && r.randomEnabled!==false && Number(r.randomCount||0)>0).map(r=>[r.id,Math.max(1,Math.floor(Number(r.randomCount)||1))])); }
     function renderPresetSelect() {
       const el=$('presetSelect'); if(!el) return; const current=el.value; el.innerHTML='';
-      Object.entries(BUILTIN_PRESETS).forEach(([id,p])=>el.appendChild(new Option(p.name,`builtin:${id}`)));
+      for(const [name,matches] of [
+        ['Core',([id,p])=>['classic','protection'].includes(id)],
+        ['Themed',([id,p])=>!p.trick&&!['classic','protection'].includes(id)],
+        ['Trick rounds',([id,p])=>!!p.trick]
+      ]){
+        const group=document.createElement('optgroup');group.label=name;
+        Object.entries(BUILTIN_PRESETS).filter(matches).forEach(([id,p])=>group.appendChild(new Option(p.name,`builtin:${id}`)));
+        if(group.children.length)el.appendChild(group);
+      }
       const custom=document.createElement('optgroup');custom.label='Your presets';
       Object.entries(readCustomPresets()).forEach(([id,p])=>custom.appendChild(new Option(p.name,`custom:${id}`)));
       if(custom.children.length)el.appendChild(custom);
@@ -3754,6 +3772,11 @@
       closeRoleEditor(); renderSetup();
     });
     $('presetSelect').addEventListener('change',renderPresetDescription);
+    $('openGuideBtn').addEventListener('click',openGameGuide);
+    $('closeGuideBtn').addEventListener('click',()=>$('gameGuide').close());
+    $('guideSearch').addEventListener('input',()=>renderGuide());
+    $('guideCategory').addEventListener('change',()=>renderGuide());
+    document.querySelectorAll('[data-guide-tab]').forEach(button=>button.addEventListener('click',()=>{guideSection=button.dataset.guideTab;$('guideSearch').value='';renderGuide(true);}));
     $('surpriseRoundChance').addEventListener('change',e=>{state.surpriseRoundChance=Number(e.target.value);});
     $('applyPresetBtn').addEventListener('click',()=>{const def=selectedPresetDefinition();if(def&&applyPresetDefinition(def)!==false){$('configStatus').textContent=`Applied ${def.name || 'preset'}.`;}});
     $('savePresetBtn').addEventListener('click',()=>{const name=prompt('Name this custom preset:');if(!name?.trim())return;const id=`preset_${Date.now()}`;const presets=readCustomPresets();presets[id]={name:name.trim(),roles:currentRolePoolSnapshot(),trick:state.trickPreset||null};writeCustomPresets(presets);renderPresetSelect();$('presetSelect').value=`custom:${id}`;$('configStatus').textContent='Custom preset saved.';});
