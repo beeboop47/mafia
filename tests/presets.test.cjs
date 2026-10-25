@@ -15,6 +15,8 @@ function setup(count){
   const start=html.indexOf('    function applyPresetDefinition(');
   vm.runInContext(html.slice(start,html.indexOf('    function selectedPresetDefinition',start)),c);
   c.presets=vm.runInContext('BUILTIN_PRESETS',c);
+  const trickStart=html.indexOf('    function assignTrickRoundRoles(');
+  vm.runInContext(html.slice(trickStart,html.indexOf('\n    function ',trickStart+1)),c);
   const narrator=fs.readFileSync(path.join(__dirname,'../narrator.js'),'utf8');
   const narratorStart=narrator.indexOf('function assignNarratorRoles(');
   const narratorEnd=narrator.indexOf('\nfunction ',narratorStart+1);

@@ -1063,6 +1063,9 @@
             <label>Preset</label>
             <select id="presetSelect"></select>
             <div id="presetDescription" class="muted tiny" style="margin-top:8px" aria-live="polite"></div>
+            <label style="margin-top:12px" for="surpriseRoundChance">Surprise trick round</label>
+            <select id="surpriseRoundChance"><option value="0">Off</option><option value="0.1">10% chance</option><option value="0.25">25% chance</option><option value="0.5">50% chance</option><option value="1">Always randomise</option></select>
+            <div class="muted tiny" style="margin-top:6px">In Random mode, this may replace an ordinary role pool with a random trick round. Trick rounds continue until two players remain. Players are not told which preset was drawn.</div>
           </div>
           <div class="preset-actions">
             <button id="applyPresetBtn" type="button">Apply preset</button>
@@ -1415,7 +1418,7 @@
   <script src="judge.js?v=20261016"></script>
   <script src="signal-receiver.js?v=20261021-existing-turns"></script>
   <script src="host-setup.js?v=20261023-assigned-actions"></script>
-  <script src="narrator.js?v=20261024-presets"></script>
+  <script src="narrator.js?v=20261025-trick-rounds"></script>
   <script src="online-reactions.js?v=20261021-expansion"></script>
   <script src="roles.js?v=20261023-no-hunt"></script>
   <script src="customisation.js?v=20261024-personal-victories"></script>
@@ -1734,6 +1737,10 @@
 
     // ---- Setup / roles --------------------------------------------------------
     const BUILTIN_PRESETS = {
+      great_minds: {name:'Great Minds',description:'Everyone receives the same randomly chosen role. No automatic recognition or team-kill member lists. Continue to the final two.',trick:'great_minds'},
+      red_herring: {name:'Red Herring',description:'Everyone receives a Good role. Continue to the final two.',trick:'red_herring'},
+      lone_operation: {name:'Lone Operation',description:'Everyone receives a Neutral role. Continue to the final two.',trick:'lone_operation'},
+      colonised_town: {name:'Colonised Town',description:'Everyone receives an Evil role. No automatic recognition or team-kill member lists. Continue to the final two.',trick:'colonised_town'},
       classic: {name:'Classic', description:'1 Godfather + 1 Detective.', roles:{godfather:1, detective:1}},
       investigation: {name:'Investigation', description:'Godfather, Detective, Seer and Lookout.', roles:{godfather:1,detective:1,seer:1,lookout:1}},
       survival: {name:'Survival', description:'Godfather, Doctor, Bodyguard and Escapist.', roles:{godfather:1,doctor:1,bodyguard:1,escapist:1}},
@@ -1746,6 +1753,31 @@
     };
     const CONFIG_STORAGE_KEY = 'mafia:config:v3';
     const PRESET_STORAGE_KEY = 'mafia:customPresets:v1';
+
+    function assignTrickRoundRoles() {
+      const ids=['great_minds','red_herring','lone_operation','colonised_town'];
+      let id=ids.includes(state.trickPreset)?state.trickPreset:null;
+      const surprise=!id;
+      if(state.mode!=='random'){state.activeTrickRound=null;return null;}
+      if(!id && Math.random()<Number(state.surpriseRoundChance||0))id=randomChoice(ids);
+      if(!id){state.activeTrickRound=null;return null;}
+      const alignment={red_herring:'good',lone_operation:'neutral',colonised_town:'evil'}[id];
+      const hidden=id==='great_minds'||id==='colonised_town';
+      // Judge's public authority and unique voting turn cannot be duplicated or hidden.
+      const pool=state.roles.filter(r=>(surprise||r.randomEnabled!==false) && (!alignment||r.orientation===alignment) && (!hidden||!roleHasSpecialId(r,'judge')));
+      if(!pool.length){alert('No eligible roles remain for this trick round. Enable roles in its pool.');return false;}
+      const chosen=id==='great_minds'?randomChoice(pool):null;
+      const dealt=[];
+      for(const player of state.players){
+        const available=pool.filter(r=>!roleHasSpecialId(r,'judge')||!dealt.some(x=>roleHasSpecialId(x,'judge')));
+        const role=chosen||randomChoice(available);
+        if(!role){alert('Enable another role to fill the trick round without duplicate Judges.');return false;}
+        dealt.push(role);
+      }
+      state.players.forEach((p,i)=>p.roleId=dealt[i].id);
+      state.activeTrickRound={id,noRecognition:hidden};
+      return true;
+    }
 
     function readCustomPresets() { try { return JSON.parse(localStorage.getItem(PRESET_STORAGE_KEY) || '{}') || {}; } catch { return {}; } }
     function writeCustomPresets(value) { localStorage.setItem(PRESET_STORAGE_KEY, JSON.stringify(value || {})); }
@@ -1766,8 +1798,10 @@
     function applyPresetDefinition(def) {
       if(!def) return;
       state.mode='random';
+      state.trickPreset=def.trick||null;
+      state.activeTrickRound=null;
       state.roles.forEach(role=>{ if(role.id==='citizen') return; role.randomEnabled=false; role.randomCount=1; });
-      if(def.allRoles){
+      if(def.allRoles||def.trick){
         state.roles.forEach(role=>{ if(role.id!=='citizen'){role.randomEnabled=true;role.randomCount=1;} });
       } else {
         Object.entries(def.roles || {}).forEach(([id,count])=>{ const role=roleByIdOrRestore(id); if(role){role.randomEnabled=true;role.randomCount=Math.max(1,Math.floor(Number(count)||1));} });
@@ -1776,8 +1810,8 @@
       return true;
     }
     function selectedPresetDefinition() { const value=$('presetSelect')?.value||''; const [kind,id]=value.split(':'); return kind==='builtin'?BUILTIN_PRESETS[id]:readCustomPresets()[id]; }
-    function saveConfigLocal() { const payload={roles:state.roles,players:state.players.map(p=>({...p,alive:true,used:{},escaped:false,eliminatedByVote:false,framedRoleId:null,haterTargetId:null,policemanIntel:null,silenced:false})),mode:state.mode,nightOrder:$('nightOrder')?.value||'player',autoSideWinChecks:state.autoSideWinChecks!==false,requireEvil:!!state.requireEvil,requireNeutral:!!state.requireNeutral,narratorMode:!!state.narratorMode,customPresets:readCustomPresets()}; localStorage.setItem(CONFIG_STORAGE_KEY,JSON.stringify(payload)); $('configStatus').textContent='Saved players, roles, presets and settings on this device.'; }
-    function loadConfigLocal() { try{const p=JSON.parse(localStorage.getItem(CONFIG_STORAGE_KEY)||'null');if(!p)throw new Error();state.roles=Array.isArray(p.roles)?p.roles:structuredClone(DEFAULT_ROLES);state.players=Array.isArray(p.players)&&p.players.length?p.players:state.players;state.mode=p.mode||'random';state.requireEvil=!!p.requireEvil;state.requireNeutral=!!p.requireNeutral;state.narratorMode=!!p.narratorMode;state.autoSideWinChecks=p.autoSideWinChecks!==false;if(p.customPresets&&typeof p.customPresets==='object')writeCustomPresets(p.customPresets);renderSetup();if($('nightOrder'))$('nightOrder').value=p.nightOrder||'player';$('configStatus').textContent='Saved configuration loaded.';}catch{$('configStatus').textContent='No valid saved configuration found.';} }
+    function saveConfigLocal() { const payload={roles:state.roles,players:state.players.map(p=>({...p,alive:true,used:{},escaped:false,eliminatedByVote:false,framedRoleId:null,haterTargetId:null,policemanIntel:null,silenced:false})),mode:state.mode,nightOrder:$('nightOrder')?.value||'player',autoSideWinChecks:state.autoSideWinChecks!==false,requireEvil:!!state.requireEvil,requireNeutral:!!state.requireNeutral,narratorMode:!!state.narratorMode,trickPreset:state.trickPreset||null,surpriseRoundChance:state.surpriseRoundChance||0,customPresets:readCustomPresets()}; localStorage.setItem(CONFIG_STORAGE_KEY,JSON.stringify(payload)); $('configStatus').textContent='Saved players, roles, presets and settings on this device.'; }
+    function loadConfigLocal() { try{const p=JSON.parse(localStorage.getItem(CONFIG_STORAGE_KEY)||'null');if(!p)throw new Error();state.roles=Array.isArray(p.roles)?p.roles:structuredClone(DEFAULT_ROLES);state.players=Array.isArray(p.players)&&p.players.length?p.players:state.players;state.mode=p.mode||'random';state.trickPreset=p.trickPreset||null;state.surpriseRoundChance=Number(p.surpriseRoundChance)||0;state.activeTrickRound=null;state.requireEvil=!!p.requireEvil;state.requireNeutral=!!p.requireNeutral;state.narratorMode=!!p.narratorMode;state.autoSideWinChecks=p.autoSideWinChecks!==false;if(p.customPresets&&typeof p.customPresets==='object')writeCustomPresets(p.customPresets);renderSetup();if($('nightOrder'))$('nightOrder').value=p.nightOrder||'player';$('configStatus').textContent='Saved configuration loaded.';}catch{$('configStatus').textContent='No valid saved configuration found.';} }
     function exportConfigLocal() {
       saveConfigLocal();
       const file = new Blob([localStorage.getItem(CONFIG_STORAGE_KEY)], {type:'application/json'});
@@ -1825,6 +1859,7 @@
       // Death grants full visibility only after the next night starts.
       // Until then, retain the same recognition and visibility as while alive.
       if (canSeeDeadSpectatorRoles(viewer)) return true;
+      if (state.activeTrickRound?.noRecognition) return false;
       if (hostSettings(viewer).recognises?.includes(target.id)) return true;
       if (role.visibility === 'everyone') return true;
       if (roleOf(viewer)?.recognitionRoleId && !viewer.coverExposed) return false;
@@ -1954,6 +1989,7 @@
       if($('autoSideWinChecks')) $('autoSideWinChecks').checked = state.autoSideWinChecks !== false;
       $('requireEvil').checked = !!state.requireEvil;
       $('requireNeutral').checked = !!state.requireNeutral;
+      $('surpriseRoundChance').value=String(state.surpriseRoundChance||0);
       $('narratorMode').checked = !!state.narratorMode;
       renderPlayers(); renderRandomRolePool(); renderRoleLibrary(); renderPresetSelect(); renderHostSetup();
     }
@@ -2165,6 +2201,9 @@
       state.requireEvil = !!parsed.requireEvil;
       state.requireNeutral = !!parsed.requireNeutral;
       state.narratorMode = !!parsed.narratorMode;
+      state.trickPreset=parsed.trickPreset||null;
+      state.surpriseRoundChance=Number(parsed.surpriseRoundChance)||0;
+      state.activeTrickRound=parsed.activeTrickRound||null;
       const byId = new Map(state.players.map(p => [Number(p.id), p]));
       for (const key of ['queue','reactionQueue','round1Players','reactionCompleted']) {
         if (!Array.isArray(state.night[key])) continue;
@@ -2183,16 +2222,19 @@
         autoSideWinChecks: state.autoSideWinChecks !== false,
         requireEvil: !!state.requireEvil,
         requireNeutral: !!state.requireNeutral,
-        narratorMode: !!state.narratorMode
+        narratorMode: !!state.narratorMode,
+        trickPreset:state.trickPreset||null,surpriseRoundChance:state.surpriseRoundChance||0,activeTrickRound:state.activeTrickRound||null
       }));
     }
 
     function assignRoles() {
+      const trickAssigned=typeof assignTrickRoundRoles==='function'?assignTrickRoundRoles():null;
+      if(trickAssigned===false)return false;
       if (state.mode === 'manual' && state.players.filter(isJudge).length > 1) {
         alert('Only one Judge may be present in a game.'); return false;
       }
-      if (state.narratorMode && assignNarratorRoles() === false) return false;
-      if (!state.narratorMode) {
+      if (!trickAssigned && state.narratorMode && assignNarratorRoles() === false) return false;
+      if (!trickAssigned && !state.narratorMode) {
       const fixed = state.mode === 'manual' ? state.players.filter(p => state.roles.some(r => r.id === p.roleId)) : [];
       const pending = state.players.filter(p => !fixed.includes(p));
       const fixedCounts = {};
@@ -2416,6 +2458,7 @@
     }
 
     function coordinatedKillMembers(actor) {
+      if(state.activeTrickRound?.noRecognition)return [actor];
       const role = roleOf(actor);
       if (role?.recognitionRoleId) return [actor];
       if (!role || !isTeamKillRole(role)) return [actor];
@@ -2504,7 +2547,7 @@
       } else hide('narratorControls');
       hide('dayCard', 'handoffCard'); show('nightCard');
       setPhase('Night', 'Night actions — Round 1');
-      if (state.narratorMode && nightPlayers.filter(player => roleOf(player)?.orientation === 'evil').length > 1) {
+      if (state.narratorMode && !state.activeTrickRound?.noRecognition && nightPlayers.filter(player => roleOf(player)?.orientation === 'evil').length > 1) {
         narratorBeginTransition('mafiaMeeting');
         return;
       }
@@ -2781,7 +2824,7 @@
           && state.night.usedTeamKillRoleIds.includes(teamKillGroupKey(role));
 
         if (teamKillUsed) {
-          showNightResult(`Your ${escapeHtml(role.title)} team has already used its team kill tonight.`);
+          showNightResult(state.activeTrickRound?.noRecognition ? 'This ability is unavailable tonight.' : `Your ${escapeHtml(role.title)} team has already used its team kill tonight.`);
           $('nightPrompt').textContent = 'Your exact-role team already used the shared kill. Acknowledge and continue.';
           $('nightActionArea').innerHTML = '';
           $('nightActionArea').appendChild(actionButton('Acknowledge & continue', 'teamKillUsedAcknowledge', () => {
@@ -2874,7 +2917,7 @@
           const team = coordinatedKillMembers(actor);
           const used = state.night.usedTeamKillRoleIds.includes(teamKillGroupKey(role));
           if (used) {
-            $('nightPrompt').innerHTML = `<strong>Team kill already used:</strong> ${team.map(p => escapeHtml(p.name)).join(', ')} share one kill tonight, and another team member already used it.`;
+            $('nightPrompt').innerHTML = state.activeTrickRound?.noRecognition ? 'This ability is unavailable tonight.' : `<strong>Team kill already used:</strong> ${team.map(p => escapeHtml(p.name)).join(', ')} share one kill tonight, and another team member already used it.`;
             area.appendChild(actionButton('Acknowledge & continue', 'skip', () => setChoiceAndContinue(actor, 'skip')));
             break;
           }
@@ -2996,7 +3039,7 @@
         advanceNightActor(); return;
       }
       night.currentActorId = actor.id;
-      if (state.narratorMode && !night.narratorReporting) night.narratorTurnIsMafia = roleOf(actor)?.orientation === 'evil' && !roleOf(actor)?.recognitionRoleId && nightActionFor(actor) === 'teamKill';
+      if (state.narratorMode && !night.narratorReporting) night.narratorTurnIsMafia = !state.activeTrickRound?.noRecognition && roleOf(actor)?.orientation === 'evil' && !roleOf(actor)?.recognitionRoleId && nightActionFor(actor) === 'teamKill';
       night.handoffReady = false;
       $('nightTitle').textContent = state.narratorMode ? 'Night' : `Night — ${actor.name}`;
       $('nightProgress').textContent = `${night.index + 1} / ${queue.length}`;
@@ -3558,6 +3601,7 @@
       const living=state.players.filter(p=>!p.removed&&(p.alive||p.fakeDeathReturnRound));
       const finish=(winner,reason)=>({done:true,winner,reason,personalWinners:living.filter(p=>roleOf(p)?.orientation==='neutral'&&roleOf(p)?.id!=='jester'&&normalizedWinCondition(roleOf(p))!=='votedOut').map(p=>({id:p.id,name:p.name||('Player '+(p.id+1)),role:roleOf(p)?.title||'Neutral',condition:'Survived until the game ended'}))});
       if(!living.length)return finish('Nobody','No players remain in the game.');
+      if(state.activeTrickRound && living.length>2)return {done:false};
       const evil=living.filter(p=>roleOf(p)?.orientation==='evil').length;
       const good=living.filter(p=>roleOf(p)?.orientation==='good').length;
       const nonEvil=living.length-evil;
@@ -3710,8 +3754,9 @@
       closeRoleEditor(); renderSetup();
     });
     $('presetSelect').addEventListener('change',renderPresetDescription);
+    $('surpriseRoundChance').addEventListener('change',e=>{state.surpriseRoundChance=Number(e.target.value);});
     $('applyPresetBtn').addEventListener('click',()=>{const def=selectedPresetDefinition();if(def&&applyPresetDefinition(def)!==false){$('configStatus').textContent=`Applied ${def.name || 'preset'}.`;}});
-    $('savePresetBtn').addEventListener('click',()=>{const name=prompt('Name this custom preset:');if(!name?.trim())return;const id=`preset_${Date.now()}`;const presets=readCustomPresets();presets[id]={name:name.trim(),roles:currentRolePoolSnapshot()};writeCustomPresets(presets);renderPresetSelect();$('presetSelect').value=`custom:${id}`;$('configStatus').textContent='Custom preset saved.';});
+    $('savePresetBtn').addEventListener('click',()=>{const name=prompt('Name this custom preset:');if(!name?.trim())return;const id=`preset_${Date.now()}`;const presets=readCustomPresets();presets[id]={name:name.trim(),roles:currentRolePoolSnapshot(),trick:state.trickPreset||null};writeCustomPresets(presets);renderPresetSelect();$('presetSelect').value=`custom:${id}`;$('configStatus').textContent='Custom preset saved.';});
     $('deletePresetBtn').addEventListener('click',()=>{const value=$('presetSelect').value;if(!value.startsWith('custom:')){alert('Built-in presets cannot be deleted.');return;}const id=value.split(':')[1],presets=readCustomPresets();delete presets[id];writeCustomPresets(presets);renderPresetSelect();$('configStatus').textContent='Custom preset deleted.';});
     $('saveConfigBtn').addEventListener('click',saveConfigLocal);
     $('loadConfigBtn').addEventListener('click',loadConfigLocal);
@@ -4213,7 +4258,7 @@
             const teamUsed = dynamicAction === 'teamKill' && night.usedTeamKillRoleIds.includes(teamKillGroupKey(r));
             const targetOptions = teamUsed ? [{id:'ack',name:'Done'}] : validAbilityTargets(player, r).map(t => ({id:t.id,name:t.name}));
             if (!teamUsed) targetOptions.push({id:'skip',name:dynamicAction === 'teamKill' ? 'Do not use the team kill' : 'Do not use this ability'});
-            payload.turn = {type:'nightRound1',action:dynamicAction,prompt:teamUsed ? `Your ${r.title} team already has a kill submitted tonight.` : (customNightPrompt || (dynamicAction === 'teamKill' ? 'Choose a living player for your shared team kill, or choose not to use it tonight.' : 'Choose a living player to kill, or choose not to use this ability tonight.')),options:targetOptions};
+            payload.turn = {type:'nightRound1',action:dynamicAction,prompt:teamUsed ? (state.activeTrickRound?.noRecognition ? "This ability is unavailable tonight." : `Your ${r.title} team already has a kill submitted tonight.`) : (customNightPrompt || (dynamicAction === 'teamKill' ? 'Choose a living player for your shared team kill, or choose not to use it tonight.' : 'Choose a living player to kill, or choose not to use this ability tonight.')),options:targetOptions};
           } else if (dynamicAction === 'changeRole') {
             if (night.roleChangeActorId === player.id && night.roleChangeTargetId != null) {
               const target=playerOf(night.roleChangeTargetId);

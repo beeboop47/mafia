@@ -73,6 +73,7 @@ function narratorSpeak(text, interrupt = false) {
   window.speechSynthesis.speak(utterance);
 }
 function narratorRoleName(actor) {
+  if(state.activeTrickRound?.noRecognition)return actor.name||`Player ${actor.id+1}`;
   const role = roleOf(actor);
   if (role?.id === 'mafia' && state.players.some(player => player.alive && !player.removed && roleOf(player)?.orientation === 'evil' && roleOf(player)?.id !== 'mafia')) return 'Ordinary Mafia';
   return role?.title || (role?.id === 'mafia' ? 'Mafia' : 'Player');
@@ -139,7 +140,7 @@ function narratorAdvanceTransition(transition) {
     // Recheck at execution, including a queued meeting from an older page or
     // a player eliminated/removed during the announcement delay.
     const evil = state.players.filter(player => player.alive && !player.removed && roleOf(player)?.orientation === 'evil');
-    if (evil.length < 2) {
+    if (state.activeTrickRound?.noRecognition || evil.length < 2) {
       night.narratorMeetingDone = true;
       night.narratorHasWoken = true;
       night.turnRevealed = false;
@@ -217,13 +218,13 @@ function narratorDeferredInfo(action) {
 function narratorActionQueue(players) {
   let mafiaAdded = false;
   const candidates = players.filter(player => !roleHasSpecialId(roleOf(player), 'judge') && !player.removed && !state.night?.narratorCompleted?.includes(player.id));
-  const mafia = candidates.filter(player => roleOf(player)?.orientation === 'evil' && !roleOf(player)?.recognitionRoleId && nightActionFor(player) === 'teamKill');
+  const mafia = candidates.filter(player => !state.activeTrickRound?.noRecognition && roleOf(player)?.orientation === 'evil' && !roleOf(player)?.recognitionRoleId && nightActionFor(player) === 'teamKill');
   // One blocked/dead representative must not cancel an unblocked team's turn.
   const available = mafia.filter(player => player.alive && !state.night?.blockedIds?.includes(player.id));
   const representative = available.find(player => roleHasSpecialId(roleOf(player), 'godfather')) || available[0] || mafia.find(player => player.alive) || mafia[0];
   return narratorOrder(candidates.filter(player => {
     const role = roleOf(player), action = nightActionFor(player);
-    if (role?.orientation === 'evil' && !role.recognitionRoleId && action === 'teamKill') {
+    if (!state.activeTrickRound?.noRecognition && role?.orientation === 'evil' && !role.recognitionRoleId && action === 'teamKill') {
       if (state.night?.narratorMafiaDone || mafiaAdded || player !== representative) return false;
       mafiaAdded = true; return true;
     }
@@ -238,7 +239,7 @@ function narratorRefreshRemainingQueue() {
   const actor = n.queue[n.index];
   n.narratorCompleted ||= [];
   if (actor && !n.narratorCompleted.includes(actor.id)) n.narratorCompleted.push(actor.id);
-  if (n.narratorTurnIsMafia ?? (roleOf(actor)?.orientation === 'evil' && !roleOf(actor)?.recognitionRoleId && nightActionFor(actor) === 'teamKill')) n.narratorMafiaDone = true;
+  if (n.narratorTurnIsMafia ?? (!state.activeTrickRound?.noRecognition && roleOf(actor)?.orientation === 'evil' && !roleOf(actor)?.recognitionRoleId && nightActionFor(actor) === 'teamKill')) n.narratorMafiaDone = true;
   n.narratorTurnIsMafia = null;
   const players = n.round1Players || n.queue;
   // A transformation can give an idle player an action, or change an upcoming
