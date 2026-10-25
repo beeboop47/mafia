@@ -1063,7 +1063,7 @@
           <div id="blindPreferences" hidden>
             <label for="blindComplexity" style="margin-top:12px">Complexity</label><select id="blindComplexity"><option value="simple">Simple</option><option value="varied">Varied</option></select>
             <label class="setting-toggle" style="margin-top:12px" for="blindAllowTricks"><input id="blindAllowTricks" type="checkbox"><span>Allow occasional trick rounds</span></label>
-            <p class="muted tiny">Requires at least three players. Uses standard roles and automatic assignment. Manual targets, recognition links, and host role inspection are unavailable. Personal challenges still apply.</p>
+            <p class="muted tiny">Requires at least three players. The preset stays hidden. Manual role assignments, night targets, recognition links, personal challenges, and host controls remain available. Manual role choices take priority over the drawn preset.</p>
           </div>
           <div id="presetControls">
           <div class="muted tiny" style="margin-top:5px">Choose a preset, then fine-tune it below. Presets set the random role pool without deleting your custom roles.</div>
@@ -1773,10 +1773,11 @@
       const id=randomChoice(options),def=BUILTIN_PRESETS[id];
       if(!state.blindLibraryBackup)state.blindLibraryBackup=structuredClone(state.roles);
       state.roles=structuredClone(DEFAULT_ROLES);
+      if(state.mode==='manual')for(const player of state.players){const role=state.blindLibraryBackup.find(r=>r.id===player.roleId);if(role){const index=state.roles.findIndex(r=>r.id===role.id);if(index<0)state.roles.push(structuredClone(role));else state.roles[index]=structuredClone(role);}}
       state.roles.forEach(r=>{r.randomEnabled=!!def.trick||!!def.roles?.[r.id];r.randomCount=def.roles?.[r.id]||1;});
       // Citizen is an ordinary random fallback; trick rounds need it in their library pool too.
       if(def.trick)state.roles.forEach(r=>r.randomEnabled=true);
-      state.mode='random';state.requireEvil=true;state.requireNeutral=false;state.autoSideWinChecks=true;
+      state.requireEvil=state.mode!=='manual';state.requireNeutral=false;state.autoSideWinChecks=true;
       state.trickPreset=def.trick||null;state.surpriseRoundChance=0;
       state.activeBlindSetup=true;state.blindPresetResult={id,name:def.name};
       return true;
@@ -1785,8 +1786,9 @@
       const blind=!!state.blindSetup;
       $('blindSetup').checked=blind;$('blindComplexity').value=state.blindComplexity==='varied'?'varied':'simple';$('blindAllowTricks').checked=!!state.blindAllowTricks;
       $('blindPreferences').hidden=!blind;$('presetControls').hidden=blind;
-      for(const id of ['roundMode','autoSideWinChecks','requireEvil','requireNeutral'])$(id).disabled=blind;
-      $('hostSetupPanel').hidden=blind;
+      $('roundMode').disabled=false;
+      for(const id of ['autoSideWinChecks','requireEvil','requireNeutral'])$(id).disabled=blind;
+      $('hostSetupPanel').hidden=false;
       $('randomRolePool').closest('details').hidden=blind;
       $('roleLibrary').closest('details').hidden=blind;
     }
@@ -1795,7 +1797,7 @@
       const ids=['great_minds','red_herring','lone_operation','colonised_town'];
       let id=ids.includes(state.trickPreset)?state.trickPreset:null;
       const surprise=!id;
-      if(state.mode!=='random'){state.activeTrickRound=null;return null;}
+      if(state.mode!=='random'&&!state.activeBlindSetup){state.activeTrickRound=null;return null;}
       if(!id && Math.random()<Number(state.surpriseRoundChance||0))id=randomChoice(ids);
       if(!id){state.activeTrickRound=null;return null;}
       const alignment={red_herring:'good',lone_operation:'neutral',colonised_town:'evil'}[id];
@@ -1806,6 +1808,8 @@
       const chosen=id==='great_minds'?randomChoice(pool):null;
       const dealt=[];
       for(const player of state.players){
+        const fixed=state.mode==='manual'?state.roles.find(r=>r.id===player.roleId):null;
+        if(fixed){dealt.push(fixed);continue;}
         const available=pool.filter(r=>!roleHasSpecialId(r,'judge')||!dealt.some(x=>roleHasSpecialId(x,'judge')));
         const role=chosen||randomChoice(available);
         if(!role){alert('Enable another role to fill the trick round without duplicate Judges.');return false;}
@@ -2301,7 +2305,7 @@
         const remaining = Math.max(0, count - (fixedCounts[role.id] || 0));
         for (let i = 0; i < remaining; i++) pool.push(role.id);
       }
-      for (const [orientation, required] of [['evil', state.requireEvil], ['good',state.activeBlindSetup], ['neutral', state.requireNeutral]]) {
+      for (const [orientation, required] of [['evil', state.requireEvil], ['good',state.activeBlindSetup&&state.mode!=='manual'], ['neutral', state.requireNeutral]]) {
         if (!required || fixed.some(p => roleOf(p)?.orientation === orientation)) continue;
         const eligible = pool.filter(id => orientationOf(id) === orientation);
         if (assigned.length >= pending.length || !eligible.length || (orientation === 'evil' && evilCount >= evilLimit)) {
@@ -3803,7 +3807,7 @@
       closeRoleEditor(); renderSetup();
     });
     $('presetSelect').addEventListener('change',renderPresetDescription);
-    $('blindSetup').addEventListener('change',e=>{state.blindSetup=e.target.checked;if(state.blindSetup)state.mode='random';renderSetup();});
+    $('blindSetup').addEventListener('change',e=>{state.blindSetup=e.target.checked;renderSetup();});
     $('blindComplexity').addEventListener('change',e=>{state.blindComplexity=e.target.value;});
     $('blindAllowTricks').addEventListener('change',e=>{state.blindAllowTricks=e.target.checked;});
     $('surpriseRoundChance').addEventListener('change',e=>{state.surpriseRoundChance=Number(e.target.value);});
@@ -4053,7 +4057,7 @@
       if (inGame) {
         hide('onlineLobby', 'setupScreen', 'onlineGameOver');
         show('onlineGame', 'onlineActionCard');
-        if (online.isHost && !state.activeBlindSetup) show('onlineAdminPanel'); else hide('onlineAdminPanel');
+        if (online.isHost) show('onlineAdminPanel'); else hide('onlineAdminPanel');
       }
     }
 
@@ -4479,8 +4483,8 @@
     function renderAdminPanel() {
       const panel=$('onlineAdminPanel');
       if(!panel) return;
-      $('blindEndGameBtn').classList.toggle('hidden',!(state.activeBlindSetup&&online.isHost&&online.roomStatus==='started'&&online.public?.phase!=='gameover'));
-      if(state.activeBlindSetup || !online.isHost || !online.roomCode || online.roomStatus!=='started' || online.public?.phase==='gameover') {
+      $('blindEndGameBtn').classList.add('hidden');
+      if(!online.isHost || !online.roomCode || online.roomStatus!=='started' || online.public?.phase==='gameover') {
         hide('onlineAdminPanel'); return;
       }
       show('onlineAdminPanel');
@@ -5430,7 +5434,7 @@
         if (assignRoles() === false) return; state.logs=[]; state.round=1; state.phase='day'; state.day={secondBallot:false,votes:{},tiedCandidates:[]}; state.night={}; state.processedCommandIds={}; state.onlineCommandAcks={}; state.onlineVersion=1;
         announceJudgePresence();
         online.roomStatus='started';
-        hide('setupScreen','onlineLobby');show('onlineGame');hide('onlineGameOver');show('onlineActionCard');if(!state.activeBlindSetup)show('onlineAdminPanel');else hide('onlineAdminPanel');
+        hide('setupScreen','onlineLobby');show('onlineGame');hide('onlineGameOver');show('onlineActionCard','onlineAdminPanel');
         const {dbMod}=online.api; const statusRef=dbMod.ref(online.db,`rooms/${online.roomCode}/meta/status`);
         const tx=await dbMod.runTransaction(statusRef,current=>current==='lobby'?'started':undefined);
         if(!tx.committed){online.roomStatus='lobby'; throw new Error('The room changed while the game was starting.');}

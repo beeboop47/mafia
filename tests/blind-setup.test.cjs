@@ -6,7 +6,7 @@ const vm=require('node:vm');
 const source=fs.readFileSync(path.join(__dirname,'presets.test.cjs'),'utf8').split("test('new presets")[0];
 const setup=new Function('require','__dirname',source+'\nreturn setup;')(require,__dirname);
 const html=fs.readFileSync(path.join(__dirname,'../index.html'),'utf8');
-function game(count=5){const c=setup(count);const a=html.indexOf('    function prepareBlindSetup(');vm.runInContext(html.slice(a,html.indexOf('\n    function ',a+1)),c);return c;}
+function game(count=5){const c=setup(count);c.state.mode='random';const a=html.indexOf('    function prepareBlindSetup(');vm.runInContext(html.slice(a,html.indexOf('\n    function ',a+1)),c);return c;}
 test('blind ordinary games secretly choose a valid preset and retain both factions',()=>{
   for(const narrator of [false,true])for(const count of [3,5,9]){
     const c=game(count);c.state.blindSetup=true;c.state.narratorMode=narrator;
@@ -18,13 +18,13 @@ test('blind ordinary games secretly choose a valid preset and retain both factio
     assert.equal(c.checkWin().done,false);
   }
 });
-test('blind trick selection uses hidden rules and ordinary host configuration cannot override it',()=>{
+test('blind trick selection uses hidden rules and host assignments remain available',()=>{
   const c=game();c.state.blindSetup=true;c.state.blindAllowTricks=true;
   vm.runInContext('Math.random=()=>0',c);c.assignRoles();
   assert.equal(c.state.activeTrickRound.id,'great_minds');
   c.state.players[0].hostSetup={challenge:'Speak softly.',recognises:[1],haterTarget:1,abilitySchedule:{1:{action:'kill',value:'1'}}};
   const config=c.hostSettings(c.state.players[0]);
-  assert.equal(config.challenge,'Speak softly.');assert.equal(config.recognises,undefined);assert.equal(config.abilitySchedule,undefined);
+  assert.equal(config.challenge,'Speak softly.');assert.deepEqual(Array.from(config.recognises),[1]);assert.equal(config.abilitySchedule[1].action,'kill');
 });
 test('blind setup preserves the custom role library for later ordinary games',()=>{
   const c=game();c.state.roles.push({id:'mine',title:'Mine',orientation:'good'});
@@ -35,4 +35,10 @@ test('blind setup preserves the custom role library for later ordinary games',()
 test('blind setup refuses two players without changing the game',()=>{
   const c=game(2);c.state.blindSetup=true;const original=JSON.stringify(c.state);
   assert.equal(c.assignRoles(),false);assert.equal(JSON.stringify(c.state),original);
+});
+
+test('manual role choices override the hidden pool in blind setup',()=>{
+  const c=game();c.state.mode='manual';c.state.blindSetup=true;
+  c.state.players.forEach(p=>p.roleId=null);c.state.players[0].roleId='seer';
+  c.assignRoles();assert.equal(c.state.mode,'manual');assert.equal(c.state.players[0].roleId,'seer');
 });
