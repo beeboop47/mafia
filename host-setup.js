@@ -1,5 +1,6 @@
 // Host configuration belongs to each player and is saved with the roster.
 function hostSettings(player) {
+  if(state.activeBlindSetup)return {challenge:player?.hostSetup?.challenge};
   return player?.hostSetup || {};
 }
 function hostTarget(actor, key, candidates) {

@@ -339,7 +339,7 @@ function assignNarratorRoles() {
     pool.push(...shuffle(evilPool).slice(0, evilLimit - evilCount));
   }
   const assigned = [];
-  for (const [orientation, required] of [['evil',state.requireEvil],['neutral',state.requireNeutral]]) {
+  for (const [orientation, required] of [['evil',state.requireEvil],['good',state.activeBlindSetup],['neutral',state.requireNeutral]]) {
     if (!required || fixed.some(p => roleOf(p)?.orientation === orientation)) continue;
     const eligible = pool.filter(id => roles.find(r => r.id === id)?.orientation === orientation);
     if (!eligible.length || assigned.length >= pending.length) { alert(`Narrator mode cannot meet the ${orientation} minimum with this pool and roster.`); return false; }

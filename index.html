@@ -993,6 +993,7 @@
         <div id="onlinePlayersList" class="online-players"></div>
       </div>
 
+      <button id="blindEndGameBtn" class="ghost hidden" type="button">End game & reveal roles</button>
       <div id="onlineAdminPanel" class="card hidden">
         <div class="section-title">
           <div>
@@ -1058,6 +1059,13 @@
       <div class="setup-toolbar">
         <div class="notice">
           <strong>Quick setup</strong>
+          <label class="setting-toggle" style="margin-top:12px" for="blindSetup"><input id="blindSetup" type="checkbox"><span class="setting-copy"><strong>Blind setup</strong><span class="muted tiny" style="display:block">Let the game secretly choose a preset. Reveal the selection after the game.</span></span></label>
+          <div id="blindPreferences" hidden>
+            <label for="blindComplexity" style="margin-top:12px">Complexity</label><select id="blindComplexity"><option value="simple">Simple</option><option value="varied">Varied</option></select>
+            <label class="setting-toggle" style="margin-top:12px" for="blindAllowTricks"><input id="blindAllowTricks" type="checkbox"><span>Allow occasional trick rounds</span></label>
+            <p class="muted tiny">Requires at least three players. Uses standard roles and automatic assignment. Manual targets, recognition links, and host role inspection are unavailable. Personal challenges still apply.</p>
+          </div>
+          <div id="presetControls">
           <div class="muted tiny" style="margin-top:5px">Choose a preset, then fine-tune it below. Presets set the random role pool without deleting your custom roles.</div>
           <div style="margin-top:10px">
             <label>Preset</label>
@@ -1071,6 +1079,7 @@
             <button id="applyPresetBtn" type="button">Apply preset</button>
             <button id="savePresetBtn" class="ghost" type="button">Save custom preset</button>
             <button id="deletePresetBtn" class="ghost" type="button">Delete custom preset</button>
+          </div>
           </div>
         </div>
         <div class="notice">
@@ -1417,11 +1426,11 @@
   <script src="abilities.js?v=20261023-no-hunt"></script>
   <script src="judge.js?v=20261016"></script>
   <script src="signal-receiver.js?v=20261021-existing-turns"></script>
-  <script src="host-setup.js?v=20261023-assigned-actions"></script>
-  <script src="narrator.js?v=20261025-trick-rounds"></script>
+  <script src="host-setup.js?v=20261025-blind"></script>
+  <script src="narrator.js?v=20261025-blind"></script>
   <script src="online-reactions.js?v=20261021-expansion"></script>
   <script src="roles.js?v=20261023-no-hunt"></script>
-  <script src="customisation.js?v=20261024-personal-victories"></script>
+  <script src="customisation.js?v=20261025-blind"></script>
   <script>
     // ---- State ---------------------------------------------------------------
     const state = {
@@ -1754,6 +1763,34 @@
     const CONFIG_STORAGE_KEY = 'mafia:config:v3';
     const PRESET_STORAGE_KEY = 'mafia:customPresets:v1';
 
+    function prepareBlindSetup() {
+      if(!state.blindSetup){if(state.blindLibraryBackup){state.roles=state.blindLibraryBackup;state.blindLibraryBackup=null;}state.activeBlindSetup=false;state.blindPresetResult=null;return true;}
+      if(state.players.length<3){alert('Blind setup needs at least three players.');return false;}
+      const simple=['classic','protection','investigation','survival'];
+      const varied=[...simple,'deception','confrontation','wildcards'];
+      const tricks=['great_minds','red_herring','lone_operation','colonised_town'];
+      const options=state.blindAllowTricks&&Math.random()<0.25?tricks:state.blindComplexity==='varied'?varied:simple;
+      const id=randomChoice(options),def=BUILTIN_PRESETS[id];
+      if(!state.blindLibraryBackup)state.blindLibraryBackup=structuredClone(state.roles);
+      state.roles=structuredClone(DEFAULT_ROLES);
+      state.roles.forEach(r=>{r.randomEnabled=!!def.trick||!!def.roles?.[r.id];r.randomCount=def.roles?.[r.id]||1;});
+      // Citizen is an ordinary random fallback; trick rounds need it in their library pool too.
+      if(def.trick)state.roles.forEach(r=>r.randomEnabled=true);
+      state.mode='random';state.requireEvil=true;state.requireNeutral=false;state.autoSideWinChecks=true;
+      state.trickPreset=def.trick||null;state.surpriseRoundChance=0;
+      state.activeBlindSetup=true;state.blindPresetResult={id,name:def.name};
+      return true;
+    }
+    function renderBlindSetup() {
+      const blind=!!state.blindSetup;
+      $('blindSetup').checked=blind;$('blindComplexity').value=state.blindComplexity==='varied'?'varied':'simple';$('blindAllowTricks').checked=!!state.blindAllowTricks;
+      $('blindPreferences').hidden=!blind;$('presetControls').hidden=blind;
+      for(const id of ['roundMode','autoSideWinChecks','requireEvil','requireNeutral'])$(id).disabled=blind;
+      $('hostSetupPanel').hidden=blind;
+      $('randomRolePool').closest('details').hidden=blind;
+      $('roleLibrary').closest('details').hidden=blind;
+    }
+
     function assignTrickRoundRoles() {
       const ids=['great_minds','red_herring','lone_operation','colonised_town'];
       let id=ids.includes(state.trickPreset)?state.trickPreset:null;
@@ -1817,8 +1854,8 @@
       return true;
     }
     function selectedPresetDefinition() { const value=$('presetSelect')?.value||''; const [kind,id]=value.split(':'); return kind==='builtin'?BUILTIN_PRESETS[id]:readCustomPresets()[id]; }
-    function saveConfigLocal() { const payload={roles:state.roles,players:state.players.map(p=>({...p,alive:true,used:{},escaped:false,eliminatedByVote:false,framedRoleId:null,haterTargetId:null,policemanIntel:null,silenced:false})),mode:state.mode,nightOrder:$('nightOrder')?.value||'player',autoSideWinChecks:state.autoSideWinChecks!==false,requireEvil:!!state.requireEvil,requireNeutral:!!state.requireNeutral,narratorMode:!!state.narratorMode,trickPreset:state.trickPreset||null,surpriseRoundChance:state.surpriseRoundChance||0,customPresets:readCustomPresets()}; localStorage.setItem(CONFIG_STORAGE_KEY,JSON.stringify(payload)); $('configStatus').textContent='Saved players, roles, presets and settings on this device.'; }
-    function loadConfigLocal() { try{const p=JSON.parse(localStorage.getItem(CONFIG_STORAGE_KEY)||'null');if(!p)throw new Error();state.roles=Array.isArray(p.roles)?p.roles:structuredClone(DEFAULT_ROLES);state.players=Array.isArray(p.players)&&p.players.length?p.players:state.players;state.mode=p.mode||'random';state.trickPreset=p.trickPreset||null;state.surpriseRoundChance=Number(p.surpriseRoundChance)||0;state.activeTrickRound=null;state.requireEvil=!!p.requireEvil;state.requireNeutral=!!p.requireNeutral;state.narratorMode=!!p.narratorMode;state.autoSideWinChecks=p.autoSideWinChecks!==false;if(p.customPresets&&typeof p.customPresets==='object')writeCustomPresets(p.customPresets);renderSetup();if($('nightOrder'))$('nightOrder').value=p.nightOrder||'player';$('configStatus').textContent='Saved configuration loaded.';}catch{$('configStatus').textContent='No valid saved configuration found.';} }
+    function saveConfigLocal() { const payload={roles:state.roles,players:state.players.map(p=>({...p,alive:true,used:{},escaped:false,eliminatedByVote:false,framedRoleId:null,haterTargetId:null,policemanIntel:null,silenced:false})),mode:state.mode,nightOrder:$('nightOrder')?.value||'player',autoSideWinChecks:state.autoSideWinChecks!==false,requireEvil:!!state.requireEvil,requireNeutral:!!state.requireNeutral,narratorMode:!!state.narratorMode,trickPreset:state.trickPreset||null,surpriseRoundChance:state.surpriseRoundChance||0,blindSetup:!!state.blindSetup,blindComplexity:state.blindComplexity||"simple",blindAllowTricks:!!state.blindAllowTricks,customPresets:readCustomPresets()}; localStorage.setItem(CONFIG_STORAGE_KEY,JSON.stringify(payload)); $('configStatus').textContent='Saved players, roles, presets and settings on this device.'; }
+    function loadConfigLocal() { try{const p=JSON.parse(localStorage.getItem(CONFIG_STORAGE_KEY)||'null');if(!p)throw new Error();state.roles=Array.isArray(p.roles)?p.roles:structuredClone(DEFAULT_ROLES);state.players=Array.isArray(p.players)&&p.players.length?p.players:state.players;state.mode=p.mode||'random';state.blindSetup=!!p.blindSetup;state.blindComplexity=p.blindComplexity||'simple';state.blindAllowTricks=!!p.blindAllowTricks;state.activeBlindSetup=false;state.blindPresetResult=null;state.blindLibraryBackup=null;state.trickPreset=p.trickPreset||null;state.surpriseRoundChance=Number(p.surpriseRoundChance)||0;state.activeTrickRound=null;state.requireEvil=!!p.requireEvil;state.requireNeutral=!!p.requireNeutral;state.narratorMode=!!p.narratorMode;state.autoSideWinChecks=p.autoSideWinChecks!==false;if(p.customPresets&&typeof p.customPresets==='object')writeCustomPresets(p.customPresets);renderSetup();if($('nightOrder'))$('nightOrder').value=p.nightOrder||'player';$('configStatus').textContent='Saved configuration loaded.';}catch{$('configStatus').textContent='No valid saved configuration found.';} }
     function exportConfigLocal() {
       saveConfigLocal();
       const file = new Blob([localStorage.getItem(CONFIG_STORAGE_KEY)], {type:'application/json'});
@@ -1992,6 +2029,7 @@
       });
     }
     function renderSetup() {
+      if(state.phase==='setup' && state.gameResult && state.blindLibraryBackup){state.roles=state.blindLibraryBackup;state.blindLibraryBackup=null;state.activeBlindSetup=false;}
       $('roundMode').value = state.mode;
       if($('autoSideWinChecks')) $('autoSideWinChecks').checked = state.autoSideWinChecks !== false;
       $('requireEvil').checked = !!state.requireEvil;
@@ -1999,6 +2037,7 @@
       $('surpriseRoundChance').value=String(state.surpriseRoundChance||0);
       $('narratorMode').checked = !!state.narratorMode;
       renderPlayers(); renderRandomRolePool(); renderRoleLibrary(); renderPresetSelect(); renderHostSetup();
+      renderBlindSetup();
     }
     function openRoleEditor(id = null) {
       state.editingRoleId = id;
@@ -2211,6 +2250,7 @@
       state.trickPreset=parsed.trickPreset||null;
       state.surpriseRoundChance=Number(parsed.surpriseRoundChance)||0;
       state.activeTrickRound=parsed.activeTrickRound||null;
+      state.blindSetup=!!parsed.blindSetup;state.blindComplexity=parsed.blindComplexity||"simple";state.blindAllowTricks=!!parsed.blindAllowTricks;state.activeBlindSetup=!!parsed.activeBlindSetup;state.blindPresetResult=parsed.blindPresetResult||null;state.blindLibraryBackup=parsed.blindLibraryBackup||null;
       const byId = new Map(state.players.map(p => [Number(p.id), p]));
       for (const key of ['queue','reactionQueue','round1Players','reactionCompleted']) {
         if (!Array.isArray(state.night[key])) continue;
@@ -2230,11 +2270,13 @@
         requireEvil: !!state.requireEvil,
         requireNeutral: !!state.requireNeutral,
         narratorMode: !!state.narratorMode,
-        trickPreset:state.trickPreset||null,surpriseRoundChance:state.surpriseRoundChance||0,activeTrickRound:state.activeTrickRound||null
+        trickPreset:state.trickPreset||null,surpriseRoundChance:state.surpriseRoundChance||0,activeTrickRound:state.activeTrickRound||null,
+        blindSetup:!!state.blindSetup,blindComplexity:state.blindComplexity||"simple",blindAllowTricks:!!state.blindAllowTricks,activeBlindSetup:!!state.activeBlindSetup,blindPresetResult:state.blindPresetResult||null,blindLibraryBackup:state.blindLibraryBackup||null
       }));
     }
 
     function assignRoles() {
+      if(typeof prepareBlindSetup==='function' && prepareBlindSetup()===false)return false;
       const trickAssigned=typeof assignTrickRoundRoles==='function'?assignTrickRoundRoles():null;
       if(trickAssigned===false)return false;
       if (state.mode === 'manual' && state.players.filter(isJudge).length > 1) {
@@ -2259,7 +2301,7 @@
         const remaining = Math.max(0, count - (fixedCounts[role.id] || 0));
         for (let i = 0; i < remaining; i++) pool.push(role.id);
       }
-      for (const [orientation, required] of [['evil', state.requireEvil], ['neutral', state.requireNeutral]]) {
+      for (const [orientation, required] of [['evil', state.requireEvil], ['good',state.activeBlindSetup], ['neutral', state.requireNeutral]]) {
         if (!required || fixed.some(p => roleOf(p)?.orientation === orientation)) continue;
         const eligible = pool.filter(id => orientationOf(id) === orientation);
         if (assigned.length >= pending.length || !eligible.length || (orientation === 'evil' && evilCount >= evilLimit)) {
@@ -3761,6 +3803,9 @@
       closeRoleEditor(); renderSetup();
     });
     $('presetSelect').addEventListener('change',renderPresetDescription);
+    $('blindSetup').addEventListener('change',e=>{state.blindSetup=e.target.checked;if(state.blindSetup)state.mode='random';renderSetup();});
+    $('blindComplexity').addEventListener('change',e=>{state.blindComplexity=e.target.value;});
+    $('blindAllowTricks').addEventListener('change',e=>{state.blindAllowTricks=e.target.checked;});
     $('surpriseRoundChance').addEventListener('change',e=>{state.surpriseRoundChance=Number(e.target.value);});
     $('applyPresetBtn').addEventListener('click',()=>{const def=selectedPresetDefinition();if(def&&applyPresetDefinition(def)!==false){$('configStatus').textContent=`Applied ${def.name || 'preset'}.`;}});
     $('savePresetBtn').addEventListener('click',()=>{const name=prompt('Name this custom preset:');if(!name?.trim())return;const id=`preset_${Date.now()}`;const presets=readCustomPresets();presets[id]={name:name.trim(),roles:currentRolePoolSnapshot(),trick:state.trickPreset||null};writeCustomPresets(presets);renderPresetSelect();$('presetSelect').value=`custom:${id}`;$('configStatus').textContent='Custom preset saved.';});
@@ -4008,7 +4053,7 @@
       if (inGame) {
         hide('onlineLobby', 'setupScreen', 'onlineGameOver');
         show('onlineGame', 'onlineActionCard');
-        if (online.isHost) show('onlineAdminPanel'); else hide('onlineAdminPanel');
+        if (online.isHost && !state.activeBlindSetup) show('onlineAdminPanel'); else hide('onlineAdminPanel');
       }
     }
 
@@ -4434,7 +4479,8 @@
     function renderAdminPanel() {
       const panel=$('onlineAdminPanel');
       if(!panel) return;
-      if(!online.isHost || !online.roomCode || online.roomStatus!=='started' || online.public?.phase==='gameover') {
+      $('blindEndGameBtn').classList.toggle('hidden',!(state.activeBlindSetup&&online.isHost&&online.roomStatus==='started'&&online.public?.phase!=='gameover'));
+      if(state.activeBlindSetup || !online.isHost || !online.roomCode || online.roomStatus!=='started' || online.public?.phase==='gameover') {
         hide('onlineAdminPanel'); return;
       }
       show('onlineAdminPanel');
@@ -5384,7 +5430,7 @@
         if (assignRoles() === false) return; state.logs=[]; state.round=1; state.phase='day'; state.day={secondBallot:false,votes:{},tiedCandidates:[]}; state.night={}; state.processedCommandIds={}; state.onlineCommandAcks={}; state.onlineVersion=1;
         announceJudgePresence();
         online.roomStatus='started';
-        hide('setupScreen','onlineLobby');show('onlineGame');hide('onlineGameOver');show('onlineActionCard','onlineAdminPanel');
+        hide('setupScreen','onlineLobby');show('onlineGame');hide('onlineGameOver');show('onlineActionCard');if(!state.activeBlindSetup)show('onlineAdminPanel');else hide('onlineAdminPanel');
         const {dbMod}=online.api; const statusRef=dbMod.ref(online.db,`rooms/${online.roomCode}/meta/status`);
         const tx=await dbMod.runTransaction(statusRef,current=>current==='lobby'?'started':undefined);
         if(!tx.committed){online.roomStatus='lobby'; throw new Error('The room changed while the game was starting.');}
@@ -5439,6 +5485,7 @@
     $('adminForceVoteBtn')?.addEventListener('click', () => adminForceVote().catch(console.error));
     $('adminNoElimVoteBtn')?.addEventListener('click', () => adminForceNoElimination().catch(console.error));
     $('adminEndGameBtn')?.addEventListener('click', () => adminEndGame().catch(console.error));
+    $('blindEndGameBtn').addEventListener('click',()=>adminEndGame().catch(console.error));
 
     $('onlineBackToLobbyBtn').addEventListener('click', async () => {
       if (!online.isHost) {hide('onlineGame'); show('onlineLobby'); return;}
