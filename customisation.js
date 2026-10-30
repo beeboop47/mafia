@@ -124,7 +124,7 @@ function renderExpandedHostSetup(){
 
 function recordTimelineEvent(text,playerIds=[]){
   if(state.phase==='setup')return;
-  (state.timeline ||= []).push({round:state.round,phase:state.phase,text:String(text),playerIds});
+  (state.timeline ||= []).push({round:state.round,phase:state.phase,text:String(text),playerIds,...(state.timelineSource ? {source:state.timelineSource} : {})});
 }
 function recordTimelinePrivate(id,message){
   if(!message||state.phase!=='night')return;
@@ -264,8 +264,8 @@ function installCustomisation(){
   const originalResult=showNightResult;showNightResult=function(message){const n=state.night,actor=(n?.round===2?n.reactionQueue:n?.queue)?.[n.index];message=assignedResultText(actor,message);originalResult(message);if(actor)recordTimelinePrivate(actor.id,message);};
   const originalAlive=setPlayerAlive;setPlayerAlive=function(player,alive,...args){const before=player?.alive;originalAlive(player,alive,...args);if(player&&before!==player.alive)recordTimelineEvent(`${player.name} ${player.alive?'returned to life':'died'}.`,[player.id]);};
   const originalEnd=endGame;endGame=function(result){originalEnd(result);if(result.winner==='Nobody')$('winnerTitle').textContent='No faction victory';showPersonalVictories($('winCard'),result);showGameTimeline($('winCard'),state.timeline||[],state.players);};
-  const originalSnapshot=onlinePublicSnapshot;onlinePublicSnapshot=function(){const pub=originalSnapshot();if(state.phase==='gameover'){pub.timeline=state.timeline||[];const result=state.gameResult||online._winner;if(result){pub.winner=result.winner;pub.reason=result.reason;pub.personalWinners=result.personalWinners||[];}}return pub;};
-  const originalOnlineEnd=renderOnlineGameOver;renderOnlineGameOver=function(pub){originalOnlineEnd(pub);if(pub.winner==='Nobody')$('onlineWinnerTitle').textContent='No faction victory';showPersonalVictories($('onlineGameOver'),pub);showGameTimeline($('onlineGameOver'),pub.timeline||[],pub.players||[]);};
+  const originalSnapshot=onlinePublicSnapshot;onlinePublicSnapshot=function(){const pub=originalSnapshot();if(state.phase==='gameover'){pub.timeline=(state.timeline||[]).filter(event=>event.source!=='host-panel');const result=state.gameResult||online._winner;if(result){pub.winner=result.winner;pub.reason=result.reason;pub.personalWinners=result.personalWinners||[];}}return pub;};
+  const originalOnlineEnd=renderOnlineGameOver;renderOnlineGameOver=function(pub){originalOnlineEnd(pub);if(pub.winner==='Nobody')$('onlineWinnerTitle').textContent='No faction victory';showPersonalVictories($('onlineGameOver'),pub);showGameTimeline($('onlineGameOver'),(pub.timeline||[]).filter(event=>event.source!=='host-panel'),pub.players||[]);};
   const originalPhase=setPhase;setPhase=function(...args){document.body.dataset.gamePhase=state.phase;return originalPhase(...args);};
   const originalPublicRender=renderOnlinePublic;renderOnlinePublic=function(...args){document.body.dataset.gamePhase=online.public?.phase||state.phase;return originalPublicRender(...args);};
   renderHostSetup();

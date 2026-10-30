@@ -4507,11 +4507,18 @@
 
     function adminSelectedPlayer() { return playerOf(Number($('adminPlayerSelect')?.value)); }
 
+    function hostPanelAction(action) {
+      const previous = state.timelineSource;
+      state.timelineSource = 'host-panel';
+      try { return action(); }
+      finally { state.timelineSource = previous; }
+    }
+
     async function adminChangeRole() {
       if(!online.isHost || online.roomStatus!=='started') return;
       const p=adminSelectedPlayer(), role=state.roles.find(r=>r.id===$('adminRoleSelect')?.value);
       if(!p || !role) return;
-      if (!applyPermanentRoleChange(p, role.id, {name:'Host'})) {adminSetStatus('That role change is prevented. Only one Judge may be present.'); return;}
+      if (!hostPanelAction(() => applyPermanentRoleChange(p, role.id, {name:'Host'}))) {adminSetStatus('That role change is prevented. Only one Judge may be present.'); return;}
       await adminPublishAndRefresh(`${p.name} is now ${role.title}.`);
     }
 
@@ -4520,15 +4527,17 @@
       const p=adminSelectedPlayer(); if(!p) return;
       if (!makeAlive && isJudge(p)) {adminSetStatus('The Judge can only be eliminated by their own verdict against Good.'); return;}
       const wasAlive=p.alive;
-      setPlayerAlive(p, makeAlive); if(makeAlive) p.eliminatedByVote=false;
-      if (state.phase === 'day' && wasAlive && !p.alive) addLog(`${p.name} was killed during the day.`, 'public');
+      hostPanelAction(() => {
+        setPlayerAlive(p, makeAlive); if(makeAlive) p.eliminatedByVote=false;
+        if (state.phase === 'day' && wasAlive && !p.alive) addLog(`${p.name} was killed during the day.`, 'public');
+      });
       await adminPublishAndRefresh(`${p.name} is ${makeAlive?'alive':'dead'}.`);
     }
     async function adminRemovePlayer() {
       if (!online.isHost || online.roomStatus !== 'started' || !['day','night'].includes(state.phase)) return;
       const player=adminSelectedPlayer();
       if (!player || !confirm(`Remove ${player.name} from this game?`)) return;
-      if (!removePlayerFromGame(player)) return;
+      if (!hostPanelAction(() => removePlayerFromGame(player))) return;
       const result=checkWin();
       if (result.done) { await finishOnlineGame(result); return; }
       if (state.phase === 'night') {
@@ -4543,7 +4552,7 @@
       if(!online.isHost || online.roomStatus!=='started' || state.phase!=='day') return;
       const p=adminSelectedPlayer(); if(!p) return;
       if (isJudge(p)) {adminSetStatus('The Judge cannot be silenced.'); return;}
-      p.silenced=!p.silenced; addLog(`${p.name} is ${p.silenced?'silenced':'no longer silenced'}.`, 'public');
+      hostPanelAction(() => { p.silenced=!p.silenced; addLog(`${p.name} is ${p.silenced?'silenced':'no longer silenced'}.`, 'public'); });
       await adminPublishAndRefresh(`${p.name} is ${p.silenced?'silenced':'unsilenced'}.`);
     }
 
@@ -4551,7 +4560,7 @@
       if(!online.isHost || online.roomStatus!=='started' || state.phase!=='day') return;
       if (dayJudge()) {adminSetStatus('Only the Judge may choose a daytime verdict.'); return;}
       const p=adminSelectedPlayer(); if(!p || !p.alive) return;
-      setPlayerAlive(p, false); p.eliminatedByVote=true;
+      hostPanelAction(() => setPlayerAlive(p, false)); p.eliminatedByVote=true;
       state.day={secondBallot:false,votes:{},tiedCandidates:[]};
       const result=checkWin();
       if(result.done){ await finishOnlineGame(result); adminSetStatus(result.reason); return; }
