@@ -53,7 +53,7 @@ const {chromium}=require('C:/Users/gerar/.cache/codex-runtimes/codex-primary-run
       resetCustom('kill');assignCustom('kill','2');setPlayerAlive(playerOf(2),false);await handleOnlineNightRound1(playerOf(0),'4','kill');expect(state.night.round1Actions[0].action==='none','invalid target did not skip');
       resetCustom('doctor');assignCustom('doctor','2');setPlayerAlive(playerOf(2),false);state.night.round=2;state.night.index=0;
       await handleOnlineNightReaction(playerOf(0),'4');expect(playerOf(2).alive&&playerOf(0).used.doctor,'assigned Doctor target not revived');
-      resetCustom('janitor');assignCustom('janitor','2');setPlayerAlive(playerOf(2),false);state.night.round=2;
+      resetCustom('janitor');assignCustom('janitor','2');setPlayerAlive(playerOf(2),false);playerOf(2).lastDeathRound=state.round-1;state.night.round=2;
       await handleOnlineNightReaction(playerOf(0),'4');expect(state.night.actionRecords[0].targetId===2,'assigned Janitor target not inspected');
       for(const action of Object.keys(EXTRA_ABILITIES)){
         resetCustom(action);const spec=EXTRA_ABILITIES[action];
@@ -61,6 +61,7 @@ const {chromium}=require('C:/Users/gerar/.cache/codex-runtimes/codex-primary-run
         if(action==='borrowReaction')playerOf(2).roleOverrides={nightReaction:'escape'};
         const choices=extraChoices(playerOf(0),action),target=choices.targets[0]?.id||'',secondary=spec.second==='player'?choices.secondary.find(o=>o.id!==target)?.id||'':choices.secondary[0]?.id||'';
         assignCustom(action,target,secondary,'Host-selected text');
+        if(spec.fabrication)playerOf(0).hostSetup.abilitySchedule[1].destinationId=choices.destinations[0]?.id;
         await handleOnlineNightRound1(playerOf(0),'skip',action);
         expect(state.night.round1Submitted[0],`${action}: host assignment stalled`);
         const expected=hostAssignedValue(playerOf(0));

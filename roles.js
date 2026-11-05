@@ -42,7 +42,7 @@ const DEFAULT_ROLES = [
   },
   {
     id: 'janitor', title: 'Janitor', orientation: 'good',
-    description: 'During the night reactions, while cleaning up a body, choose one player killed that night and learn their exact role.',
+    description: 'During the night reactions, while cleaning up a body, choose one player killed during the preceding night who is still dead and learn their exact role.',
     visibility: 'nobody', nightAction: 'janitor'
   },
   {

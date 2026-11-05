@@ -461,15 +461,17 @@ test('protected night attacks do not create a Doctor or Janitor wake',()=>{
   assert.equal(g.c.state.phase,'day');
 });
 
-test('a spent Doctor skips while Janitor still waits to inspect a fresh body',()=>{
-  const g=mechanicsGame(['mafia','doctor','janitor','citizen']);
+test('a spent Doctor skips while Janitor inspects a preceding-night body',()=>{
+  const g=mechanicsGame(['mafia','doctor','janitor','citizen','citizen']);
+  g.c.state.round=2;g.c.playerOf(4).alive=false;g.c.playerOf(4).lastDeathRound=1;
+  g.c.state.night.round1Players=g.c.state.players.filter(p=>p.alive);
   g.c.playerOf(1).used.doctor=true;
   g.start();g.choose(0,3);
   assert.equal(g.c.state.night.currentActorId,2);
   assert.equal(g.spoken.includes('Janitor, open your eyes.'),true);
   assert.equal(g.spoken.includes('Janitor, close your eyes.'),false);
   assert.equal(g.timers.size,0);
-  g.c.$('nightActionArea').children.find(button=>button.textContent==='Inspect Player 3').click();
+  g.c.$('nightActionArea').children.find(button=>button.textContent==='Inspect Player 4').click();
   assert.equal(g.c.$('nightActionArea').children[0].hidden,false);
   assert.equal(g.timers.size,0,'inspection result waits for acknowledgement');
   g.acknowledge();g.fire();
@@ -593,10 +595,9 @@ test('Framer acts before Detective and its deception persists after its death',(
   assert.match(g.c.$('nightResult').innerHTML,/Evil/);
 });
 
-test('Janitor inspects a body before Doctor revives it, and a revived Detective gets its turn',()=>{
+test('Janitor ignores current-night deaths while Doctor revives a Detective who gets its turn',()=>{
   const g=mechanicsGame(['janitor','doctor','mafia','detective']);g.start();g.choose(2,3);
-  g.c.$('nightActionArea').children.find(b=>b.textContent==='Inspect Player 3').click();
-  assert.match(g.c.$('nightResult').innerHTML,/Detective/);g.acknowledge();g.fire();
+  assert.equal(g.spoken.includes('Janitor, open your eyes.'),false);
   g.c.$('nightActionArea').children.find(b=>b.textContent==='Revive Player 3').click();
   g.acknowledge();g.fire();assert.equal(g.c.playerOf(3).alive,true);
   assert.equal(g.c.state.night.currentActorId,3);g.c.setChoiceAndContinue(g.c.playerOf(3),2);
@@ -719,4 +720,13 @@ test('narrator excludes Judge from attack choices and automatically assigned See
   assert.ok(!g.c.$('nightActionArea').children.some(b=>b.textContent==='Player 0'));
   g.choose(2,3);
   assert.equal(g.c.playerOf(0).alive,true);
+});
+
+test('Fabricate Action persists across narrated turns until Lookout receives its report',()=>{
+  const g=mechanicsGame([{id:'fabricator',nightAction:'fabricateAction'},'lookout','samurai','citizen','citizen']);
+  const source=fs.readFileSync(path.join(__dirname,'../narrator.js'),'utf8');
+  vm.runInContext(source.slice(source.indexOf('function narratorPriority('),source.indexOf('function narratorOrder(')),g.c);
+  g.start();g.choose(0,JSON.stringify({targetId:2,second:'protect',destinationId:3}));
+  g.choose(2,4);g.choose(1,2);
+  assert.match(g.c.$('nightResult').innerHTML,/Player 3 and used Protect/);
 });

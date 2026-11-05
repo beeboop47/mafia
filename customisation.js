@@ -48,7 +48,7 @@ function hostAssignmentChoices(actor,action,setup=false){
     return choices;
   }
   if(isLimitedInvestigation(action))return {targets:limitedInvestigationChoices(actor,action),secondary:[]};
-  const targets=(setup?state.players:action==='doctor'||action==='janitor'?(state.night.round1Players||[]).filter(p=>!p.alive&&!p.removed&&!p.fakeDeathReturnRound):validAbilityTargets(actor,roleOf(actor))).filter(p=>!p.removed&&canAbilityTarget(p));
+  const targets=(setup?state.players:action==='janitor'?state.players.filter(p=>!p.alive&&!p.removed&&!p.fakeDeathReturnRound&&p.lastDeathRound===state.round-1):action==='doctor'?(state.night.round1Players||[]).filter(p=>!p.alive&&!p.removed&&!p.fakeDeathReturnRound):validAbilityTargets(actor,roleOf(actor))).filter(p=>!p.removed&&canAbilityTarget(p));
   return {targets:targets.map(p=>({id:String(p.id),name:p.name})),secondary:['framer','changeRole'].includes(action)?sortedRoles().filter(r=>action!=='changeRole'||!roleHasSpecialId(r,'judge')||!playersAlive().some(isJudge)).map(r=>({id:r.id,name:r.title})):[],noTarget:['none','gambler','hater'].includes(action)||isPassiveAbility(action)};
 }
 function hostAssignedValue(actor,secondStep=false){
@@ -58,7 +58,7 @@ function hostAssignedValue(actor,secondStep=false){
   if(!isPassiveAbility(action)&&actionUsesLeft(actor,roleOf(actor))<=0)return 'skip';
   if(EXTRA_ABILITIES[action]){
     if(!EXTRA_ABILITIES[action].noTarget&&!isPassiveAbility(action)&&(setting.value==null||setting.value===''))return 'skip';
-    const value=JSON.stringify({targetId:Number(setting.value),second:setting.second||'',text:setting.text||''});
+    const value=JSON.stringify({targetId:Number(setting.value),second:setting.second||'',destinationId:setting.destinationId==null?null:Number(setting.destinationId),text:setting.text||''});
     try{parseExtraChoice(actor,action,value);return value;}catch{return 'skip';}
   }
   if(action==='hater')return 'haterAssign';
@@ -77,6 +77,7 @@ function hostAssignmentDescription(actor){
   const choices=hostAssignmentChoices(actor,action),parts=[`Tonight's assigned ability: ${label}.`];
   if(!choices.noTarget||['hater','seer'].includes(action)){const ids=String(setting.value??'').split(':');parts.push(`Assigned target${ids.length>1?'s':''}: ${ids.map(id=>id===''?'not selected':playerOf(id)?.name||'unavailable player').join(' and ')}.`);}
   if(setting.second){const option=choices.secondary.find(o=>String(o.id)===String(setting.second));parts.push(`Assigned choice: ${option?.name||'unavailable choice'}.`);}
+  if(choices.destinations && fabricatedActionNeedsTarget(setting.second))parts.push(`Reported destination: ${playerOf(setting.destinationId)?.name||'unavailable player'}.`);
   if(setting.text)parts.push(`Assigned message: ${setting.text}`);
   if(hostAssignedValue(actor)==='skip')parts.push('This assignment is unavailable tonight, so the ability will be skipped.');
   parts.push('You cannot choose or change this assignment.');return parts.join('\n');
@@ -111,10 +112,11 @@ function renderExpandedHostSetup(){
       function picker(title,options,value){const wrap=document.createElement('label');wrap.textContent=title;const select=document.createElement('select');select.add(new Option('Choose',''));options.forEach(o=>select.add(new Option(o.name,String(o.id))));select.value=value??'';wrap.appendChild(select);controls.appendChild(wrap);return select;}
       const target=choices.noTarget?null:picker('Assigned target',choices.targets,setting.value);
       const second=choices.secondary.length?picker('Assigned choice',choices.secondary,setting.second):null;
+      const destination=choices.destinations?picker('Reported destination (for targeted abilities)',choices.destinations,setting.destinationId):null;
       let text;
       if(choices.text){const wrap=document.createElement('label');wrap.textContent='Assigned message';text=document.createElement('textarea');text.maxLength=500;text.value=setting.text||'';wrap.appendChild(text);controls.appendChild(wrap);}
-      const save=()=>{controls.hidden=mode.value!=='assign';if(!mode.value)delete schedule[night];else schedule[night]={action,skip:mode.value==='skip',value:target?.value||'',second:second?.value||'',text:text?.value||''};};
-      [mode,target,second,text].filter(Boolean).forEach(field=>field.addEventListener(field===text?'input':'change',save));controls.hidden=mode.value!=='assign';rows.appendChild(row);
+      const save=()=>{controls.hidden=mode.value!=='assign';if(!mode.value)delete schedule[night];else schedule[night]={action,skip:mode.value==='skip',value:target?.value||'',second:second?.value||'',destinationId:destination?.value||null,text:text?.value||''};};
+      [mode,target,second,destination,text].filter(Boolean).forEach(field=>field.addEventListener(field===text?'input':'change',save));controls.hidden=mode.value!=='assign';rows.appendChild(row);
     }
     let last=Math.max(1,...[...Object.keys(schedule),...Object.keys(baseAction==='gambler'?config.gamblerSchedule||{}:{})].map(Number).filter(n=>n>0&&n<=1000));for(let n=1;n<=last;n++)addRow(n);
     const add=document.createElement('button');add.type='button';add.className='ghost';add.textContent='Add night';add.onclick=()=>addRow(++last);rows.appendChild(add);

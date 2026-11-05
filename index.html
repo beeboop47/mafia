@@ -1690,7 +1690,7 @@
       return Object.keys(NIGHT_ACTIONS).filter(action => !['none', 'gambler', 'janitor', ...NIGHT_REACTION_ACTIONS].includes(action));
     }
     function hasReactionRoundInfo(action) {
-      return ['compare', 'exclude', 'audit', 'hater', 'inspectOrientation', 'seer', 'doctor', 'janitor', 'track', 'watch', 'signalReceiver','inspectReaction','traceAllegiance','checkProtection','findInterference','compareVisitors','examineRemains','predictDeath'].includes(action);
+      return ['compare', 'exclude', 'audit', 'hater', 'inspectOrientation', 'seer', 'doctor', 'janitor', 'track', 'watch', 'signalReceiver','inspectAbility','inspectReaction','traceAllegiance','checkProtection','findInterference','compareVisitors','examineRemains','predictDeath'].includes(action);
     }
     function playerOf(id) {return state.players.find(p => p.id === Number(id));}
     function labelOrientation(value) {return value ? value[0].toUpperCase() + value.slice(1) : '';}
@@ -2129,12 +2129,14 @@
       let record = state.night.actionRecords?.[subject.id];
       const secure=state.night.infoSecure?.includes(viewer?.id);
       if (!secure && state.night.hiddenActivity?.includes(subject.id)) return `${target.name} made no recorded night ability use.`;
-      if (!secure && state.night.fakeVisits?.[subject.id] != null) {
+      const fabricated=!secure && state.night.fabricatedActions?.[subject.id];
+      if(fabricated)record=fabricated;
+      if (!fabricated && !secure && state.night.fakeVisits?.[subject.id] != null) {
         const fake=playerOf(state.night.fakeVisits[subject.id]);
         return `${target.name} visited ${fake?.id===viewer?.id?'you':fake?.name||'an unknown player'} and used an unidentified ability.`;
       }
-      if (!record || record.action === 'none' || isPassiveAbility(record.action) || state.night.blockedIds?.includes(subject.id)) return `${target.name} made no recorded night ability use.`;
-      if(!secure && state.night.concealedVisits?.some(v=>v.actorId===subject.id)){
+      if (!record || record.action === 'none' || (!fabricated && isPassiveAbility(record.action)) || (!fabricated && state.night.blockedIds?.includes(subject.id))) return `${target.name} made no recorded night ability use.`;
+      if(!fabricated && !secure && state.night.concealedVisits?.some(v=>v.actorId===subject.id)){
         const ids=proposedDestinations(record).filter(id=>!state.night.concealedVisits.some(v=>v.actorId===subject.id&&v.targetId===id));
         if(!ids.length)return `${target.name} made no recorded night ability use.`;
         record={...record,targetId:ids[0],targetIds:ids};
@@ -3410,14 +3412,14 @@
       }
 
       if (infoAction === 'janitor') {
-        const deadThisNight = (state.night.round1Players || []).filter(p => !p.alive && !p.removed && !p.fakeDeathReturnRound);
+        const deadThisNight = state.players.filter(p => !p.alive && !p.removed && !p.fakeDeathReturnRound && p.lastDeathRound === state.round - 1);
         if (!deadThisNight.length) {
-          showNightResult('No one was killed tonight, so there is no body to inspect.');
+          showNightResult('No one was killed during the preceding night, so there is no body to inspect.');
           $('nightPrompt').textContent = 'No body was available. Acknowledge and continue.';
           $('nightActionArea').appendChild(actionButton('Acknowledge & continue', 'janitorNone', () => completeNightTurn()));
           return;
         }
-        $('nightPrompt').innerHTML = '<strong>Janitor:</strong> choose one player killed tonight to inspect and reveal their exact role.';
+        $('nightPrompt').innerHTML = '<strong>Janitor:</strong> choose one player killed during the preceding night to inspect and reveal their exact role.';
         deadThisNight.forEach(victim => $('nightActionArea').appendChild(actionButton(`Inspect ${victim.name}`, victim.id, () => {
           if (state.night.busy) return;
           setNightBusy(true);
@@ -4381,10 +4383,10 @@
             payload.result = resultText;
             payload.turn = {type:'reaction',action:infoAction,prompt:'Your result is shown above. Acknowledge & continue.',options:[{id:'ack',name:'Acknowledge & continue'}]};
           } else if (infoAction === 'janitor') {
-            const deadThisNight=(night.round1Players||[]).filter(p=>!p.alive&&!p.fakeDeathReturnRound);
+            const deadThisNight = state.players.filter(p => !p.alive && !p.removed && !p.fakeDeathReturnRound && p.lastDeathRound === state.round - 1);
             payload.turn=!deadThisNight.length
-              ? {type:'reaction',action:'janitor',prompt:'No one was killed tonight, so there is no body to inspect.',options:[{id:'ack',name:'Acknowledge & continue'}]}
-              : {type:'reaction',action:'janitor',prompt:'Choose one player killed tonight to inspect and reveal their exact role.',options:deadThisNight.map(v=>({id:v.id,name:`Inspect ${v.name}`}))};
+              ? {type:'reaction',action:'janitor',prompt:'No one was killed during the preceding night, so there is no body to inspect.',options:[{id:'ack',name:'Acknowledge & continue'}]}
+              : {type:'reaction',action:'janitor',prompt:'Choose one player killed during the preceding night to inspect and reveal their exact role.',options:deadThisNight.map(v=>({id:v.id,name:`Inspect ${v.name}`}))};
           } else if (infoAction === 'doctor') {
             const deadThisNight = (night.round1Players || []).filter(p => !p.alive&&!p.fakeDeathReturnRound);
             if (player.used?.doctor) payload.turn={type:'reaction',action:'doctor',prompt:'You already used your one revival.',options:[{id:'ack',name:'Acknowledge & continue'}]};
@@ -5193,8 +5195,8 @@
         n.onlineAckNeeded=true; bumpOnlineVersion(); await publishOnlineRoom(); return;
       }
       if (dynamicAction === 'janitor') {
-        const deadThisNight=(n.round1Players||[]).filter(p=>!p.alive&&!p.fakeDeathReturnRound);
-        if(!deadThisNight.length) setPrivateResult(actor.id,'No one was killed tonight, so there is no body to inspect.');
+        const deadThisNight = state.players.filter(p => !p.alive && !p.removed && !p.fakeDeathReturnRound && p.lastDeathRound === state.round - 1);
+        if(!deadThisNight.length) setPrivateResult(actor.id,'No one was killed during the preceding night, so there is no body to inspect.');
         else {
           const victim=playerOf(Number(value));
           if(!victim || !deadThisNight.some(p=>p.id===victim.id)) {

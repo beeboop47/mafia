@@ -1,5 +1,12 @@
 // Additional abilities share selection, validation and resolution in both modes.
 const EXTRA_ABILITIES = {
+  fabricateAction:{label:'Fabricate Action',category:'Deceitful',second:'ability',fabrication:true,prompt:'Choose a player, an ability and its destination if applicable. Lookout reports this invented action tonight. No real ability is performed.'},
+  inspectAbility:{label:'Inspect Ability',category:'Investigative',prompt:'Learn a player’s current apparent night ability. Ordinary role disguises affect the answer; Secure Information reveals the truth.'},
+  bestowReaction:{label:'Bestow Reaction',category:'Transformative',second:'reaction',once:true,prompt:'Once per game: permanently replace another player’s night reaction with your chosen reaction. Spent uses remain spent.'},
+  disarm:{label:'Disarm',category:'Offensive',prompt:'Block a player’s active Offensive ability tonight. Other ability categories and reactions are unaffected.'},
+  sharedWard:{label:'Shared Ward',category:'Defensive',second:'player',prompt:'Choose two different living players. Each receives a shield that cancels their first attack tonight. Piercing attacks bypass these shields.'},
+  threatSense:{label:'Threat Sense',category:'Passive',prompt:'Automatically learn whether any player made a real recorded visit to you with an Offensive ability tonight. This does not reveal who or whether it succeeded.'},
+  signedBroadcast:{label:'Signed Broadcast',category:'Miscellaneous',noTarget:true,text:true,prompt:'Write a message to display publicly at dawn with your name, even if you die.'},
   inspectReaction:{label:'Inspect Reaction',category:'Investigative',prompt:'Learn a player’s current night reaction.'},
   traceAllegiance:{label:'Trace Allegiance',category:'Investigative',prompt:'Learn a player’s allegiance at the start of tonight.'},
   checkProtection:{label:'Check Protection',category:'Investigative',prompt:'Learn whether a player received attack protection tonight.'},
@@ -98,7 +105,7 @@ function isPassiveAbility(action) {
 
 function extraChoices(actor, action) {
   const spec = EXTRA_ABILITIES[action];
-  const targets = (spec.dead ? state.players.filter(p=>!p.removed && canAbilityTarget(p)) : validAbilityTargets(actor, roleOf(actor))).filter(p => spec.dead ? !p.alive : p.alive).filter(p=>!['sanctuary','bestowAbility'].includes(action)||p.id!==actor.id);
+  const targets = (spec.dead ? state.players.filter(p=>!p.removed && canAbilityTarget(p)) : validAbilityTargets(actor, roleOf(actor))).filter(p => spec.dead ? !p.alive : p.alive).filter(p=>!['sanctuary','bestowAbility','bestowReaction'].includes(action)||p.id!==actor.id);
   let secondary = [];
   if (spec.second === 'player') secondary = targets.map(p => ({id:String(p.id), name:p.name}));
   if (spec.second === 'allegiance') secondary = ['good','evil','neutral'].map(id => ({id,name:labelOrientation(id)}));
@@ -106,7 +113,12 @@ function extraChoices(actor, action) {
   if (action === 'bestowAbility') secondary = secondary.filter(o => o.id !== 'bestowAbility' && o.id !== 'none' && (!roleOf(actor)?.bestowPool?.length || roleOf(actor).bestowPool.includes(o.id)));
   if (spec.second === 'reaction') secondary = Object.entries(NIGHT_REACTIONS).map(([id,a]) => ({id,name:a.label,category:a.category}));
   if(spec.second==='reaction')secondary.unshift({id:'none',name:'None',category:'Defensive'});
-  return {targets:targets.map(p => ({id:String(p.id),name:p.name})), secondary, text:!!spec.text, noTarget:!!spec.noTarget, passive:isPassiveAbility(action)};
+  const fabrication = spec.fabrication ? {destinations:targets.map(p=>({id:String(p.id),name:p.name})), targetedAbilities:secondary.filter(o=>fabricatedActionNeedsTarget(o.id)).map(o=>o.id)} : {};
+  return {...fabrication, targets:targets.map(p => ({id:String(p.id),name:p.name})), secondary, text:!!spec.text, noTarget:!!spec.noTarget, passive:isPassiveAbility(action)};
+}
+
+function fabricatedActionNeedsTarget(action) {
+  return !!NIGHT_ACTIONS[action] && !isPassiveAbility(action) && !EXTRA_ABILITIES[action]?.noTarget && !['none','gambler','hater'].includes(action);
 }
 
 function renderExtraForm(area, action, choices, submit) {
@@ -117,7 +129,7 @@ function renderExtraForm(area, action, choices, submit) {
     const wrap=document.createElement('label'); wrap.textContent=label;
     const field=document.createElement('select'); field.required=true;
     const placeholder=document.createElement('option'); placeholder.value=''; placeholder.textContent='Choose'; field.appendChild(placeholder);
-    const categories = action === 'changeAbility' && label === 'Choice' ? NIGHT_ABILITY_CATEGORIES
+    const categories = (action === 'changeAbility' && label === 'Choice') || (action === 'fabricateAction' && label === 'Reported ability') ? NIGHT_ABILITY_CATEGORIES
       : action === 'changeReaction' && label === 'Choice' ? NIGHT_REACTION_CATEGORIES : null;
     if (categories) {
       categories.forEach(category=>{
@@ -128,8 +140,13 @@ function renderExtraForm(area, action, choices, submit) {
     } else options.forEach(o=>{const option=document.createElement('option');option.value=o.id;option.textContent=o.name;field.appendChild(option);});
     wrap.appendChild(field);form.appendChild(wrap);return field;
   };
-  const target=choices.noTarget ? null : select('Player',choices.targets);
-  const second=choices.secondary.length ? select('Choice',choices.secondary) : null;
+  const target=choices.noTarget ? null : select(action==='fabricateAction'?'Framed player':'Player',choices.targets);
+  const second=choices.secondary.length ? select(action==='fabricateAction'?'Reported ability':'Choice',choices.secondary) : null;
+  const destination=choices.destinations ? select('Reported destination',choices.destinations) : null;
+  if(destination){
+    const refresh=()=>{const needed=choices.targetedAbilities.includes(second.value);destination.parentElement.hidden=!needed;destination.required=needed;if(!needed)destination.value='';};
+    second.addEventListener('change',refresh);refresh();
+  }
   if (EXTRA_ABILITIES[action].second === 'player' && second) target.addEventListener('change',()=>{
     [...second.options].forEach(o=>o.disabled=!!o.value && o.value===target.value);
     if(second.value===target.value) second.value='';
@@ -137,7 +154,7 @@ function renderExtraForm(area, action, choices, submit) {
   let text=null;
   if(choices.text){const label=document.createElement('label');label.textContent=action==='forceAnswer'?'Question':action==='sendSignal'?'Signal':'Message';text=document.createElement('textarea');text.required=true;text.maxLength=500;text.rows=3;label.appendChild(text);form.appendChild(label);}
   const send=document.createElement('button');send.type='submit';send.textContent='Confirm';send.disabled=!choices.noTarget&&!choices.targets.length;form.appendChild(send);
-  form.addEventListener('submit',event=>{event.preventDefault();if(!form.reportValidity())return;submit(JSON.stringify({targetId:target?Number(target.value):null,second:second?.value||'',text:text?.value.trim()||''}));});
+  form.addEventListener('submit',event=>{event.preventDefault();if(!form.reportValidity())return;submit(JSON.stringify({targetId:target?Number(target.value):null,second:second?.value||'',destinationId:destination?.value ? Number(destination.value) : null,text:text?.value.trim()||''}));});
   form.appendChild(actionButton('Do not use this ability','skip',()=>submit('skip')));
   area.appendChild(form);
 }
@@ -152,7 +169,8 @@ function parseExtraChoice(actor, action, value) {
   if(spec.second && !available.secondary.some(o=>o.id===choice.second))throw new Error('Choose a valid second option.');
   if(spec.second==='player' && String(choice.targetId)===choice.second)throw new Error('Choose two different players.');
   if(spec.text && (typeof choice.text!=='string'||!choice.text.trim()||choice.text.length>500))throw new Error('Enter between 1 and 500 characters.');
-  return {targetId:spec.noTarget?null:Number(choice.targetId),second:choice.second||'',text:spec.text?choice.text.trim():''};
+  if(spec.fabrication && fabricatedActionNeedsTarget(choice.second) && !available.destinations.some(p=>p.id===String(choice.destinationId)))throw new Error('Choose a valid reported destination.');
+  return {...(spec.fabrication?{destinationId:fabricatedActionNeedsTarget(choice.second)?Number(choice.destinationId):null}:{}),targetId:spec.noTarget?null:Number(choice.targetId),second:choice.second||'',text:spec.text?choice.text.trim():''};
 }
 
 function recordExtraChoice(actor, action, choice) {
@@ -231,7 +249,7 @@ function resolveExtraDefenses() {
 
 function resolveExtraEffects() {
   const n=state.night;if(n.extraEffectsResolved)return;n.extraEffectsResolved=true;
-  n.hiddenActivity=[];n.fakeActivity=[];n.fakeVisits={};n.hiddenAllegiance=[];n.reversedComparison=[];
+  n.hiddenActivity=[];n.fakeActivity=[];n.fakeVisits={};n.fabricatedActions={};n.hiddenAllegiance=[];n.reversedComparison=[];
   for(const [id,c] of Object.entries(n.extraActions||{})){
     const actor=playerOf(id),target=playerOf(c.targetId);
     if(!extraTargetsAvailable(c))continue;
@@ -239,6 +257,7 @@ function resolveExtraEffects() {
     if(['hideActivity','fakeActivity','hideAllegiance','reverseComparison'].includes(c.action)){
       const key={hideActivity:'hiddenActivity',fakeActivity:'fakeActivity',hideAllegiance:'hiddenAllegiance',reverseComparison:'reversedComparison'}[c.action];n[key].push(c.targetId);
     }
+    if(c.action==='fabricateAction')n.fabricatedActions[c.targetId]={actorId:c.targetId,action:c.second,targetId:c.destinationId,targetIds:c.destinationId==null?[]:[c.destinationId]};
     if(c.action==='fakeVisit')n.fakeVisits[c.targetId]=Number(c.second);
     if(c.action==='swapRoles'){
       const second=playerOf(c.second);
@@ -331,6 +350,7 @@ function extraTargetsAvailable(choice) {
   if(EXTRA_ABILITIES[choice.action]?.noTarget)return true;
   if(isPassiveAbility(choice.action))return true;
   if(!canAbilityTarget(playerOf(choice.targetId)))return false;
+  if(EXTRA_ABILITIES[choice.action]?.fabrication && fabricatedActionNeedsTarget(choice.second) && !canAbilityTarget(playerOf(choice.destinationId)))return false;
   return EXTRA_ABILITIES[choice.action]?.second!=='player' || canAbilityTarget(playerOf(choice.second));
 }
 
@@ -372,7 +392,7 @@ function initializeProposedNight() {
   n.proposedProcessed={};n.proposedAttackProcessed={};n.proposedReactionUsed={};n.proposedAnnouncements=[];
   n.singleWards=[];n.wardRecipients=[];n.revivalWards=[];n.infoSecure=[];n.reactionGuard=[];n.jammed=[];n.exhaustTargets=[];
   n.reportSwaps={};n.plantedEvidence=[];n.forgedReactions={};n.falseProtection=[];n.forgedInterference=[];n.concealedVisits=[];
-  n.hiddenActivity=[];n.fakeActivity=[];n.fakeVisits={};n.hiddenAllegiance=[];n.reversedComparison=[];
+  n.hiddenActivity=[];n.fakeActivity=[];n.fakeVisits={};n.fabricatedActions={};n.hiddenAllegiance=[];n.reversedComparison=[];
   n.replyRequests=[];n.proposedResults={};n.decoyTargets={};n.tokenPlans={};n.dueDelayedAttacks=[];
   n.reactionReportMasks={};n.scrambledWitnesses=[];n.activeReactionDeceptions=[];n.reactionTimingVersion=3;
   for(const key of ['settledReportsRequired','finalizingReports','deferredNightReports','reactionDawnQueries','queuedCounterattacks','reactionDeceptionEffects','reactionRosterSnapshot','reactionCountersSettled'])delete n[key];
@@ -406,7 +426,7 @@ function resolveProposedDefenses() {
   const suppressed=[];
   for(const [,c] of choices){
     const action=n.startAbilities?.[c.targetId] || nightActionFor(playerOf(c.targetId));
-    if(!n.harmProtected?.includes(c.targetId) && (c.action==='sanctuary' || (c.action==='sabotage' && NIGHT_ACTIONS[action]?.category==='Defensive')))suppressed.push(c.targetId);
+    if(!n.harmProtected?.includes(c.targetId) && (c.action==='sanctuary' || (c.action==='sabotage' && NIGHT_ACTIONS[action]?.category==='Defensive') || (c.action==='disarm' && NIGHT_ACTIONS[action]?.category==='Offensive')))suppressed.push(c.targetId);
   }
   n.blockedIds=[...new Set([...(n.blockedIds||[]),...suppressed.filter(id=>!n.harmProtected?.includes(id))])];
   const active=proposedEntries();
@@ -415,6 +435,7 @@ function resolveProposedDefenses() {
     if(n.proposedProcessed[key])continue;
     n.proposedProcessed[key]=true;
     if(c.action==='sanctuary')(n.protectedIds ||= []).push(c.targetId);
+    if(c.action==='sharedWard'){n.singleWards.push(c.targetId,Number(c.second));(n.wardRecipients ||= []).push(c.targetId,Number(c.second));}
     if(c.action==='singleWard'){n.singleWards.push(c.targetId);(n.wardRecipients ||= []).push(c.targetId);}
     if(c.action==='secondChance')n.revivalWards.push(c.targetId);
     if(c.action==='secureInformation')n.infoSecure.push(c.targetId);
@@ -444,6 +465,7 @@ function resolveProposedDefenses() {
   for(const id of suppressed){
     const c=n.extraActions?.[id];if(!c)continue;
     const key=`cancel:${id}:${c.action}`;if(n.proposedProcessed[key])continue;n.proposedProcessed[key]=true;
+    if(c.action==='sharedWard')for(const targetId of [c.targetId,Number(c.second)]){const index=n.singleWards.indexOf(targetId);if(index>=0)n.singleWards.splice(index,1);}
     if(c.action==='singleWard'){const index=n.singleWards.indexOf(c.targetId);if(index>=0)n.singleWards.splice(index,1);}
     if(c.action==='reserveShield' && !remaining.some(([,choice])=>choice.action==='reserveShield'&&choice.targetId===c.targetId))delete playerOf(c.targetId).reserveShieldRound;
     if(['sanctuary','blockHarm'].includes(c.action)){
@@ -489,6 +511,7 @@ function resolveProposedEffects() {
         for(const field of ['orientation','nightAction','nightReaction'])proposedOverride(target,field,original.roleOverrides[field] ?? restored?.[field] ?? (field==='orientation'?'good':'none'));
       }
     }
+    if(c.action==='bestowReaction' && !n.reactionGuard?.includes(target.id))proposedOverride(target,'nightReaction',c.second);
     if(c.action==='bestowAbility' && !changesPrevented(actor) && !changesPrevented(target)){
       if(c.second && c.second!=='bestowAbility' && c.second!=='none')proposedOverride(target,'nightAction',c.second);
     }
@@ -548,11 +571,11 @@ function proposedInvestigationRole(player, viewer) {
 }
 function proposedDeceived(id) {
   const n=state.night;
-  return ['hiddenAllegiance','hiddenActivity','fakeActivity','reversedComparison','plantedEvidence','falseProtection','forgedInterference','scrambledWitnesses'].some(key=>n[key]?.includes(id)) || n.reactionReportMasks?.[id]!=null || n.fakeVisits?.[id]!=null || n.forgedReactions?.[id]!=null || n.reportSwaps?.[id]!=null || playerOf(id)?.framedRoleId || n.concealedVisits?.some(v=>v.actorId===id);
+  return ['hiddenAllegiance','hiddenActivity','fakeActivity','reversedComparison','plantedEvidence','falseProtection','forgedInterference','scrambledWitnesses'].some(key=>n[key]?.includes(id)) || n.reactionReportMasks?.[id]!=null || n.fabricatedActions?.[id]!=null || n.fakeVisits?.[id]!=null || n.forgedReactions?.[id]!=null || n.reportSwaps?.[id]!=null || playerOf(id)?.framedRoleId || n.concealedVisits?.some(v=>v.actorId===id);
 }
 function proposedInfoResult(player) {
   const n=state.night, c=n.extraActions?.[player.id], action=c?.action || n.startAbilities?.[player.id] || nightActionFor(player);
-  if(!['inspectReaction','traceAllegiance','checkProtection','findInterference','compareVisitors','examineRemains','visitorCounter','changeAwareness','blockAwareness','deceptionAlarm','firstContact','deathEcho','predictDeath'].includes(action))return '';
+  if(!['inspectAbility','threatSense','inspectReaction','traceAllegiance','checkProtection','findInterference','compareVisitors','examineRemains','visitorCounter','changeAwareness','blockAwareness','deceptionAlarm','firstContact','deathEcho','predictDeath'].includes(action))return '';
   ensureProposedState();
   if(n.blockedIds?.includes(player.id) && !isPassiveAbility(action))return 'Your ability was blocked.';
   if(n.jammed?.includes(player.id) && NIGHT_ACTIONS[action]?.category==='Investigative')return 'Your investigation result was jammed.';
@@ -565,6 +588,7 @@ function proposedInfoResult(player) {
   if(action==='predictDeath')return !target?'No valid target was selected.':start?.lastDeathRound===undefined?'No earlier death history was recorded for this player.':`${target.name} ${start.lastDeathRound===state.round-1?'died':'did not die'} during the preceding night.`;
   if(c && NIGHT_ACTIONS[c.action]?.category==='Investigative'){
     if(!target)return 'No valid target remained.';
+    if(c.action==='inspectAbility')return `${target.name} has ${NIGHT_ACTIONS[roleActiveNightAction(proposedInvestigationRole(target,player.id))]?.label||'no night ability'}.`;
     if(c.action==='inspectReaction')return `${target.name} has ${NIGHT_REACTIONS[!secure&&n.forgedReactions[target.id]!=null?n.forgedReactions[target.id]:nightReactionFor(target)]?.label||'no night reaction'}.`;
     if(c.action==='traceAllegiance')return `${target.name} began tonight ${labelOrientation(start?.orientation)}.`;
     if(c.action==='checkProtection')return `${target.name} ${n.protectedIds?.includes(target.id)||n.wardRecipients?.includes(target.id)||(!secure&&n.falseProtection.includes(target.id))?'received':'did not receive'} attack protection tonight.`;
@@ -578,6 +602,7 @@ function proposedInfoResult(player) {
     if(c.action==='examineRemains')return target.lastDeathAbility==null?`No pre-death ability was recorded for ${target.name}.`:`${target.name}'s ability before their most recent death was ${NIGHT_ACTIONS[target.lastDeathAbility]?.label||'None'}.`;
   }
   const visitors=proposedRecords().filter(r=>proposedDestinations(r).includes(player.id));
+  if(action==='threatSense')return visitors.some(r=>NIGHT_ACTIONS[r.action]?.category==='Offensive')?'An Offensive ability made a recorded visit to you tonight.':'No Offensive ability made a recorded visit to you tonight.';
   if(action==='visitorCounter')return `${new Set(visitors.map(r=>r.actorId)).size} distinct players visited you tonight.`;
   if(action==='changeAwareness'){
     const fields=[...new Set((n.signalChanges||[]).filter(change=>change.playerId===player.id).map(change=>change.field))];
@@ -596,6 +621,7 @@ function finishProposedNight() {
   for(const id of n.revivalWards||[]){const p=playerOf(id);if(p && !p.alive && n.signalLifeEvents?.some(e=>e.playerId===id&&!e.alive))setPlayerAlive(p,true);}
   for(const [id,c] of proposedEntries()){
     const actor=playerOf(id),target=playerOf(c.targetId);
+    if(c.action==='signedBroadcast')n.proposedAnnouncements.push(`Message from ${actor.name}: ${c.text}`);
     if(c.action==='publicNotice')n.proposedAnnouncements.push(`Anonymous notice: ${c.text}`);
     if(c.action==='passToken' && target){
       state.visibleTokens ||= [];state.visibleTokens.push({id:`${state.round}:${id}`,holderId:target.id});

@@ -98,7 +98,8 @@ function narratorSkipEmptyTurn(actor) {
   if (action === 'none' || (action === 'hater' && state.round !== 1)) return true;
   if ((action === 'doctor' && actor.used?.doctor) ||
       (!isPassiveAbility(action) && actionUsesLeft(actor) <= 0)) return true;
-  if (action === 'doctor' || action === 'janitor') {
+  if (action === 'janitor') return !state.players.some(player=>!player.alive&&!player.removed&&!player.fakeDeathReturnRound&&player.lastDeathRound===state.round-1);
+  if (action === 'doctor') {
     return !(night.round1Players || state.players).some(player => !player.alive && !player.removed && !player.fakeDeathReturnRound);
   }
   return false;
@@ -189,7 +190,7 @@ function narratorPriority(player) {
   const action = nightActionFor(player);
   if(proposedPlanningTurn(player))return -10;
   if(EXTRA_ABILITIES[action]?.category==='Defensive')return 0;
-  if(['sabotage','jamInvestigation','exhaustReaction'].includes(action))return 10;
+  if(['disarm','sabotage','jamInvestigation','exhaustReaction'].includes(action))return 10;
   if(EXTRA_ABILITIES[action]?.category==='Transformative')return 20;
   if(EXTRA_ABILITIES[action]?.category==='Deceitful')return 30;
   if(EXTRA_ABILITIES[action]?.category==='Miscellaneous')return 40;
@@ -203,7 +204,7 @@ function narratorPriority(player) {
   if (['silence','forceAnswer','sendNote','sendSignal','revealSelf','predictDeath','hater'].includes(action)) return 40;
   if (roleOf(player)?.orientation === 'evil' && action === 'teamKill') return 50;
   if (['teamKill','kill'].includes(action)) return 60;
-  // Inspect bodies before a revival removes them from the dead-player list.
+  // Janitor examines preceding-night deaths; Doctor handles current-night deaths.
   if (action === 'janitor') return 70;
   if (action === 'doctor') return 80;
   return 90;
@@ -287,7 +288,7 @@ function narratorResolveTurnEffects() {
   const fresh=Object.fromEntries(Object.entries(all).filter(([id,c])=>processed[id] !== JSON.stringify(c) && (c.action !== 'randomAllegiance' || n.narratorReporting)));
   if (Object.keys(fresh).length) {
     const saved={};
-    for (const key of ['hiddenActivity','fakeActivity','fakeVisits','hiddenAllegiance','reversedComparison']) saved[key]=n[key];
+    for (const key of ['hiddenActivity','fakeActivity','fakeVisits','fabricatedActions','hiddenAllegiance','reversedComparison']) saved[key]=n[key];
     n.extraActions=fresh; delete n.extraEffectsResolved; resolveExtraEffects(); n.extraActions=all;
     for (const [key,value] of Object.entries(saved)) if(value) n[key]=Array.isArray(value)?[...new Set([...value,...(n[key]||[])])]:{...value,...n[key]};
     Object.entries(fresh).forEach(([id,c])=>processed[id]=JSON.stringify(c));
