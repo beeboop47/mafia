@@ -33,7 +33,8 @@ function removeHostReferences(id) {
     }
     for(const assignment of Object.values(config.abilitySchedule||{})){
       const fields=['value'];
-      if(typeof EXTRA_ABILITIES!=='undefined' && EXTRA_ABILITIES[assignment.action]?.second==='player')fields.push('second');
+      if(typeof EXTRA_ABILITIES!=='undefined' && (EXTRA_ABILITIES[assignment.action]?.second==='player' || (assignment.action==='fakeVisit' && /^\d+$/.test(assignment.second))))fields.push('second');
+      if(assignment.destinationId!=null && assignment.destinationId!=='')fields.push('destinationId');
       for(const field of fields){
         const values=String(assignment[field]??'').split(':');
         if(values.some(value=>value!==''&&Number(value)===id)){assignment.skip=true;assignment[field]='';}

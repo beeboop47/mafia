@@ -51,7 +51,7 @@ const EXTRA_ABILITIES = {
   passToken:{label:'Pass the Token',category:'Miscellaneous',prompt:'Give a player a visible token at dawn. The holder may pass it on later nights. Grants no protection or information.'},
   signalReceiver: {label:'Receive a truthful hint', category:'Passive', prompt:'Receive one random truthful hint during your normal night reaction turn. It describes information available so far tonight. Deceitful abilities cannot tamper with the hint.'},
   hideAllegiance: {label:'Hide Allegiance', category:'Deceitful', prompt:'Choose a player to appear Neutral to allegiance investigations tonight.'},
-  fakeVisit: {label:'Fake Visit', category:'Deceitful', second:'player', prompt:'Choose a player and the visitor destination that Track should report tonight.'},
+  fakeVisit: {label:'Fake Visit', category:'Deceitful', second:'ability', fabrication:true, prompt:'Choose a player, the ability they supposedly used, and a destination if that ability targets a player.'},
   hideActivity: {label:'Hide Activity', category:'Deceitful', prompt:'Hide a player from Track and Check Activity tonight.'},
   fakeActivity: {label:'Fake Activity', category:'Deceitful', prompt:'Choose a player to make Check Activity report that they used an ability tonight, even if they did nothing. This does not invent visits for Track. Hide Activity overrides this effect.'},
   reverseComparison: {label:'Reverse Comparison', category:'Deceitful', prompt:'Reverse comparison results involving this player tonight. Two reversed players cancel each other out.'},
@@ -129,7 +129,7 @@ function renderExtraForm(area, action, choices, submit) {
     const wrap=document.createElement('label'); wrap.textContent=label;
     const field=document.createElement('select'); field.required=true;
     const placeholder=document.createElement('option'); placeholder.value=''; placeholder.textContent='Choose'; field.appendChild(placeholder);
-    const categories = (action === 'changeAbility' && label === 'Choice') || (action === 'fabricateAction' && label === 'Reported ability') ? NIGHT_ABILITY_CATEGORIES
+    const categories = (action === 'changeAbility' && label === 'Choice') || (EXTRA_ABILITIES[action].fabrication && label === 'Reported ability') ? NIGHT_ABILITY_CATEGORIES
       : action === 'changeReaction' && label === 'Choice' ? NIGHT_REACTION_CATEGORIES : null;
     if (categories) {
       categories.forEach(category=>{
@@ -140,8 +140,8 @@ function renderExtraForm(area, action, choices, submit) {
     } else options.forEach(o=>{const option=document.createElement('option');option.value=o.id;option.textContent=o.name;field.appendChild(option);});
     wrap.appendChild(field);form.appendChild(wrap);return field;
   };
-  const target=choices.noTarget ? null : select(action==='fabricateAction'?'Framed player':'Player',choices.targets);
-  const second=choices.secondary.length ? select(action==='fabricateAction'?'Reported ability':'Choice',choices.secondary) : null;
+  const target=choices.noTarget ? null : select(choices.destinations?'Framed player':'Player',choices.targets);
+  const second=choices.secondary.length ? select(choices.destinations?'Reported ability':'Choice',choices.secondary) : null;
   const destination=choices.destinations ? select('Reported destination',choices.destinations) : null;
   if(destination){
     const refresh=()=>{const needed=choices.targetedAbilities.includes(second.value);destination.parentElement.hidden=!needed;destination.required=needed;if(!needed)destination.value='';};
@@ -166,6 +166,10 @@ function parseExtraChoice(actor, action, value) {
   let choice;try{choice=JSON.parse(value);}catch{throw new Error('Choose a valid player and option.');}
   const available=extraChoices(actor,action),spec=EXTRA_ABILITIES[action];
   if(!choice || (!spec.noTarget && !available.targets.some(p=>p.id===String(choice.targetId))))throw new Error('That player is unavailable.');
+  // Older Fake Visit assignments stored the destination in the second field.
+  if(action==='fakeVisit' && available.destinations.some(p=>p.id===choice.second) && String(choice.targetId)!==choice.second) {
+    return {targetId:Number(choice.targetId),second:choice.second,text:''};
+  }
   if(spec.second && !available.secondary.some(o=>o.id===choice.second))throw new Error('Choose a valid second option.');
   if(spec.second==='player' && String(choice.targetId)===choice.second)throw new Error('Choose two different players.');
   if(spec.text && (typeof choice.text!=='string'||!choice.text.trim()||choice.text.length>500))throw new Error('Enter between 1 and 500 characters.');
@@ -257,8 +261,8 @@ function resolveExtraEffects() {
     if(['hideActivity','fakeActivity','hideAllegiance','reverseComparison'].includes(c.action)){
       const key={hideActivity:'hiddenActivity',fakeActivity:'fakeActivity',hideAllegiance:'hiddenAllegiance',reverseComparison:'reversedComparison'}[c.action];n[key].push(c.targetId);
     }
-    if(c.action==='fabricateAction')n.fabricatedActions[c.targetId]={actorId:c.targetId,action:c.second,targetId:c.destinationId,targetIds:c.destinationId==null?[]:[c.destinationId]};
-    if(c.action==='fakeVisit')n.fakeVisits[c.targetId]=Number(c.second);
+    if(c.action==='fabricateAction' || (c.action==='fakeVisit' && c.destinationId!==undefined))n.fabricatedActions[c.targetId]={actorId:c.targetId,action:c.second,targetId:c.destinationId,targetIds:c.destinationId==null?[]:[c.destinationId]};
+    if(c.action==='fakeVisit' && c.destinationId!==null)n.fakeVisits[c.targetId]=c.destinationId ?? Number(c.second);
     if(c.action==='swapRoles'){
       const second=playerOf(c.second);
       if(target?.alive && second?.alive && !changesPrevented(target) && !changesPrevented(second)){
@@ -351,6 +355,7 @@ function extraTargetsAvailable(choice) {
   if(isPassiveAbility(choice.action))return true;
   if(!canAbilityTarget(playerOf(choice.targetId)))return false;
   if(EXTRA_ABILITIES[choice.action]?.fabrication && fabricatedActionNeedsTarget(choice.second) && !canAbilityTarget(playerOf(choice.destinationId)))return false;
+  if(choice.action==='fakeVisit' && choice.destinationId===undefined)return canAbilityTarget(playerOf(choice.second));
   return EXTRA_ABILITIES[choice.action]?.second!=='player' || canAbilityTarget(playerOf(choice.second));
 }
 

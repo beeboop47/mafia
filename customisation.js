@@ -113,6 +113,10 @@ function renderExpandedHostSetup(){
       const target=choices.noTarget?null:picker('Assigned target',choices.targets,setting.value);
       const second=choices.secondary.length?picker('Assigned choice',choices.secondary,setting.second):null;
       const destination=choices.destinations?picker('Reported destination (for targeted abilities)',choices.destinations,setting.destinationId):null;
+      if(destination){
+        const refresh=()=>{destination.parentElement.hidden=!choices.targetedAbilities.includes(second.value);};
+        second.addEventListener('change',refresh);refresh();
+      }
       let text;
       if(choices.text){const wrap=document.createElement('label');wrap.textContent='Assigned message';text=document.createElement('textarea');text.maxLength=500;text.value=setting.text||'';wrap.appendChild(text);controls.appendChild(wrap);}
       const save=()=>{controls.hidden=mode.value!=='assign';if(!mode.value)delete schedule[night];else schedule[night]={action,skip:mode.value==='skip',value:target?.value||'',second:second?.value||'',destinationId:destination?.value||null,text:text?.value||''};};
