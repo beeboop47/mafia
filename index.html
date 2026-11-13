@@ -1761,24 +1761,11 @@
       trickery: {name:'Changing Roles and Hidden Agendas', description:'A role pool built around deception, role changes, and competing Neutral goals.', roles:{hacker:1,framer:1,serial_killer:1,persuader:1,gambler:1,leader:1}},
       protection: {name:'Revive or Strike Back', description:'Doctor can reverse a kill and Peacemaker can fight back while Detective hunts the Godfather.', roles:{godfather:1,detective:1,doctor:1,peacemaker:1}},
 
-      verified_clues: {name:'Framed Clues vs. Verified Clues', description:'An Evil Framer plants false clues. Detective checks allegiances, and Verifier can protect an investigation from deceit.', cast:['preset_framer','detective','preset_verifier']},
-      false_trail: {name:'Fake Visits vs. Lookout', description:'Trail Forger invents visits. Lookout checks who went where, and Courier sends private notes that create real visits.', cast:['preset_trail_forger','lookout','preset_courier']},
-      blocked_clues: {name:'Blocked Detective vs. Truthful Hints', description:'Anaesthetist can block Detective. Signal Receiver gets a truthful hint and can help the town decide whom to trust.', cast:['anaesthetist','detective','signal_receiver']},
-      contested_vote: {name:'Find the Hater Before the Vote', description:'Hater wants the town to vote out a secret target. Detective checks who belongs to Evil. A correct target vote can end the game before Evil reaches parity.', cast:['hater','detective'], minPlayers:4},
-      silenced_vote: {name:'Detective vs. Vote Silencing', description:'Silencer can take away a player’s vote once per game. Detective checks allegiances while the town decides when to trust the clues.', cast:['preset_silencer','detective']},
-
       great_minds: {name:'Everyone Has the Same Role', description:'Everyone receives the same role. No automatic recognition or team-kill lists. Continue to the final two.',trick:'great_minds'},
       red_herring: {name:'Everyone Is Good', description:'Everyone receives a Good role. Continue to the final two.',trick:'red_herring'},
       lone_operation: {name:'Everyone Is Neutral', description:'Everyone receives a Neutral role. Continue to the final two.',trick:'lone_operation'},
       colonised_town: {name:'Everyone Is Evil', description:'Everyone receives an Evil role. No automatic recognition or team-kill lists. Continue to the final two.',trick:'colonised_town'},
     };
-    const PRESET_ROLES = [
-      {id:'preset_framer',title:'Evil Framer',orientation:'evil',nightAction:'framer',description:'Each night, make a player appear to have a different role to investigators. Win with Evil through the vote.'},
-      {id:'preset_verifier',title:'Verifier',orientation:'good',nightAction:'secureInformation',description:'Each night, protect a player’s investigation results from deceit.'},
-      {id:'preset_trail_forger',title:'Trail Forger',orientation:'evil',nightAction:'fakeVisit',description:'Each night, invent a player’s action and its destination for Lookout to see. Win with Evil through the vote.'},
-      {id:'preset_silencer',title:'Silencer',orientation:'evil',nightAction:'silence',maxUses:1,description:'Once per game, take away a player’s vote for the following day. Win with Evil through the vote.'},
-      {id:'preset_courier',title:'Courier',orientation:'good',nightAction:'sendNote',description:'Each night, visit a player to deliver an anonymous private note.'},
-    ].map(role=>({...role,visibility:'nobody',nightReaction:'none'}));
     const CONFIG_STORAGE_KEY = 'mafia:config:v3';
     const PRESET_STORAGE_KEY = 'mafia:customPresets:v1';
 
@@ -1792,7 +1779,7 @@
     }
 
     function presetMinimumPlayers(key, def) {
-      return Math.max(def.minPlayers || 0, def.cast?.length || 0, key.startsWith('builtin:') || def.trick ? 3 : 2);
+      return key.startsWith('builtin:') || def.trick ? 3 : 2;
     }
 
     function chooseRoundPreset() {
@@ -1820,9 +1807,7 @@
       const originalLibrary = state.roles;
       const previousSpecial = state.activeTrickRound;
       const builtIn = key.startsWith('builtin:');
-      // Fixed casts use the built-in roles so edits to the library cannot add a kill.
-      const library = def.cast ? [...DEFAULT_ROLES,...PRESET_ROLES] : def.trick && builtIn ? DEFAULT_ROLES : originalLibrary;
-      state.roles = structuredClone(library);
+      state.roles = structuredClone(def.trick && builtIn ? DEFAULT_ROLES : originalLibrary);
       for (const role of state.roles) {
         role.randomEnabled = !!(def.allRoles || def.trick);
         role.randomCount = 1;
@@ -1839,11 +1824,6 @@
       let assigned;
       if (def.trick) {
         assigned = assignTrickRoundRoles(def.trick);
-      } else if (def.cast) {
-        const cast = def.cast.slice();
-        while (cast.length < state.players.length) cast.push('citizen');
-        shuffle(cast).forEach((id,index)=>{state.players[index].roleId=id;});
-        assigned = true;
       } else {
         const hasEvil = state.roles.some(role=>role.randomEnabled && role.orientation==='evil');
         const hasFeaturedGood = state.roles.some(role=>role.randomEnabled && role.orientation==='good' && role.id!=='citizen');
@@ -1865,7 +1845,7 @@
       }
       state.presetLibraryBackup = originalLibrary;
       state.presetSeatRoles = seatRoles;
-      state.activePreset = {key,name:def.name,nightFirst:!!def.cast};
+      state.activePreset = {key,name:def.name};
       return true;
     }
 
@@ -1876,8 +1856,10 @@
       const oldSpecial = oldTricks.includes(`builtin:${saved.trickPreset}`) ? `builtin:${saved.trickPreset}` : null;
       state.presetSource = ['custom','preset','pool'].includes(saved.presetSource)
         ? saved.presetSource : saved.blindSetup ? 'pool' : oldSpecial ? 'preset' : 'custom';
-      state.selectedPreset = typeof saved.selectedPreset==='string' ? saved.selectedPreset : oldSpecial || 'builtin:classic';
-      state.presetPool = Array.isArray(saved.presetPool) ? [...new Set(saved.presetPool.filter(key=>typeof key==='string'))]
+      const isAvailable = key => typeof key === 'string' &&
+        (!key.startsWith('builtin:') || Object.hasOwn(BUILTIN_PRESETS,key.slice('builtin:'.length)));
+      state.selectedPreset = isAvailable(saved.selectedPreset) ? saved.selectedPreset : oldSpecial || 'builtin:classic';
+      state.presetPool = Array.isArray(saved.presetPool) ? [...new Set(saved.presetPool.filter(isAvailable))]
         : saved.blindSetup ? [...oldBlindPool.map(id=>`builtin:${id}`),...(saved.blindAllowTricks ? oldTricks : [])] : [];
     }
 
@@ -1909,8 +1891,7 @@
       select.replaceChildren();
       pool.replaceChildren();
       for (const [label, matches] of [
-        ['No night kills',([,def])=>!!def.cast],
-        ['Standard role pools',([key,def])=>key.startsWith('builtin:')&&!def.cast&&!def.trick],
+        ['Standard role pools',([key,def])=>key.startsWith('builtin:')&&!def.trick],
         ['Special rules',([,def])=>!!def.trick],
         ['Your role pools',([key,def])=>key.startsWith('custom:')&&!def.trick],
       ]) {
@@ -1944,9 +1925,7 @@
 
     function renderPresetDescription() {
       const def=presetEntries().find(([key])=>key===state.selectedPreset)?.[1];
-      $('presetDescription').textContent=def?.cast
-        ? `${def.description} Starts at night. Extra seats are Citizens.`
-        : def?.description || 'Your saved role pool.';
+      $('presetDescription').textContent=def?.description || 'Your saved role pool.';
       $('deletePresetBtn').hidden=!state.selectedPreset.startsWith('custom:') || state.presetSource!=='preset';
     }
 
@@ -4015,7 +3994,7 @@
     $('handoffNextBtn').addEventListener('click', () => {
       if (!state.handoffRevealed) return;
       if (state.handoffIndex === state.players.length - 1) {
-        if(state.activePreset?.nightFirst)startNight();else startDay();
+        startDay();
         return;
       }
       state.handoffIndex++; state.handoffRevealed = false; updateHandoff();
@@ -5634,10 +5613,6 @@
         const {dbMod}=online.api; const statusRef=dbMod.ref(online.db,`rooms/${online.roomCode}/meta/status`);
         const tx=await dbMod.runTransaction(statusRef,current=>current==='lobby'?'started':undefined);
         if(!tx.committed){online.roomStatus='lobby'; throw new Error('The room changed while the game was starting.');}
-        if(state.activePreset?.nightFirst){
-          await startOnlineNight();
-          return;
-        }
         await setOnlineJoinable(true);
         const openingResult=checkWin();
         if(openingResult.done){await finishOnlineGame(openingResult);return;}
