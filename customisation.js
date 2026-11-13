@@ -21,7 +21,7 @@ function privateCustomisationText(player) {
 function populateIdentityEditor(role) {
   if(!$('recognitionDisguise')){
     const box=document.createElement('div');box.className='advanced-body';box.id='identityEditor';
-    box.innerHTML='<label>Recognition disguise<select id="recognitionDisguise"></select></label><label><input id="knowsDisguise" type="checkbox"> Player knows their disguise</label><p class="muted tiny">Recognition shows this identity. Investigations use the true identity. Disguised players do not automatically learn their supposed teammates.</p><label>Bestow Ability: available gifts<select id="bestowPool" multiple size="7" aria-label="Available abilities to bestow"></select></label><p class="muted tiny">Leave all unselected to allow every ability except Bestow Ability and None.</p>';
+    box.innerHTML='<label>Recognition disguise<select id="recognitionDisguise"></select></label><label><input id="knowsDisguise" type="checkbox"> Player knows their disguise</label><p class="muted tiny">Recognition shows this identity. Investigations use the true identity. Disguised players do not automatically learn their supposed teammates.</p><label>Bestow Ability: available gifts<select id="bestowPool" multiple size="7" aria-label="Available abilities to bestow"></select></label><p class="muted tiny">Leave all unselected to allow any ability from the current menu except Bestow Ability and None.</p>';
     $('roleVisibility').parentElement.appendChild(box);
   }
   const select=$('recognitionDisguise');select.replaceChildren(new Option('No disguise',''));
@@ -30,7 +30,7 @@ function populateIdentityEditor(role) {
   const pool=$('bestowPool');pool.replaceChildren();
   if(!$('undercoverWin')){const label=document.createElement('label');label.innerHTML='<input id="undercoverWin" type="checkbox"> A surviving Good player with this role turns a normal Evil victory into a Good victory';$('identityEditor').appendChild(label);}
   $('undercoverWin').checked=role?.undercoverWin ?? (role?.id==='undercover');
-  Object.entries(NIGHT_ACTIONS).filter(([id])=>id!=='none'&&id!=='bestowAbility'&&!NIGHT_REACTION_ACTIONS.has(id)).forEach(([id,a])=>{const o=new Option(a.label,id);o.selected=role?.bestowPool?.includes(id)||false;pool.add(o);});
+  Object.entries(NIGHT_ACTIONS).filter(([id])=>id!=='none'&&id!=='bestowAbility'&&!NIGHT_REACTION_ACTIONS.has(id)&&(SELECTABLE_NIGHT_ABILITIES.has(id)||role?.bestowPool?.includes(id))).forEach(([id,a])=>{const o=new Option(a.label,id);o.selected=role?.bestowPool?.includes(id)||false;pool.add(o);});
 }
 function identityEditorSettings(){return {recognitionRoleId:$('recognitionDisguise')?.value||null,knowsDisguise:$('knowsDisguise')?.checked!==false,undercoverWin:!!$('undercoverWin')?.checked,bestowPool:[...($('bestowPool')?.selectedOptions||[])].map(o=>o.value)};}
 
@@ -59,7 +59,7 @@ function hostAssignedValue(actor,secondStep=false){
   if(EXTRA_ABILITIES[action]){
     if(!EXTRA_ABILITIES[action].noTarget&&!isPassiveAbility(action)&&(setting.value==null||setting.value===''))return 'skip';
     const value=JSON.stringify({targetId:Number(setting.value),second:setting.second||'',destinationId:setting.destinationId==null?null:Number(setting.destinationId),text:setting.text||''});
-    try{parseExtraChoice(actor,action,value);return value;}catch{return 'skip';}
+    try{parseExtraChoice(actor,action,value,true);return value;}catch{return 'skip';}
   }
   if(action==='hater')return 'haterAssign';
   if(isPassiveAbility(action)||action==='none')return 'ack';
@@ -102,13 +102,21 @@ function renderExpandedHostSetup(){
       const row=document.createElement('div');row.className='host-night-row';row.dataset.night=night;
       const title=document.createElement('strong');title.textContent=`Night ${night}`;row.appendChild(title);
       if(baseAction==='gambler'){
-        const ability=document.createElement('select');ability.setAttribute('aria-label',`Night ${night} Gambler ability`);ability.add(new Option('Choose the Gambler ability first','none'));gamblerAbilityPool().forEach(id=>ability.add(new Option(NIGHT_ACTIONS[id]?.label||id,id)));ability.value=action;
+        const ability=document.createElement('select');ability.setAttribute('aria-label',`Night ${night} Gambler ability`);ability.add(new Option('Choose the Gambler ability first','none'));gamblerAbilityPool().forEach(id=>ability.add(new Option(NIGHT_ACTIONS[id]?.label||id,id)));
+        if (!gamblerAbilityPool().includes(action) && gamblerAbilityPool(true).includes(action)) {
+          ability.add(new Option(`${NIGHT_ACTIONS[action].label} (existing assignment)`,action));
+        }
+        ability.value=action;
         ability.onchange=()=>{(config.gamblerSchedule ||= {})[night]=ability.value;delete schedule[night];renderHostSetup();};row.appendChild(ability);
       }
       const mode=document.createElement('select');mode.setAttribute('aria-label',`Night ${night} control`);mode.add(new Option('Player chooses',''));mode.add(new Option('Host assigns','assign'));mode.add(new Option('Do not use ability','skip'));row.appendChild(mode);
       const controls=document.createElement('div');controls.className='grid2';row.appendChild(controls);
       const setting=schedule[night]?.action===action?schedule[night]:{};mode.value=setting.action?(setting.skip?'skip':'assign'):'';
       const choices=hostAssignmentChoices(player,action,true);
+      if (setting.second && EXTRA_ABILITIES[action] && !choices.secondary.some(option=>option.id===setting.second)) {
+        const savedChoice=extraChoices(player,action,true).secondary.find(option=>option.id===setting.second);
+        if (savedChoice) choices.secondary.push(savedChoice);
+      }
       function picker(title,options,value){const wrap=document.createElement('label');wrap.textContent=title;const select=document.createElement('select');select.add(new Option('Choose',''));options.forEach(o=>select.add(new Option(o.name,String(o.id))));select.value=value??'';wrap.appendChild(select);controls.appendChild(wrap);return select;}
       const target=choices.noTarget?null:picker('Assigned target',choices.targets,setting.value);
       const second=choices.secondary.length?picker('Assigned choice',choices.secondary,setting.second):null;

@@ -16,7 +16,7 @@ function scheduledSeerTarget(actor, candidates) {
 function scheduledGamblerAbility(actor) {
   const pool = gamblerAbilityPool();
   const action = hostSettings(actor).gamblerSchedule?.[state.round];
-  return pool.includes(action) ? action : randomChoice(pool) || 'none';
+  return action && gamblerAbilityPool(true).includes(action) ? action : randomChoice(pool) || 'none';
 }
 function removeHostReferences(id) {
   // Player IDs are seat indices, so repair references before seats are renumbered.
@@ -102,7 +102,11 @@ function renderHostSetup() {
         } else {
           select = document.createElement('select'); option(select, '', 'Random');
           gamblerAbilityPool().forEach(action => option(select, action, NIGHT_ACTIONS[action]?.label || action));
-          select.value = schedule[night] || '';
+          const configured = schedule[night];
+          if (configured && gamblerAbilityPool(true).includes(configured) && !gamblerAbilityPool().includes(configured)) {
+            option(select, configured, `${NIGHT_ACTIONS[configured].label} (existing assignment)`);
+          }
+          select.value = configured || '';
           select.addEventListener('change', () => {update(select.value || undefined);renderHostSetup();});
         }
         label.appendChild(select); row.appendChild(label);

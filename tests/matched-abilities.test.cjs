@@ -44,7 +44,7 @@ test('Fabricate Action invents activity for idle and blocked subjects; hiding ac
  c.state.night.hiddenActivity=[1];assert.match(c.trackReport(c.playerOf(1),c.playerOf(4)),/no recorded/);
 });
 test('fabricated targetless and passive abilities report no destination',()=>{
- for(const ability of ['publicNotice','visitorCounter']){
+ for(const ability of ['hater','seer']){
  const c=game('fabricateAction');fabricate(c,ability,null);settle(c);
  assert.match(c.trackReport(c.playerOf(1),c.playerOf(4)),/without visiting a player/);
  }

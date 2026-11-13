@@ -1422,15 +1422,15 @@
     </dialog>
   </div>
 
-  <script src="reactions.js?v=20261023-reviewed"></script>
-  <script src="abilities.js?v=20261023-no-hunt"></script>
+  <script src="reactions.js?v=20261113-catalog"></script>
+  <script src="abilities.js?v=20261113-catalog"></script>
   <script src="judge.js?v=20261016"></script>
   <script src="signal-receiver.js?v=20261021-existing-turns"></script>
-  <script src="host-setup.js?v=20261025-blind"></script>
+  <script src="host-setup.js?v=20261113-catalog"></script>
   <script src="narrator.js?v=20261025-blind"></script>
   <script src="online-reactions.js?v=20261021-expansion"></script>
   <script src="roles.js?v=20261023-no-hunt"></script>
-  <script src="customisation.js?v=20261025-blind"></script>
+  <script src="customisation.js?v=20261113-catalog"></script>
   <script>
     // ---- State ---------------------------------------------------------------
     const state = {
@@ -1457,7 +1457,7 @@
     const $ = id => document.getElementById(id);
     const NIGHT_ABILITY_CATEGORIES = ['Investigative','Deceitful','Transformative','Offensive','Defensive','Passive','Miscellaneous'];
     const NIGHT_REACTION_CATEGORIES = ['Defensive','Retaliatory','Investigative','Deceitful','Transformative','Redirective'];
-    function populateNightChoice(selectId, catalog, categories, excluded) {
+    function populateNightChoice(selectId, catalog, categories, selectable, current = 'none') {
       const select = $(selectId);
       select.replaceChildren();
       const none = document.createElement('option');
@@ -1465,7 +1465,7 @@
       for (const category of categories) {
         const group = document.createElement('optgroup'); group.label = category;
         for (const [id,spec] of Object.entries(catalog)) {
-          if (excluded.has(id) || spec.category !== category) continue;
+          if (!selectable.has(id) || spec.category !== category) continue;
           const option = document.createElement('option');
           option.value = id; option.textContent = spec.label;
           if (spec.prompt) option.title = spec.prompt;
@@ -1473,9 +1473,13 @@
         }
         select.appendChild(group);
       }
+      if (current !== 'none' && !selectable.has(current) && catalog[current]) {
+        select.appendChild(new Option(`${catalog[current].label} (existing role)`, current));
+      }
+      select.value = current;
     }
-    populateNightChoice('roleNightAction', NIGHT_ACTIONS, NIGHT_ABILITY_CATEGORIES, NIGHT_REACTION_ACTIONS);
-    populateNightChoice('roleNightReaction', NIGHT_REACTIONS, NIGHT_REACTION_CATEGORIES, new Set());
+    populateNightChoice('roleNightAction', NIGHT_ACTIONS, NIGHT_ABILITY_CATEGORIES, SELECTABLE_NIGHT_ABILITIES);
+    populateNightChoice('roleNightReaction', NIGHT_REACTIONS, NIGHT_REACTION_CATEGORIES, SELECTABLE_NIGHT_REACTIONS);
     const isChosen = value => value !== undefined && value !== null;
     const escapeHtml = value => String(value ?? '')
       .replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;')
@@ -1686,8 +1690,9 @@
       return 'none';
     }
 
-    function gamblerAbilityPool() {
-      return Object.keys(NIGHT_ACTIONS).filter(action => !['none', 'gambler', 'janitor', ...NIGHT_REACTION_ACTIONS].includes(action));
+    function gamblerAbilityPool(includeLegacy = false) {
+      const abilities = includeLegacy ? Object.keys(NIGHT_ACTIONS).filter(id => !NIGHT_REACTION_ACTIONS.has(id)) : [...SELECTABLE_NIGHT_ABILITIES];
+      return abilities.filter(id => !['none', 'gambler', 'janitor'].includes(id) && (includeLegacy || id !== 'hater'));
     }
     function hasReactionRoundInfo(action) {
       return ['compare', 'exclude', 'audit', 'hater', 'inspectOrientation', 'seer', 'doctor', 'janitor', 'track', 'watch', 'signalReceiver','inspectAbility','inspectReaction','traceAllegiance','checkProtection','findInterference','compareVisitors','examineRemains','predictDeath'].includes(action);
@@ -2051,8 +2056,8 @@
       $('roleOrientation').value = role?.orientation || 'good';
       $('roleSpecialId').value = specialRoleId(role);
       $('roleDescription').value = role?.description || '';
-      $('roleNightAction').value = roleActiveNightAction(role);
-      $('roleNightReaction').value = roleNightReaction(role);
+      populateNightChoice('roleNightAction', NIGHT_ACTIONS, NIGHT_ABILITY_CATEGORIES, SELECTABLE_NIGHT_ABILITIES, roleActiveNightAction(role));
+      populateNightChoice('roleNightReaction', NIGHT_REACTIONS, NIGHT_REACTION_CATEGORIES, SELECTABLE_NIGHT_REACTIONS, roleNightReaction(role));
       populateIdentityEditor(role);
       $('roleVisibility').value = role?.visibility || 'nobody';
       const visibleRolePicker = $('roleVisibleToRoles');
@@ -2712,7 +2717,7 @@
       if (!role) {completeNightTurn(); return;}
       if(EXTRA_ABILITIES[nightAction]) {
         try {
-          const choiceData=parseExtraChoice(actor,nightAction,String(choice));
+          const choiceData=parseExtraChoice(actor,nightAction,String(choice),typeof hostAbilityAssignment === 'function' && !!hostAbilityAssignment(actor));
           if(!isPassiveAbility(nightAction) && actionUsesLeft(actor,role)<=0)throw new Error('No ability uses remain.');
           if(choiceData && !isPassiveAbility(nightAction)){recordExtraChoice(actor,nightAction,choiceData);markNightAbilityUsed(actor,role);}
           completeNightTurn();
@@ -4875,7 +4880,7 @@
       if(EXTRA_ABILITIES[dynamicAction]) {
         if(n.round1Submitted[actor.id])return;
         try {
-          const choice=parseExtraChoice(actor,dynamicAction,value);
+          const choice=parseExtraChoice(actor,dynamicAction,value,typeof hostAbilityAssignment === 'function' && !!hostAbilityAssignment(actor));
           if(choice && !isPassiveAbility(dynamicAction) && actionUsesLeft(actor,role)<=0)throw new Error('No ability uses remain.');
           n.round1Actions[actor.id]=choice ? {action:dynamicAction,...choice} : {action:'none'};
           if(choice){recordExtraChoice(actor,dynamicAction,choice);if(!isPassiveAbility(dynamicAction))markNightAbilityUsed(actor,role);}

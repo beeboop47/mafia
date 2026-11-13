@@ -9,7 +9,7 @@ const {chromium}=require('C:/Users/gerar/.cache/codex-runtimes/codex-primary-run
   const page=await browser.newPage({viewport:{width:390,height:844}});
   page.on('pageerror',error=>errors.push(error.message));await page.route('https://**/*',route=>route.abort());
   await page.goto(pathToFileURL(path.join(__dirname,'../index.html')).href);
-  for(const id of ['fabricateAction','inspectAbility','bestowReaction','disarm','sharedWard','threatSense','signedBroadcast'])assert.equal(await page.locator(`#roleNightAction option[value="${id}"]`).count(),1);
+  for(const id of ['fakeVisit','bestowAbility','secureInformation','surviveOnce'])assert.equal(await page.locator(`#roleNightAction option[value="${id}"]`).count(),1);
   await page.evaluate(()=>{
    online.mode='offline';state.mode='manual';state.phase='night';state.round=2;state.roles=structuredClone(DEFAULT_ROLES);
    state.roles.push({id:'test',title:'Fabricator',orientation:'evil',nightAction:'fabricateAction',nightReaction:'none'});
@@ -25,7 +25,7 @@ const {chromium}=require('C:/Users/gerar/.cache/codex-runtimes/codex-primary-run
   assert.equal(await selects.nth(2).locator('option[value="4"]').count(),0);
   await selects.nth(2).selectOption('2');await page.locator('#nightActionArea button[type="submit"]').click();
   assert.deepEqual(await page.evaluate(()=>window.submission),{targetId:1,second:'kill',destinationId:2,text:''});
-  await selects.nth(1).selectOption('publicNotice');assert.equal(await selects.nth(2).isVisible(),false);
+  await selects.nth(1).selectOption('seer');assert.equal(await selects.nth(2).isVisible(),false);
   await page.locator('#nightActionArea button[type="submit"]').click();assert.equal(await page.evaluate(()=>window.submission.destinationId),null);
   // Online forms receive JSON-serialized choices from the host.
   await page.evaluate(()=>showForm('fabricateAction',JSON.parse(JSON.stringify(extraChoices(playerOf(0),'fabricateAction')))));

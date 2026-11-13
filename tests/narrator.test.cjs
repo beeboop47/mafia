@@ -665,9 +665,8 @@ test('private notes reach an otherwise idle Citizen in the final information tur
 test('a passive changed into a deception ability can still apply its new choice',()=>{
   const g=mechanicsGame([{id:'changer',nightAction:'changeAbility'},
     {id:'survivor',nightAction:'surviveOnce'},'detective','mafia','citizen']);g.start();
-  g.choose(0,extraChoice(1,'hideAllegiance'));g.choose(1,extraChoice(3));g.choose(3,4);
-  g.c.setChoiceAndContinue(g.c.playerOf(2),3);
-  assert.match(g.c.$('nightResult').innerHTML,/Neutral/);
+  g.choose(0,extraChoice(1,'hideActivity'));g.choose(1,extraChoice(3));
+  assert.ok(g.c.state.night.hiddenActivity.includes(3));
 });
 
 test('Block Reaction precedes attacks and suppresses the targeted reaction',()=>{

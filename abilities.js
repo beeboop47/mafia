@@ -99,19 +99,30 @@ const NIGHT_ACTIONS = Object.freeze({
   gambler: {label:'Random ability each night',category:'Miscellaneous'},
 });
 
+// Keep retired abilities available to existing roles and saved assignments.
+const SELECTABLE_NIGHT_ABILITIES = new Set([
+  'compare', 'inspectOrientation', 'track', 'janitor',
+  'framer', 'fakeVisit', 'hideActivity', 'swapReports',
+  'changeRole', 'swapRoles', 'copyAbility', 'bestowAbility',
+  'teamKill', 'kill', 'roleblock', 'silence',
+  'protect', 'doctor', 'takeAttack', 'secureInformation',
+  'seer', 'signalReceiver', 'surviveOnce', 'firstContact',
+  'gambler', 'hater', 'sendNote', 'revealSelf',
+]);
+
 function isPassiveAbility(action) {
   return action === 'seer' || EXTRA_ABILITIES[action]?.category === 'Passive';
 }
 
-function extraChoices(actor, action) {
+function extraChoices(actor, action, includeLegacy = false) {
   const spec = EXTRA_ABILITIES[action];
   const targets = (spec.dead ? state.players.filter(p=>!p.removed && canAbilityTarget(p)) : validAbilityTargets(actor, roleOf(actor))).filter(p => spec.dead ? !p.alive : p.alive).filter(p=>!['sanctuary','bestowAbility','bestowReaction'].includes(action)||p.id!==actor.id);
   let secondary = [];
   if (spec.second === 'player') secondary = targets.map(p => ({id:String(p.id), name:p.name}));
   if (spec.second === 'allegiance') secondary = ['good','evil','neutral'].map(id => ({id,name:labelOrientation(id)}));
-  if (spec.second === 'ability') secondary = Object.entries(NIGHT_ACTIONS).filter(([id]) => !NIGHT_REACTION_ACTIONS.has(id)).map(([id,a]) => ({id,name:a.label,category:a.category}));
+  if (spec.second === 'ability') secondary = Object.entries(NIGHT_ACTIONS).filter(([id]) => !NIGHT_REACTION_ACTIONS.has(id) && (includeLegacy || SELECTABLE_NIGHT_ABILITIES.has(id) || (action==='bestowAbility' && roleOf(actor)?.bestowPool?.includes(id)))).map(([id,a]) => ({id,name:a.label,category:a.category}));
   if (action === 'bestowAbility') secondary = secondary.filter(o => o.id !== 'bestowAbility' && o.id !== 'none' && (!roleOf(actor)?.bestowPool?.length || roleOf(actor).bestowPool.includes(o.id)));
-  if (spec.second === 'reaction') secondary = Object.entries(NIGHT_REACTIONS).map(([id,a]) => ({id,name:a.label,category:a.category}));
+  if (spec.second === 'reaction') secondary = Object.entries(NIGHT_REACTIONS).filter(([id]) => includeLegacy || SELECTABLE_NIGHT_REACTIONS.has(id)).map(([id,a]) => ({id,name:a.label,category:a.category}));
   if(spec.second==='reaction')secondary.unshift({id:'none',name:'None',category:'Defensive'});
   const fabrication = spec.fabrication ? {destinations:targets.map(p=>({id:String(p.id),name:p.name})), targetedAbilities:secondary.filter(o=>fabricatedActionNeedsTarget(o.id)).map(o=>o.id)} : {};
   return {...fabrication, targets:targets.map(p => ({id:String(p.id),name:p.name})), secondary, text:!!spec.text, noTarget:!!spec.noTarget, passive:isPassiveAbility(action)};
@@ -159,12 +170,12 @@ function renderExtraForm(area, action, choices, submit) {
   area.appendChild(form);
 }
 
-function parseExtraChoice(actor, action, value) {
+function parseExtraChoice(actor, action, value, includeLegacy = false) {
   if(isPassiveAbility(action)) return {};
   if(value==='skip') return null;
   if(EXTRA_ABILITIES[action]?.once && actor.used?.[action])throw new Error('This once-per-game ability has already been spent.');
   let choice;try{choice=JSON.parse(value);}catch{throw new Error('Choose a valid player and option.');}
-  const available=extraChoices(actor,action),spec=EXTRA_ABILITIES[action];
+  const available=extraChoices(actor,action,includeLegacy),spec=EXTRA_ABILITIES[action];
   if(!choice || (!spec.noTarget && !available.targets.some(p=>p.id===String(choice.targetId))))throw new Error('That player is unavailable.');
   // Older Fake Visit assignments stored the destination in the second field.
   if(action==='fakeVisit' && available.destinations.some(p=>p.id===choice.second) && String(choice.targetId)!==choice.second) {

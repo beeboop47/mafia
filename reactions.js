@@ -42,6 +42,16 @@ const NIGHT_REACTIONS = Object.freeze({
   ...EXTRA_REACTIONS
 });
 
+// Older reactions remain executable for roles that already use them.
+const SELECTABLE_NIGHT_REACTIONS = new Set([
+  'escape', 'rps', 'brace', 'bargainLife',
+  'monkey', 'markAssailant', 'disarmAssailant', 'shatterDefences',
+  'identifyAssailant', 'readWeapon', 'traceTheirSteps', 'witnessSearch',
+  'counterframe', 'plantEscapeRoute', 'eraseFootprints', 'borrowTheirFace',
+  'traitor', 'stealWeapon', 'defensiveAwakening', 'shedIdentity',
+  'scapegoat', 'returnToSender', 'decoyTrail', 'followFootsteps',
+]);
+
 const NIGHT_REACTION_ACTIONS = new Set(Object.keys(NIGHT_REACTIONS));
 
 // The built-in reactions are handled in index.html.

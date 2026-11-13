@@ -9,13 +9,22 @@ const {chromium}=require('C:/Users/gerar/.cache/codex-runtimes/codex-primary-run
   const page=await browser.newPage({viewport:{width:1280,height:900}});
   page.on('pageerror',error=>errors.push(error.message));await page.route('https://**/*',route=>route.abort());
   await page.goto(pathToFileURL(path.join(__dirname,'../index.html')).href);
-  assert.equal(await page.locator('#roleNightAction option[value="publicNotice"]').count(),1);
-  assert.equal(await page.locator('#roleNightReaction option').count(),37);
-  assert.equal(await page.locator('#roleNightReaction optgroup[label="Investigative"] option').count(),6);
-  assert.equal(await page.locator('#roleNightReaction optgroup[label="Deceitful"] option').count(),6);
-  assert.equal(await page.locator('#roleNightReaction option[value="counterframe"]').innerText(),'Lingering Frame');
-  assert.equal(await page.locator('#roleNightReaction option[value="lastShot"]').innerText(),'Break Their Reaction');
-  assert.equal(await page.locator('#roleNightAction option[value="predictDeath"]').innerText(),'Read Last Night');
+  for (const [id, categories] of [['roleNightAction', 7], ['roleNightReaction', 6]]) {
+   const counts = await page.locator(`#${id} optgroup`).evaluateAll(groups => groups.map(group => group.children.length));
+   assert.deepEqual(counts, Array(categories).fill(4));
+  }
+  await page.evaluate(() => {
+   state.roles.push({id:'legacy-test',title:'Existing role',nightAction:'publicNotice',nightReaction:'lastShot'});
+   openRoleEditor('legacy-test');
+   if ($('roleNightAction').value !== 'publicNotice' || $('roleNightReaction').value !== 'lastShot') {
+    throw new Error('Existing role lost its retired options');
+   }
+   openRoleEditor();
+   if ($('roleNightAction').querySelector('[value="publicNotice"]') || $('roleNightReaction').querySelector('[value="lastShot"]')) {
+    throw new Error('Retired options appeared for a new role');
+   }
+   closeRoleEditor();
+  });
   await page.evaluate(()=>{
     window.resetExpansion=(ability='none',reaction='none')=>{
       online.mode='offline';state.narratorMode=false;state.phase='night';state.round=1;state.logs=[];state.visibleTokens=[];
