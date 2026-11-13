@@ -306,14 +306,14 @@ function narratorReactionQueue(players) {
       hasReactionRoundInfo(action) || extraNoticesFor(player);
   }), true);
 }
-function assignNarratorRoles() {
+function assignNarratorRoles(mode = state.mode, requireEvil = state.requireEvil, requireNeutral = state.requireNeutral, requireGood = false) {
   if (typeof online !== 'undefined' && online.mode !== 'offline') {
     alert('Narrator mode supports offline pass & play.'); return false;
   }
   const roles = state.roles;
   const mafia = roles.find(r => r.id === 'mafia' && r.orientation === 'evil');
   if (!mafia) { alert('Narrator mode needs the ordinary Mafia role in the library.'); return false; }
-  const fixed = state.mode === 'manual' ? state.players.filter(p => roles.some(r => r.id === p.roleId)) : [];
+  const fixed = mode === 'manual' ? state.players.filter(p => roles.some(r => r.id === p.roleId)) : [];
   const pending = state.players.filter(p => !fixed.includes(p));
   const counts = {};
   for (const player of fixed) {
@@ -340,7 +340,7 @@ function assignNarratorRoles() {
     pool.push(...shuffle(evilPool).slice(0, evilLimit - evilCount));
   }
   const assigned = [];
-  for (const [orientation, required] of [['evil',state.requireEvil],['good',state.activeBlindSetup&&state.mode!=='manual'],['neutral',state.requireNeutral]]) {
+  for (const [orientation, required] of [['evil',requireEvil],['good',requireGood],['neutral',requireNeutral]]) {
     if (!required || fixed.some(p => roleOf(p)?.orientation === orientation)) continue;
     const eligible = pool.filter(id => roles.find(r => r.id === id)?.orientation === orientation);
     if (!eligible.length || assigned.length >= pending.length) { alert(`Narrator mode cannot meet the ${orientation} minimum with this pool and roster.`); return false; }

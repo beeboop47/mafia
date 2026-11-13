@@ -65,7 +65,7 @@ function renderHostSetup() {
     const details = document.createElement('details'); details.className = 'advanced-panel';
     const summary = document.createElement('summary'); summary.textContent = player.name; details.appendChild(summary);
     const body = document.createElement('div'); body.className = 'advanced-body'; details.appendChild(body);
-    const role = state.mode === 'manual' ? roleOf(player) : null;
+    const role = state.mode === 'manual' && (!state.presetSource || state.presetSource === 'custom') ? roleOf(player) : null;
     const action = role ? roleActiveNightAction(role) : null;
     for (const [key, title] of [['policemanTarget', 'Policeman intelligence target'], ['haterTarget', 'Hater target']]) {
       if (key === 'policemanTarget' && !roleHasSpecialId(role, 'policeman')) continue;

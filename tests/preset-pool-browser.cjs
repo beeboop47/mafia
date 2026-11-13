@@ -1,0 +1,66 @@
+const assert = require('node:assert/strict');
+const path = require('node:path');
+const {pathToFileURL} = require('node:url');
+const {chromium} = require('C:/Users/gerar/.cache/codex-runtimes/codex-primary-runtime/dependencies/node/node_modules/playwright');
+
+(async () => {
+  const browser = await chromium.launch({headless:true,executablePath:'C:/Program Files (x86)/Microsoft/Edge/Application/msedge.exe'});
+  try {
+    const page = await browser.newPage({viewport:{width:390,height:844}});
+    const errors = [];
+    page.on('pageerror',error=>errors.push(error.message));
+    await page.route('https://**/*',route=>route.abort());
+    await page.goto(pathToFileURL(path.join(__dirname,'../index.html')).href);
+    await page.locator('#offlineContinueBtn').click();
+    const source=page.locator('#presetSource');
+    await source.selectOption('pool');
+    assert.equal(await page.locator('#presetControls').isVisible(),false);
+    assert.equal(await page.locator('#presetPoolControls').isVisible(),true);
+    assert.equal(await page.locator('#blindSetup, #surpriseRoundChance').count(),0);
+
+    await page.locator('#presetPool input[value="builtin:verified_clues"]').check();
+    assert.match(await page.locator('#presetPoolStatus').innerText(),/1 of 1/);
+    await page.locator('#saveConfigBtn').click();
+    await source.selectOption('preset');
+    await page.locator('#presetSelect').selectOption('builtin:colonised_town');
+    await page.locator('#loadConfigBtn').click();
+    assert.equal(await source.inputValue(),'pool');
+    assert.equal(await page.locator('#presetPool input[value="builtin:verified_clues"]').isChecked(),true);
+    await page.locator('#startBtn').click();
+    assert.equal(await page.evaluate(()=>state.activePreset.key),'builtin:verified_clues');
+    for(let i=0;i<4;i++){
+      await page.locator('#revealRoleBtn').click();
+      await page.locator('#handoffNextBtn').click();
+    }
+    assert.equal(await page.evaluate(()=>state.phase),'night');
+    assert.deepEqual(await page.evaluate(()=>state.players.map(p=>p.roleId).sort()),['citizen','detective','preset_framer','preset_verifier']);
+    await page.evaluate(()=>{
+      const detective=state.players.find(p=>p.roleId==='detective');
+      const framer=state.players.find(p=>p.roleId==='preset_framer');
+      const verifier=state.players.find(p=>p.roleId==='preset_verifier');
+      framer.framedRoleId='citizen';
+      if(investigationRoleOf(framer,detective).orientation!=='good')throw new Error('Framing did not alter the report');
+      recordExtraChoice(verifier,'secureInformation',{targetId:detective.id});
+      resolveExtraDefenses();
+      if(investigationRoleOf(framer,detective).orientation!=='evil')throw new Error('Verifier did not restore the true report');
+    });
+
+    // Exercise the online start entry point against an in-memory room.
+    await page.evaluate(async()=>{
+      state.phase='setup';renderSetup();
+      state.presetSource='preset';state.selectedPreset='builtin:silenced_vote';
+      online.mode='host';online.isHost=true;online.roomStatus='lobby';online.roomCode='TEST';
+      online.uid='player0';online.db={};
+      online.playersCache=Object.fromEntries([0,1,2].map(i=>['player'+i,{uid:'player'+i,name:'Player '+i,seatId:i,host:i===0}]));
+      online.api={dbMod:{
+        ref:(_db,value)=>value, runTransaction:async()=>({committed:true}),
+        update:async()=>{}, set:async()=>{},
+      }};
+      await startOnlineGameAsHost();
+      if(state.phase!=='night' || state.activePreset.key!=='builtin:silenced_vote')throw new Error('Online preset did not open at night');
+      if(onlinePrivatePayloadFor(state.players.find(p=>p.roleId==='preset_silencer')).turn?.action!=='silence')throw new Error('Missing opening night action');
+    });
+    assert.deepEqual(errors,[]);
+    console.log('Preset pool, saved preferences, fixed casts, Verifier and offline/online night openings passed.');
+  } finally { await browser.close(); }
+})().catch(error=>{console.error(error);process.exitCode=1;});

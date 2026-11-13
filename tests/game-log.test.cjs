@@ -53,7 +53,7 @@ function game(){
     'setPlayerAlive','setNightBusy','findPendingAttacksFor','removePendingAttack','actionButton',
     'renderReactionTurn','showPrivateReaction','applyPermanentRoleChange','finishNight',
     'finishOnlineNightOnline','finishOnlineGame','handleOnlineNightReaction',
-    'serializeAuthoritativeState','hydratePersistedState'])load(c,name);
+    'serializeAuthoritativeState','hydratePersistedState','restorePresetSettings'])load(c,name);
   c.state.roles=[{id:'doctor',title:'Doctor',nightAction:'doctor',orientation:'good'},
     {id:'citizen',title:'Citizen',orientation:'good'},
     {id:'mafia',title:'Mafia',orientation:'evil'},
@@ -161,6 +161,7 @@ test('persisted logs contain only explicitly public entries, and old private his
   const snapshot=c.serializeAuthoritativeState();
   assert.deepEqual(Array.from(snapshot.logs,entry=>entry.text),['Public elimination']);
   snapshot.logs=c.state.logs;
+  vm.runInContext(html.slice(html.indexOf('    const BUILTIN_PRESETS ='),html.indexOf('    const PRESET_ROLES')),c);
   assert.equal(c.hydratePersistedState(snapshot),true);
   assert.deepEqual(Array.from(c.state.logs,entry=>entry.text),['Public elimination']);
 });

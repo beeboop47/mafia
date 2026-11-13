@@ -8,6 +8,7 @@ const html = fs.readFileSync(path.join(root, 'index.html'), 'utf8');
 function game() {
   const context = vm.createContext({ state: {mode:'manual', round:1, players:[], roles:[]},
     alert: () => {},
+    labelOrientation: value => value[0].toUpperCase()+value.slice(1),
     randomChoice: list => list[0], shuffle: list => [...list],
     gamblerAbilityPool: () => ['seer', 'kill', 'protect'],
     roleOf: p => context.state.roles.find(r => r.id === p?.roleId),
@@ -22,7 +23,7 @@ function game() {
   vm.runInContext(fs.readFileSync(path.join(root, 'judge.js'), 'utf8'), context);
   vm.runInContext(fs.readFileSync(path.join(root, 'signal-receiver.js'), 'utf8'), context);
   vm.runInContext(fs.readFileSync(path.join(root, 'host-setup.js'), 'utf8'), context);
-  for (const name of ['assignRoles', 'ensurePolicemanIntel', 'canSeeDeadSpectatorRoles', 'visibleTo', 'resolveLimitedInvestigations', 'checkWin', 'trackReport']) {
+  for (const name of ['assignRoles','dealRoles','chooseRoundPreset', 'ensurePolicemanIntel', 'canSeeDeadSpectatorRoles', 'visibleTo', 'resolveLimitedInvestigations', 'checkWin', 'trackReport']) {
     const start = html.indexOf(`    function ${name}(`);
     const end = html.indexOf('\n    function ', start + 1);
     vm.runInContext(html.slice(start, end), context);

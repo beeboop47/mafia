@@ -12,11 +12,17 @@ function setup(count){
   c.roleByIdOrRestore=id=>c.state.roles.find(r=>r.id===id);
   c.status={textContent:''};c.$=()=>c.status;
   vm.runInContext(html.slice(html.indexOf('    const BUILTIN_PRESETS ='),html.indexOf('    const CONFIG_STORAGE_KEY')),c);
-  const start=html.indexOf('    function applyPresetDefinition(');
-  vm.runInContext(html.slice(start,html.indexOf('    function selectedPresetDefinition',start)),c);
   c.presets=vm.runInContext('BUILTIN_PRESETS',c);
-  const trickStart=html.indexOf('    function assignTrickRoundRoles(');
-  vm.runInContext(html.slice(trickStart,html.indexOf('\n    function ',trickStart+1)),c);
+  for (const name of ['presetEntries','presetMinimumPlayers','assignPresetRoles','assignTrickRoundRoles','restorePresetLibrary','restorePresetSettings','serializeAuthoritativeState','hydratePersistedState']) {
+    const start=html.indexOf(`    function ${name}(`);
+    vm.runInContext(html.slice(start,html.indexOf('\n    function ',start+1)),c);
+  }
+  c.readCustomPresets=()=>c.customPresets||{};
+  c.publicGameLogs=()=>[];
+  c.state.phase='setup';
+  c.state.presetSource='preset';
+  c.state.selectedPreset='builtin:classic';
+  c.state.presetPool=[];
   const narrator=fs.readFileSync(path.join(__dirname,'../narrator.js'),'utf8');
   const narratorStart=narrator.indexOf('function assignNarratorRoles(');
   const narratorEnd=narrator.indexOf('\nfunction ',narratorStart+1);
@@ -31,11 +37,11 @@ test('new presets are flexible role pools at small and large player counts',()=>
       assert.equal(def.players,undefined);
       c.state.narratorMode=narrator;c.state.requireEvil=false;c.state.requireNeutral=false;
       c.state.autoSideWinChecks=false;
-      assert.equal(c.applyPresetDefinition(def),true);
+      c.state.selectedPreset='builtin:'+id;
+      assert.notEqual(c.assignRoles(),false,id);
       assert.equal(c.state.autoSideWinChecks,false);
       assert.equal(c.state.requireEvil,false);
       assert.equal(c.state.requireNeutral,false);
-      assert.notEqual(c.assignRoles(),false,id);
       assert.equal(c.state.players.length,count);
       assert.ok(c.state.players.every(p=>p.roleId==='citizen'||def.roles[p.roleId]),id);
       assert.ok(c.state.players.filter(p=>c.roleOf(p).orientation==='evil').length<=Math.floor((count-1)/2));
@@ -50,7 +56,10 @@ test('removed player-count presets are absent and original presets remain',()=>{
 test('legacy and custom role-pool presets preserve unspecified win settings and custom roles',()=>{
   const c=setup(5);c.state.roles.push({id:'my_role',title:'Mine',orientation:'good'});
   c.state.requireNeutral=true;c.state.autoSideWinChecks=false;
-  c.applyPresetDefinition({roles:{my_role:1}});
+  c.customPresets={mine:{name:'Mine',roles:{my_role:1}}};
+  c.state.selectedPreset='custom:mine';
+  assert.notEqual(c.assignRoles(),false);
   assert.equal(c.state.requireNeutral,true);assert.equal(c.state.autoSideWinChecks,false);
+  assert.ok(c.state.players.some(p=>p.roleId==='my_role'));
   assert.equal(c.state.roles.find(r=>r.id==='my_role').randomEnabled,true);
 });

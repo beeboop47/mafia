@@ -36,7 +36,7 @@ function game(ids = ['signal_receiver', 'mafia', 'citizen', 'judge', 'doctor', '
   for (const name of ['roleOf','roleActiveNightAction','roleNightReaction','nightActionFor','nightReactionFor',
     'playersAlive','playerOf','labelOrientation','normalizedRoleOptions','actionUsesLeft','markNightAbilityUsed',
     'validAbilityTargets','visibleTo','setPlayerAlive','recordNightAction','applyPermanentRoleChange','ensurePolicemanIntel',
-    'validDayTarget','checkWin','normalizedWinCondition','assignRoles','effectiveRoleOf','investigationSubject',
+    'validDayTarget','checkWin','normalizedWinCondition','assignRoles','dealRoles','chooseRoundPreset','effectiveRoleOf','investigationSubject',
     'investigationRoleOf','trackReport','isLimitedInvestigation','limitedInvestigationChoices',
     'recordLimitedInvestigation','resolveLimitedInvestigations','hasReactionRoundInfo','ackOnlineCommand',
     'handleOnlineCommand','resolveOnlineDay','handleOnlineNightRound1','onlinePrivatePayloadFor',

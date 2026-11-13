@@ -35,7 +35,7 @@ function populateIdentityEditor(role) {
 function identityEditorSettings(){return {recognitionRoleId:$('recognitionDisguise')?.value||null,knowsDisguise:$('knowsDisguise')?.checked!==false,undercoverWin:!!$('undercoverWin')?.checked,bestowPool:[...($('bestowPool')?.selectedOptions||[])].map(o=>o.value)};}
 
 function hostAbilityAssignment(actor) {
-  if(state.mode!=='manual')return null;
+  if(state.mode!=='manual' || state.activePreset)return null;
   const assignment=hostSettings(actor).abilitySchedule?.[state.round];
   if(nightActionFor(actor)==='seer' && hostSettings(actor).seerSchedule?.[state.round]!=null)return {action:'seer',value:hostSettings(actor).seerSchedule[state.round]};
   if(state.round===1 && nightActionFor(actor)==='hater' && hostSettings(actor).haterTarget!=null)return {action:'hater',value:hostSettings(actor).haterTarget};
@@ -88,7 +88,7 @@ function renderExpandedHostSetup(){
     const config=player.hostSetup ||= {}, body=details.querySelector('.advanced-body');
     const label=document.createElement('label');label.textContent='Personal challenge (private, lasts the whole game)';
     const challenge=document.createElement('textarea');challenge.maxLength=500;challenge.placeholder='For example: speak in a subtle Icelandic accent';challenge.value=config.challenge||'';challenge.oninput=()=>{config.challenge=challenge.value;};label.appendChild(challenge);body.appendChild(label);
-    if(state.mode!=='manual'||!roleOf(player))return;
+    if((state.presetSource && state.presetSource!=='custom')||state.mode!=='manual'||!roleOf(player))return;
     const baseAction=roleActiveNightAction(roleOf(player));
     if(['none','seer','hater','signalReceiver'].includes(baseAction)||isPassiveAbility(baseAction)){
       const note=document.createElement('p');note.className='muted tiny';note.textContent='This ability has no player-selected action. Its available assignments are shown above.';body.appendChild(note);return;
@@ -271,7 +271,7 @@ function installCustomisation(){
   };
   const originalRenderOnline=renderOnlinePrivate;
   renderOnlinePrivate=function(...args){originalRenderOnline(...args);const text=online.private?.customisationText;if(text){const el=document.createElement('div');el.className='intel-card personal-challenge';el.style.whiteSpace='pre-wrap';el.textContent=text;$('onlineRoleBox').appendChild(el);}};
-  const originalAssign=assignRoles;assignRoles=function(...args){removeLegacyHunt();const result=originalAssign(...args);if(result!==false){delete state.gameResult;state.timeline=[];if(state.activeBlindSetup&&state.blindPresetResult)state.timeline.push({round:1,phase:"handoff",playerIds:[],text:`Blind setup selected ${state.blindPresetResult.name}${state.activeTrickRound?" (trick round)":""}.`});state.players.forEach(p=>{const r=roleOf(p);state.timeline.push({round:1,phase:'handoff',playerIds:[p.id],text:`${p.name} was assigned ${r?.title||'Unknown'} (${labelOrientation(r?.orientation)}).`});});}return result;};
+  const originalAssign=assignRoles;assignRoles=function(...args){removeLegacyHunt();const result=originalAssign(...args);if(result!==false){delete state.gameResult;state.timeline=[];if(state.activePreset)state.timeline.push({round:1,phase:"handoff",playerIds:[],text:`Preset: ${state.activePreset.name}.`});state.players.forEach(p=>{const r=roleOf(p);state.timeline.push({round:1,phase:'handoff',playerIds:[p.id],text:`${p.name} was assigned ${r?.title||'Unknown'} (${labelOrientation(r?.orientation)}).`});});}return result;};
   const originalRecord=recordNightAction;recordNightAction=function(actor,action,targetId=null,extra={}){originalRecord(actor,action,targetId,extra);if(!actor)return;const ids=extra.targetIds||[targetId].filter(id=>id!=null);const choice=extra.framedRoleId||extra.newRoleId;recordTimelineEvent(`${actor.name} selected ${NIGHT_ACTIONS[action]?.label||action}${ids.length?' → '+ids.map(id=>playerOf(id)?.name||'departed player').join(', '):''}${choice?' as '+(state.roles.find(r=>r.id===choice)?.title||choice):''}.`,[actor.id,...ids]);};
   const originalNotice=extraNotice;extraNotice=function(id,message){originalNotice(id,message);recordTimelinePrivate(id,message);};
   const originalPrivate=setPrivateResult;setPrivateResult=function(id,message){message=assignedResultText(playerOf(id),message);originalPrivate(id,message);recordTimelinePrivate(id,message);};
