@@ -106,6 +106,11 @@ const DEFAULT_ROLES = [
     visibility: 'nobody', nightAction: 'none', nightReaction: 'traitor'
   },
   {
+    id: 'verifier', title: 'Verifier', orientation: 'good',
+    description: 'Each night, choose one living player to protect their investigation results from deception for that night. Choose the investigator, not the player being investigated. This does not prevent their ability from being blocked or their results from being jammed.',
+    visibility: 'nobody', nightAction: 'secureInformation', nightReaction: 'none'
+  },
+  {
     id: 'framer', title: 'Framer', orientation: 'neutral',
     description: 'At the beginning of the night, frame any player so they appear to be a different role for that night. Investigators will perceive that player as the chosen role.',
     visibility: 'nobody', nightAction: 'framer'
@@ -139,6 +144,11 @@ const DEFAULT_ROLES = [
     id: 'anaesthetist', title: 'Anaesthetist', orientation: 'evil',
     description: 'Drug a player with anaesthesia to prevent them using their ability that night.',
     visibility: 'evil', nightAction: 'roleblock', nightReaction: 'none'
+  },
+  {
+    id: 'forger', title: 'Forger', orientation: 'evil',
+    description: 'Each night, choose one living player and an ability they will appear to have used. If that ability targets a player, also choose its reported destination. Lookout reports this fabricated action for that night. No real ability is performed, and an investigator protected by Secure Information sees the truth.',
+    visibility: 'evil', nightAction: 'fakeVisit', nightReaction: 'none'
   },
   {
     id: 'godfather', specialId: 'godfather', title: 'Godfather', orientation: 'evil',
