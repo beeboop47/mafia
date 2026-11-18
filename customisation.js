@@ -6,7 +6,7 @@ function recognitionRoleOf(player, viewer=null) {
 }
 function privateCustomisationText(player) {
   const role=roleOf(player), parts=[];
-  if(role?.orientation==='neutral'&&role.id!=='jester'&&normalizedWinCondition(role)!=='votedOut')parts.push('Personal victory: survive until the game ends. You can win alongside Good or Evil; you do not need to defeat either faction.');
+  if(role?.orientation==='neutral'&&normalizedWinCondition(role)!=='votedOut')parts.push('Independent victory: win the whole game by reaching the final two with an Evil player or another Neutral, or by being the last player remaining. Good defeats you in a Good-versus-Neutral final two. Role-specific victories are checked first.');
   if(role?.recognitionRoleId && !player.coverExposed && role.knowsDisguise!==false){
     const disguise=state.roles.find(r=>r.id===role.recognitionRoleId);
     if(disguise)parts.push(`Players who recognise you see you as ${disguise.title} (${labelOrientation(disguise.orientation)}). Investigations reveal your true identity. You do not automatically recognise their roles.`);
@@ -165,15 +165,6 @@ function showGameTimeline(container,events,players){
     container.querySelectorAll('.timeline-entry').forEach(row=>{row.hidden=!!value&&!row.dataset.players.split(',').includes(value)&&!players.some(p=>String(p.id)===value&&row.textContent.includes(p.name));});
   };
 }
-function showPersonalVictories(container,result){
-  container.querySelector('.personal-victories')?.remove();
-  if(!result.personalWinners?.length)return;
-  const section=document.createElement('section');section.className='personal-victories intel-card';
-  const heading=document.createElement('h3');heading.textContent='Personal survival victories';section.appendChild(heading);
-  for(const player of result.personalWinners){const row=document.createElement('p');row.textContent=`${player.name} — ${player.role}: survived until the game ended.`;section.appendChild(row);}
-  container.appendChild(section);
-}
-
 function removeLegacyHunt(){
   const retiredAction='exposeCover',retiredRole='counterintelligence';
   const needsReplacement=state.players.some(p=>p.roleId===retiredRole||p.originalIdentity?.roleId===retiredRole);
@@ -277,9 +268,9 @@ function installCustomisation(){
   const originalPrivate=setPrivateResult;setPrivateResult=function(id,message){message=assignedResultText(playerOf(id),message);originalPrivate(id,message);recordTimelinePrivate(id,message);};
   const originalResult=showNightResult;showNightResult=function(message){const n=state.night,actor=(n?.round===2?n.reactionQueue:n?.queue)?.[n.index];message=assignedResultText(actor,message);originalResult(message);if(actor)recordTimelinePrivate(actor.id,message);};
   const originalAlive=setPlayerAlive;setPlayerAlive=function(player,alive,...args){const before=player?.alive;originalAlive(player,alive,...args);if(player&&before!==player.alive)recordTimelineEvent(`${player.name} ${player.alive?'returned to life':'died'}.`,[player.id]);};
-  const originalEnd=endGame;endGame=function(result){originalEnd(result);if(result.winner==='Nobody')$('winnerTitle').textContent='No faction victory';showPersonalVictories($('winCard'),result);showGameTimeline($('winCard'),state.timeline||[],state.players);};
-  const originalSnapshot=onlinePublicSnapshot;onlinePublicSnapshot=function(){const pub=originalSnapshot();if(state.phase==='gameover'){pub.timeline=(state.timeline||[]).filter(event=>event.source!=='host-panel');const result=state.gameResult||online._winner;if(result){pub.winner=result.winner;pub.reason=result.reason;pub.personalWinners=result.personalWinners||[];}}return pub;};
-  const originalOnlineEnd=renderOnlineGameOver;renderOnlineGameOver=function(pub){originalOnlineEnd(pub);if(pub.winner==='Nobody')$('onlineWinnerTitle').textContent='No faction victory';showPersonalVictories($('onlineGameOver'),pub);showGameTimeline($('onlineGameOver'),(pub.timeline||[]).filter(event=>event.source!=='host-panel'),pub.players||[]);};
+  const originalEnd=endGame;endGame=function(result){originalEnd(result);if(result.winner==='Nobody')$('winnerTitle').textContent='No winner';showGameTimeline($('winCard'),state.timeline||[],state.players);};
+  const originalSnapshot=onlinePublicSnapshot;onlinePublicSnapshot=function(){const pub=originalSnapshot();if(state.phase==='gameover'){pub.timeline=(state.timeline||[]).filter(event=>event.source!=='host-panel');const result=state.gameResult||online._winner;if(result){pub.winner=result.winner;pub.reason=result.reason;}}return pub;};
+  const originalOnlineEnd=renderOnlineGameOver;renderOnlineGameOver=function(pub){originalOnlineEnd(pub);if(pub.winner==='Nobody')$('onlineWinnerTitle').textContent='No winner';showGameTimeline($('onlineGameOver'),(pub.timeline||[]).filter(event=>event.source!=='host-panel'),pub.players||[]);};
   const originalPhase=setPhase;setPhase=function(...args){document.body.dataset.gamePhase=state.phase;return originalPhase(...args);};
   const originalPublicRender=renderOnlinePublic;renderOnlinePublic=function(...args){document.body.dataset.gamePhase=online.public?.phase||state.phase;return originalPublicRender(...args);};
   renderHostSetup();

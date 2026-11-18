@@ -1123,10 +1123,10 @@
           <input id="autoSideWinChecks" type="checkbox" checked>
           <span class="setting-copy">
             <strong>Automatic side wins</strong>
-            <span class="muted tiny" style="display:block;margin-top:4px">When enabled, Evil wins when living Evil equals or outnumbers living non-Evil, and the normal Good/no-Evil end condition is checked. Turn this off for custom games that should continue past those normal side-win points.</span>
+            <span class="muted tiny" style="display:block;margin-top:4px">With more than two players, Evil wins when living Evil equals or outnumbers everyone else, and Good wins when only Good remains. Turn this off for custom games that should continue past those side-win points.</span>
           </span>
         </label>
-        <div class="muted tiny" style="margin-top:4px"><strong>Always active:</strong> with exactly two living players, any Evil survivor gives Evil the win. If there is no Evil survivor and at least one of the two is Good, Good wins.</div>
+        <div class="muted tiny" style="margin-top:4px"><strong>Always active:</strong> two-player games end immediately. Good beats Neutral, Neutral beats Evil, and Evil beats Good. A Neutral with a vote-out win condition must complete that condition instead. Role-specific victories, including Undercover, take priority.</div>
       </div>
 
       <div class="divider"></div>
@@ -1293,7 +1293,7 @@
       <div class="divider"></div>
 
       <div class="notice">
-        <strong>Win logic:</strong> Role-specific win conditions are checked first. The normal Good/no-Evil and Evil-majority checks are controlled by <strong>Automatic side wins</strong> above. When those checks are enabled, neutral roles can keep a no-Evil game running. The two-player safeguard described above is always active regardless of that setting.
+        <strong>Win logic:</strong> Role-specific win conditions are checked first. With more than two players, <strong>Automatic side wins</strong> checks Good victory when only Good remains and Evil victory when Evil equals or outnumbers all other players. Neutrals compete for the whole game and can keep a no-Evil game running. At two players, Good beats Neutral, Neutral beats Evil, and Evil beats Good, regardless of that setting. Eligible Neutrals remaining together share the whole-game victory.
       </div>
 
       <div class="row" style="justify-content:flex-end;margin-top:14px">
@@ -1427,7 +1427,7 @@
   <script src="narrator.js?v=20261113-presets"></script>
   <script src="online-reactions.js?v=20261021-expansion"></script>
   <script src="roles.js?v=20261117-forger-verifier"></script>
-  <script src="customisation.js?v=20261113-presets"></script>
+  <script src="customisation.js?v=20261118-neutral-wins"></script>
   <script>
     // ---- State ---------------------------------------------------------------
     const state = {
@@ -3800,11 +3800,13 @@
     // ---- Win / game end ------------------------------------------------------
     function checkWin() {
       const living=state.players.filter(p=>!p.removed&&(p.alive||p.fakeDeathReturnRound));
-      const finish=(winner,reason)=>({done:true,winner,reason,personalWinners:living.filter(p=>roleOf(p)?.orientation==='neutral'&&roleOf(p)?.id!=='jester'&&normalizedWinCondition(roleOf(p))!=='votedOut').map(p=>({id:p.id,name:p.name||('Player '+(p.id+1)),role:roleOf(p)?.title||'Neutral',condition:'Survived until the game ended'}))});
+      const finish=(winner,reason)=>({done:true,winner,reason});
       if(!living.length)return finish('Nobody','No players remain in the game.');
       if(state.activeTrickRound && living.length>2)return {done:false};
       const evil=living.filter(p=>roleOf(p)?.orientation==='evil').length;
       const good=living.filter(p=>roleOf(p)?.orientation==='good').length;
+      const neutrals=living.filter(p=>roleOf(p)?.orientation==='neutral');
+      const eligibleNeutrals=neutrals.filter(p=>normalizedWinCondition(roleOf(p))!=='votedOut');
       const nonEvil=living.length-evil;
       const undercover=living.find(p=>p.alive&&roleOf(p)?.orientation==='good'&&(roleOf(p)?.undercoverWin??(roleOf(p)?.id==='undercover')));
       const evilVictory=(reason='Evil now equals or outnumbers the living non-evil players.')=>undercover?finish('Good',undercover.name+' survived until Evil would have won. The Undercover secures a Good victory.'):finish('Evil',reason);
@@ -3819,15 +3821,20 @@
           if(target&&!target.alive&&target.eliminatedByVote)return finish(role.orientation==='evil'?'Evil':role.title,target.name+' was voted out, completing '+role.title+"'s target win condition.");
         }
       }
-      // The final-two safeguard still ends stalled games, independently of optional side checks.
+      // Resolve every final pair immediately. The circular matchups give each
+      // allegiance a winning elimination from one Good, one Neutral and one Evil.
       if(living.length<=2){
-        if(evil>0)return evilVictory();
-        if(good>0)return finish('Good','No Evil players remain. Good wins; eligible surviving Neutrals also earn personal victories.');
-        return finish('Nobody','No Good or Evil faction remains. Eligible surviving Neutrals earn personal survival victories; Jester must have been voted out.');
+        if(good>0&&evil>0)return evilVictory('The final two players are Good and Evil. Evil wins this matchup.');
+        if(good>0)return finish('Good','At most two players remain and no Evil player remains. Good defeats Neutral in the final two.');
+        if(eligibleNeutrals.length){
+          const winners=[...new Set(eligibleNeutrals.map(p=>roleOf(p).title))].join(' & ');
+          return finish(winners,`${eligibleNeutrals.map(p=>p.name).join(' and ')} won the whole game. ${evil>0?'Neutral defeats Evil in the final two.':'No Good or Evil player remains; eligible Neutrals claim the victory.'}`);
+        }
+        if(evil>0)return evilVictory('No Good player or Neutral eligible for a final-two victory remains. Evil wins.');
+        return finish('Nobody','The remaining players did not complete their vote-out win conditions.');
       }
       if(state.activePreset?.nightFirst || state.autoSideWinChecks!==false){
-        if(evil===0)return finish(good>0?'Good':'Nobody',good>0?'All Evil players have been eliminated. Good wins; eligible surviving Neutrals also earn personal victories.':'No Good or Evil faction remains. Eligible surviving Neutrals earn personal survival victories.');
-        if(good===0)return evilVictory('All Good players have been eliminated. Evil wins; eligible surviving Neutrals also earn personal victories.');
+        if(evil===0&&!neutrals.length)return finish('Good','Only Good players remain. Good wins.');
         if(evil>=nonEvil)return evilVictory();
       }
       return {done:false};
@@ -5467,7 +5474,7 @@
         if(!online.isHost || online.roomCode!==roomCode) return;
         ensureOnlineDuel();
         const {dbMod}=online.api; const updates={}; const pub=onlinePublicSnapshot();
-        updates[`rooms/${roomCode}/public`]=pub.phase==='gameover'?{...pub,winner:online._winner?.winner||pub.winner,reason:online._winner?.reason||pub.reason,personalWinners:online._winner?.personalWinners||pub.personalWinners||[]}:pub;
+        updates[`rooms/${roomCode}/public`]=pub.phase==='gameover'?{...pub,winner:online._winner?.winner||pub.winner,reason:online._winner?.reason||pub.reason}:pub;
         updates[`rooms/${roomCode}/meta/status`]=pub.phase==='gameover'?'gameover':(pub.phase==='setup'?'lobby':'started');
         if(pub.phase==='gameover' || pub.phase==='setup') updates[`rooms/${roomCode}/state`]=serializeAuthoritativeState(); else updates[`rooms/${roomCode}/state`]=serializeAuthoritativeState();
         for(const pl of state.players){

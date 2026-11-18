@@ -76,7 +76,7 @@ test('host setup shows only manually assigned role controls and saves signal set
   assert.ok(!headings().includes('Signal Receiver hints by night'));
 });
 
-test('final-two faction results coexist with personal Neutral survival regardless of side-win setting', () => {
+test('final-two matchups award one whole-game result regardless of side-win setting', () => {
   for (const id of ['persuader', 'serial_killer', 'framer', 'gambler', 'leader']) {
     for (const orientation of ['good', 'evil', 'neutral']) {
       for (const autoSideWinChecks of [true, false]) {
@@ -84,11 +84,10 @@ test('final-two faction results coexist with personal Neutral survival regardles
         c.state.autoSideWinChecks = autoSideWinChecks;
         c.state.roles = [{id, title:id, orientation:'neutral'}, {id:'opponent', title:'Opponent', orientation, winCondition:orientation === 'neutral' ? 'votedOut' : 'none'}];
         c.state.players = [{id:0, name:'Survivor', roleId:id, alive:true}, {id:1, name:'Opponent', roleId:'opponent', alive:true}];
-        assert.equal(c.checkWin().winner, orientation === 'evil' ? 'Evil' : orientation==='good'?'Good':'Nobody');
-        assert.deepEqual(Array.from(c.checkWin().personalWinners,p=>p.id),[0]);
+        assert.equal(c.checkWin().winner, orientation==='good'?'Good':id);
+        assert.equal(c.checkWin().personalWinners,undefined);
         c.state.players[1].alive = false;
-        assert.equal(c.checkWin().winner, 'Nobody');
-        assert.deepEqual(Array.from(c.checkWin().personalWinners,p=>p.id),[0]);
+        assert.equal(c.checkWin().winner, id);
       }
     }
   }
@@ -100,15 +99,15 @@ test('two Neutrals and one Evil have different winners depending on the eliminat
       const c=game();c.state.autoSideWinChecks=autoSideWinChecks;
       c.state.roles=[{id:'framer',title:'Framer',orientation:'neutral'},{id:'gambler',title:'Gambler',orientation:'neutral'},{id:'mafia',title:'Mafia',orientation:'evil'}];
       c.state.players=c.state.roles.map((r,id)=>({id,name:r.title,roleId:r.id,alive:true}));
-      assert.equal(c.checkWin().done,autoSideWinChecks);
+      assert.equal(c.checkWin().done,false);
       c.state.players[eliminated].alive=false;c.state.players[eliminated].eliminatedByVote=true;
-      assert.equal(c.checkWin().winner,eliminated===2?'Nobody':'Evil');
-      assert.equal(c.checkWin().personalWinners.length,eliminated===2?2:1);
+      assert.equal(c.checkWin().winner,eliminated===2?'Framer & Gambler':eliminated===0?'Gambler':'Framer');
+      assert.equal(c.checkWin().personalWinners,undefined);
     }
   }
 });
 
-test('a fulfilled Jester win still takes precedence over Evil and Neutral survival',()=>{
+test('a fulfilled Jester win still takes precedence over final-two matchups',()=>{
   const c=game();c.state.roles=[{id:'jester',title:'Jester',orientation:'neutral',winCondition:'votedOut'},{id:'mafia',orientation:'evil'},{id:'framer',orientation:'neutral'}];
   c.state.players=[{id:0,name:'Jester',roleId:'jester',alive:false,eliminatedByVote:true},{id:1,roleId:'mafia',alive:true},{id:2,roleId:'framer',alive:true}];
   assert.equal(c.checkWin().winner,'Jester');
@@ -126,8 +125,8 @@ test('Jester must be voted out, while other final neutrals can win together', ()
   c.state.players[1].alive = true;
   assert.equal(c.checkWin().winner, 'Jester');
   c.state.players = [{id:0, name:'Framer', roleId:'framer', alive:true}, {id:1, name:'Gambler', roleId:'gambler', alive:true}];
-  assert.equal(c.checkWin().winner, 'Nobody');
-  assert.equal(c.checkWin().personalWinners.length,2);
+  assert.equal(c.checkWin().winner, 'Framer & Gambler');
+  assert.equal(c.checkWin().personalWinners,undefined);
 });
 test('manual assignments consume pool copies and satisfy their evil minimum', () => {
   const c = game();
@@ -248,9 +247,10 @@ test('optional minimum rejects an unavailable pool, while a fixed Neutral satisf
 });
 test('a surviving Jester remains a Jester when Evil is eliminated', () => {
   const c=game();
-  c.state.roles=[{id:'citizen',orientation:'good'},{id:'jester',orientation:'neutral'},{id:'serial_killer',orientation:'neutral'}];
+  c.state.roles=[{id:'citizen',orientation:'good'},{id:'jester',orientation:'neutral',winCondition:'votedOut'},{id:'serial_killer',orientation:'neutral'}];
   c.state.players=[{id:0,roleId:'jester',alive:true},{id:1,roleId:'citizen',alive:true},{id:2,roleId:'citizen',alive:true}];
-  assert.equal(c.checkWin().winner,'Good');assert.equal(c.checkWin().personalWinners.length,0);assert.equal(c.state.players[0].roleId,'jester');
+  assert.equal(c.checkWin().done,false);assert.equal(c.state.players[0].roleId,'jester');
+  c.state.players[2].alive=false;assert.equal(c.checkWin().winner,'Good');
 });
 test('both independent minimums are met together', () => {
   const c=game(); c.state.mode='random'; c.state.requireEvil=true; c.state.requireNeutral=true;

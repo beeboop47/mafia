@@ -121,11 +121,16 @@ const {chromium}=require('C:/Users/gerar/.cache/codex-runtimes/codex-primary-run
       resetCustom();state.players=state.players.slice(0,3);playerOf(0).roleId='detective';playerOf(1).roleId='gambler';playerOf(2).roleId='hater';playerOf(2).haterTargetId=0;
       state.phase='day';state.day={votes:{0:2,1:2,2:0},secondBallot:false,tiedCandidates:[]};
       await resolveOnlineDay();expect(state.phase==='gameover'&&state.gameResult.winner==='Good','voting Hater did not award Good');
-      const pub=onlinePublicSnapshot();expect(pub.personalWinners.length===1&&pub.personalWinners[0].id===1,'online snapshot omitted Gambler personal win');
-      renderOnlineGameOver(pub);expect($('onlineWinnerTitle').textContent.includes('Good'),'online faction result wrong');expect($('onlineGameOver').querySelector('.personal-victories').textContent.includes('Gambler'),'online personal win missing');
-      endGame(state.gameResult);expect($('winnerTitle').textContent.includes('Good'),'offline faction result wrong');expect($('winCard').querySelector('.personal-victories').textContent.includes('Gambler'),'offline personal win missing');
-      const saved=serializeAuthoritativeState();state.gameResult=null;online._winner=null;hydratePersistedState(saved);expect(onlinePublicSnapshot().personalWinners[0].id===1,'personal victory lost after restoring host state');
-      resetCustom();state.players=state.players.slice(0,2);playerOf(0).roleId='gambler';playerOf(1).roleId='leader';const result=checkWin();endGame(result);expect($('winnerTitle').textContent==='No faction victory'&&$('winCard').querySelector('.personal-victories').textContent.includes('Leader'),'neutral-only ending claimed a faction victory');
+      const pub=onlinePublicSnapshot();expect(!('personalWinners' in pub),'online snapshot still awards shared survival wins');
+      renderOnlineGameOver(pub);expect($('onlineWinnerTitle').textContent.includes('Good'),'online faction result wrong');expect(!$('onlineGameOver').querySelector('.personal-victories'),'online survival reward still shown');
+      endGame(state.gameResult);expect($('winnerTitle').textContent.includes('Good'),'offline faction result wrong');expect(!$('winCard').querySelector('.personal-victories'),'offline survival reward still shown');
+      const saved=serializeAuthoritativeState();state.gameResult=null;online._winner=null;hydratePersistedState(saved);expect(onlinePublicSnapshot().winner==='Good','exclusive victory lost after restoring host state');
+      resetCustom();state.players=state.players.slice(0,2);playerOf(0).roleId='gambler';playerOf(1).roleId='leader';const result=checkWin();endGame(result);expect($('winnerTitle').textContent==='Gambler & Leader wins'&&!$('winCard').querySelector('.personal-victories'),'neutral-only ending did not award the whole game');
+      resetCustom();state.players=state.players.slice(0,2);playerOf(0).roleId='gambler';playerOf(1).roleId='mafia';state.phase='day';
+      const neutralText=privateCustomisationText(playerOf(0));expect(neutralText.includes('Independent victory')&&!neutralText.includes('alongside'),'Neutral instructions still describe a shared survival win');
+      const neutralResult=checkWin();expect(neutralResult.winner==='Gambler','Neutral did not defeat Evil in the final two');endGame(neutralResult);
+      const neutralPub=onlinePublicSnapshot();renderOnlineGameOver(neutralPub);expect($('onlineWinnerTitle').textContent==='Gambler wins','online Neutral winner wrong');
+      const neutralSaved=serializeAuthoritativeState();state.gameResult=null;online._winner=null;hydratePersistedState(neutralSaved);expect(onlinePublicSnapshot().winner==='Gambler','Neutral whole-game victory lost after restore');
     });
     await page.evaluate(()=>{resetCustom('kill');state.phase='setup';hide('gameScreen','onlineGame');show('setupScreen');renderSetup();$('hostSetupPanel').open=true;const details=$('hostPlayerSettings').firstElementChild;details.open=true;details.querySelector('details').open=true;details.scrollIntoView();});
     for(const width of [390,1280]){await page.setViewportSize({width,height:900});assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),true,`overflow at ${width}`);}
